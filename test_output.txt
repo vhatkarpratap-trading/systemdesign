@@ -1,0 +1,67 @@
+Resolving dependencies...
+Downloading packages...
+  _fe_analyzer_shared 85.0.0 (93.0.0 available)
+  analyzer 7.6.0 (10.0.1 available)
+  analyzer_plugin 0.13.4 (0.14.1 available)
+  build 2.5.4 (4.0.4 available)
+  build_config 1.1.2 (1.2.0 available)
+  build_resolvers 2.5.4 (3.0.4 available)
+  build_runner 2.5.4 (2.10.5 available)
+  build_runner_core 9.1.2 (9.3.2 available)
+  characters 1.4.0 (1.4.1 available)
+  custom_lint_core 0.7.5 (0.8.2 available)
+  custom_lint_visitor 1.0.0+7.7.0 (1.0.0+9.0.0 available)
+  dart_style 3.1.1 (3.1.4 available)
+  flutter_riverpod 2.6.1 (3.2.0 available)
+  google_fonts 6.3.3 (8.0.0 available)
+  matcher 0.12.17 (0.12.18 available)
+  material_color_utilities 0.11.1 (0.13.0 available)
+  meta 1.17.0 (1.18.1 available)
+  objective_c 9.2.4 (9.2.5 available)
+  riverpod 2.6.1 (3.2.0 available)
+  riverpod_annotation 2.6.1 (4.0.1 available)
+  riverpod_generator 2.6.5 (4.0.2 available)
+  source_gen 2.0.0 (4.2.0 available)
+  test_api 0.7.7 (0.7.9 available)
+Got dependencies!
+23 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+00:00 +0: loading /Users/pratapvhatkar/Documents/VibeCodiing/systemdesign/test/widget_test.dart                                                                                                        00:00 +0: App launches successfully                                                                                                                                                                    00:01 +0: App launches successfully                                                                                                                                                                    00:01 +0: App launches successfully                                                                                                                                                                    
+══╡ EXCEPTION CAUGHT BY RENDERING LIBRARY ╞═════════════════════════════════════════════════════════
+The following assertion was thrown during layout:
+A RenderFlex overflowed by 65 pixels on the bottom.
+
+The relevant error-causing widget was:
+  Column
+  Column:file:///Users/pratapvhatkar/Documents/VibeCodiing/systemdesign/lib/screens/home_screen.dart:39:28
+
+The overflowing RenderFlex has an orientation of Axis.vertical.
+The edge of the RenderFlex that is overflowing has been marked in the rendering with a yellow and
+black striped pattern. This is usually caused by the contents being too big for the RenderFlex.
+Consider applying a flex factor (e.g. using an Expanded widget) to force the children of the
+RenderFlex to fit within the available space instead of being sized to their natural size.
+This is considered an error condition because it indicates that there is content that cannot be
+seen. If the content is legitimately bigger than the available space, consider clipping it with a
+ClipRect widget before putting it in the flex, or using a scrollable container rather than a Flex,
+like a ListView.
+The specific RenderFlex in question is: RenderFlex#8c3eb relayoutBoundary=up8 OVERFLOWING:
+  creator: Column ← Padding ← ConstrainedBox ← Center ← Stack ← MediaQuery ← Padding ← SafeArea ←
+    Padding ← DecoratedBox ← Container ← KeyedSubtree-[GlobalKey#3099e] ← ⋯
+  parentData: offset=Offset(24.0, 24.0) (can use size)
+  constraints: BoxConstraints(0.0<=w<=552.0, 0.0<=h<=552.0)
+  size: Size(552.0, 552.0)
+  direction: vertical
+  mainAxisAlignment: start
+  mainAxisSize: max
+  crossAxisAlignment: center
+  verticalDirection: down
+  spacing: 0.0
+◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤◢◤
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +0 -1: App launches successfully [E]                                                                                                                                                             
+  Test failed. See exception logs above.
+  The test description was: App launches successfully
+  
+
+To run this test again: /Users/pratapvhatkar/Documents/FlutterProjects/flutter/bin/cache/dart-sdk/bin/dart test /Users/pratapvhatkar/Documents/VibeCodiing/systemdesign/test/widget_test.dart -p vm --plain-name 'App launches successfully'
+00:01 +0 -1: Some tests failed.                                                                                                                                                                        
