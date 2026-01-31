@@ -30,8 +30,6 @@ class _LoginScreenState extends State<LoginScreen> {
       final error = await SupabaseService().signInWithGoogle();
       if (error != null) {
         setState(() => _errorMessage = error);
-      } else {
-        if (mounted) Navigator.of(context).pop(true);
       }
     } catch (e) {
       setState(() => _errorMessage = e.toString());
@@ -72,8 +70,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (error != null) {
         setState(() => _errorMessage = error);
-      } else {
-        if (mounted) Navigator.of(context).pop(true);
       }
     } catch (e) {
       setState(() => _errorMessage = e.toString());
@@ -250,10 +246,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   
                   const SizedBox(height: 16),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel', style: TextStyle(color: Colors.white30)),
-                  ),
                 ],
               ),
             ),

@@ -249,31 +249,46 @@ class _ConnectionsPainter extends CustomPainter {
        points.add(Offset(endPoint.dx, midY));
     }
     points.add(endPoint);
+    
+    // 1.5 Filter out duplicate consecutive points to avoid division by zero in path math
+    List<Offset> uniquePoints = [points[0]];
+    for (int i = 1; i < points.length; i++) {
+        if ((points[i] - uniquePoints.last).distance > 0.1) {
+            uniquePoints.add(points[i]);
+        }
+    }
+    points = uniquePoints;
 
     // Build Rounded Path
     const radius = 16.0;
     path.moveTo(points[0].dx, points[0].dy);
     
-    for (int i = 1; i < points.length - 1; i++) {
-        final p0 = points[i-1];
-        final p1 = points[i];
-        final p2 = points[i+1];
-        
-        final v1 = (p1 - p0);
-        final len1 = v1.distance;
-        final v2 = (p2 - p1);
-        final len2 = v2.distance;
-        
-        // Clamp radius for short segments
-        final r = math.min(radius, math.min(len1 / 2, len2 / 2));
-        
-        final startArc = p1 - (v1 / len1) * r;
-        final endArc = p1 + (v2 / len2) * r;
-        
-        path.lineTo(startArc.dx, startArc.dy);
-        path.quadraticBezierTo(p1.dx, p1.dy, endArc.dx, endArc.dy);
+    if (points.length > 1) {
+      for (int i = 1; i < points.length - 1; i++) {
+          final p0 = points[i-1];
+          final p1 = points[i];
+          final p2 = points[i+1];
+          
+          final v1 = (p1 - p0);
+          final len1 = v1.distance;
+          final v2 = (p2 - p1);
+          final len2 = v2.distance;
+          
+          if (len1 > 0.1 && len2 > 0.1) {
+            // Clamp radius for short segments
+            final r = math.min(radius, math.min(len1 / 2, len2 / 2));
+            
+            final startArc = p1 - (v1 / len1) * r;
+            final endArc = p1 + (v2 / len2) * r;
+            
+            path.lineTo(startArc.dx, startArc.dy);
+            path.quadraticBezierTo(p1.dx, p1.dy, endArc.dx, endArc.dy);
+          } else {
+            path.lineTo(p1.dx, p1.dy);
+          }
+      }
+      path.lineTo(points.last.dx, points.last.dy);
     }
-    path.lineTo(points.last.dx, points.last.dy);
 
     // 2. Draw Line (Dashed/Solid)
     if (connection.type == ConnectionType.async || 
