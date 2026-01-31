@@ -569,13 +569,14 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                                   ),
                                 ),
                               ),
-                            ),
+                          ),
                         ],
                       ),
                     ),
-                    ),
-                  );
-                },
+                  ),
+                ),
+              );
+            },
               onWillAcceptWithDetails: (details) => true,
               onMove: (details) {
                 final canvasPos = _getCanvasPosition(details.offset);
