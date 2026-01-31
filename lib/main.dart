@@ -45,15 +45,13 @@ class SystemDesignSimulatorApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(currentUserProvider);
-
     return MaterialApp(
       title: 'System Design Simulator',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.dark,
-      home: user == null ? const LoginScreen() : const GameScreen(),
+      home: const GameScreen(),
     );
   }
 }

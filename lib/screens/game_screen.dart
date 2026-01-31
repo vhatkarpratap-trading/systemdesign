@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/game_provider.dart';
+import '../providers/auth_provider.dart';
 import '../simulation/simulation_engine.dart';
 import '../models/problem.dart';
 import '../theme/app_theme.dart';
@@ -28,6 +29,7 @@ import 'package:shared_preferences/shared_preferences.dart'; // For API key pers
 import '../services/supabase_service.dart';
 import 'login_screen.dart';
 import 'publish_screen.dart';
+import 'dart:ui'; // For BackdropFilter
 
 /// Main gameplay screen
 class GameScreen extends ConsumerStatefulWidget {
@@ -452,12 +454,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       ),
     );
   }
-
   @override
   Widget build(BuildContext context) {
     final problem = ref.watch(currentProblemProvider);
     final simState = ref.watch(simulationProvider);
     final canvasState = ref.watch(canvasProvider);
+    final user = ref.watch(currentUserProvider);
 
     // Listen for simulation events (failures/bottlenecks)
     ref.listen(simulationProvider, (previous, next) {
@@ -466,8 +468,10 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.background,
-      body: SafeArea(
-        child: LayoutBuilder(
+      body: Stack(
+        children: [
+          SafeArea(
+            child: LayoutBuilder(
           builder: (context, constraints) {
             final useSidebar = constraints.maxWidth >= 900;
             
@@ -516,6 +520,22 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             );
           },
         ),
+      ),
+          
+      // Login Overlay
+      if (user == null)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black.withOpacity(0.4),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                  child: const Center(
+                    child: LoginScreen(),
+                  ),
+                ),
+              ),
+            ).animate().fadeIn(duration: 400.ms),
+        ],
       ),
     );
   }
