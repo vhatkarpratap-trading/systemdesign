@@ -103034,7 +103034,7 @@ break
 case 6:case 1:return A.w(q,r)
 case 2:return A.v(o.at(-1),r)}})
 return A.x($async$wL,r)},
-I(a){var s=this,r=null,q=A.b5(16),p=A.cV(B.a4,B.m,1),o=A.ea(A.qs(r,B.c8,!1,r,!0,B.H,r,A.vN(),s.w,r,r,r,r,r,2,B.Ox,B.P,!0,r,!0,r,!1,r,B.c_,r,r,r,r,r,r,r,r,1,r,r,!1,"\u2022",r,r,r,new A.azr(s),r,!1,r,r,!1,r,!0,r,B.cD,r,r,r,r,r,r,r,r,r,r,r,B.a3Y,!0,B.aj,r,B.db,r,r,r,r),1,r),n=A.b5(8),m=s.x,l=m?r:s.garg(),k=A.b5(8)
+I(a){var s=this,r=null,q=A.b5(16),p=A.cV(B.a4,B.m,1),o=A.ea(A.qs(r,B.c8,!1,r,!0,B.H,r,A.vN(),s.w,r,r,r,r,r,2,B.Ow,B.P,!0,r,!0,r,!1,r,B.c_,r,r,r,r,r,r,r,r,1,r,r,!1,"\u2022",r,r,r,new A.azr(s),r,!1,r,r,!1,r,!0,r,B.cD,r,r,r,r,r,r,r,r,r,r,r,B.a3Y,!0,B.aj,r,B.db,r,r,r,r),1,r),n=A.b5(8),m=s.x,l=m?r:s.garg(),k=A.b5(8)
 return A.bh(r,A.bF(A.b([o,A.fn(!1,B.K,!0,n,A.j5(!1,k,!0,A.bh(r,m?B.ZY:B.O5,B.l,r,r,r,r,r,r,B.bR,r,r,r),r,!0,r,r,r,r,r,r,r,r,r,l,r,r,r,r,r,r,r),B.l,B.p,0,r,r,r,r,r,B.bv)],t.p),B.r,B.o,B.v,0),B.l,r,r,new A.b3(B.X,r,p,q,r,r,r,B.B),r,r,r,B.dr,r,r,r)}}
 A.azo.prototype={
 $0(){return this.a.x=!0},
@@ -103196,7 +103196,7 @@ A.aD9.prototype={
 $0(){return this.a.x=!0},
 $S:0}
 A.aCW.prototype={
-$1(a){var s=null,r=this.b,q=A.qs(s,B.c8,!0,s,!0,B.H,s,A.vN(),r,s,s,s,s,s,2,B.Ow,B.P,!0,s,!0,s,!1,s,B.c_,s,s,s,s,s,s,s,s,1,s,s,!1,"\u2022",s,s,s,s,s,!1,s,s,!1,s,!0,s,B.cD,s,s,s,s,s,s,s,s,s,s,s,B.de,!0,B.aj,s,B.db,s,s,s,s)
+$1(a){var s=null,r=this.b,q=A.qs(s,B.c8,!0,s,!0,B.H,s,A.vN(),r,s,s,s,s,s,2,B.OG,B.P,!0,s,!0,s,!1,s,B.c_,s,s,s,s,s,s,s,s,1,s,s,!1,"\u2022",s,s,s,s,s,!1,s,s,!1,s,!0,s,B.cD,s,s,s,s,s,s,s,s,s,s,s,B.de,!0,B.aj,s,B.db,s,s,s,s)
 return A.a8o(A.b([A.uP(B.a5o,new A.aCU(a),s),A.Do(!1,B.a5n,s,s,s,s,s,s,new A.aCV(this.a,r,a),s,A.wX(s,s,B.p,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s,s))],t.p),B.X,q,s,B.a5D)},
 $S:123}
 A.aCU.prototype={
@@ -103599,7 +103599,7 @@ s=o.e?"Welcome Back":"Create Account"
 s=A.aH(s,n,n,n,A.aRV().$3$color$fontSize$fontWeight(B.j,24,B.ae),n,n)
 r=o.e?"Sign in to access your blueprints.":"Join the community of system architects."
 q=t.p
-r=A.b([i,B.d9,s,B.b0,A.aH(r,n,n,n,A.b_n().$3$color$fontSize$height(B.a8,14,1.5),B.cp,n),B.fK,A.avA(o.r,B.OB,1,!1,B.DU,new A.aEA()),B.by,A.avA(o.w,B.Oy,1,!0,B.DU,new A.aEB()),B.d9],q)
+r=A.b([i,B.d9,s,B.b0,A.aH(r,n,n,n,A.b_n().$3$color$fontSize$height(B.a8,14,1.5),B.cp,n),B.fK,A.avA(o.r,B.OA,1,!1,B.DU,new A.aEA()),B.by,A.avA(o.w,B.Ox,1,!0,B.DU,new A.aEB()),B.d9],q)
 if(o.f!=null){j=A.ae(j,B.dv.t()>>>16&255,B.dv.t()>>>8&255,B.dv.t()&255)
 i=A.b5(8)
 s=A.cV(A.ae(B.d.aQ(76.5),B.dv.t()>>>16&255,B.dv.t()>>>8&255,B.dv.t()&255),B.m,1)
@@ -103721,11 +103721,11 @@ i=A.bh(m,A.bF(A.b([A.bh(m,B.O9,B.l,m,m,new A.b3(A.ae(51,B.p.t()>>>16&255,B.p.t()
 h=A.aH("DESIGN TITLE",m,m,m,A.aRW().$4$color$fontSize$fontWeight$letterSpacing(B.Q,12,B.ae,1),m,m)
 j=n.w
 j===$&&A.a()
-j=A.qs(m,B.c8,!1,m,!0,B.H,m,A.vN(),j,m,m,m,m,m,2,A.aPL(m,new A.hp(4,A.b5(12),B.h4),m,B.dr,m,m,m,m,!0,new A.hp(4,A.b5(12),B.h4),m,m,m,m,m,B.X,!0,m,m,m,m,new A.hp(4,A.b5(12),B.Fn),m,m,m,m,m,m,m,m,B.E0,"e.g., Scalable URL Shortener",m,m,m,m,m,m,m,m,m,!0,!0,m,m,m,m,m,m,m,m,m,m,m,m,m,m),B.P,!0,m,!0,m,!1,m,B.c_,m,m,m,m,m,m,m,m,1,m,m,!1,"\u2022",m,m,m,m,m,!1,m,m,!1,m,!0,m,B.cD,m,m,m,m,m,m,m,m,m,m,m,B.a4w,!0,B.aj,m,B.db,m,m,m,m)
+j=A.qs(m,B.c8,!1,m,!0,B.H,m,A.vN(),j,m,m,m,m,m,2,A.aPL(m,new A.hp(4,A.b5(12),B.h4),m,B.dr,m,m,m,m,!0,new A.hp(4,A.b5(12),B.h4),m,m,m,m,m,B.X,!0,m,m,m,m,new A.hp(4,A.b5(12),B.Fn),m,m,m,m,m,m,m,m,B.E0,"e.g., Scalable System Design",m,m,m,m,m,m,m,m,m,!0,!0,m,m,m,m,m,m,m,m,m,m,m,m,m,m),B.P,!0,m,!0,m,!1,m,B.c_,m,m,m,m,m,m,m,m,1,m,m,!1,"\u2022",m,m,m,m,m,!1,m,m,!1,m,!0,m,B.cD,m,m,m,m,m,m,m,m,m,m,m,B.a4w,!0,B.aj,m,B.db,m,m,m,m)
 s=A.aH("WRITEUP / BLOG",m,m,m,A.aRW().$4$color$fontSize$fontWeight$letterSpacing(B.Q,12,B.ae,1),m,m)
 r=A.b5(12)
 q=A.cV(B.a4,B.m,1)
-r=A.bh(m,A.qs(m,B.c8,!1,m,!0,B.H,m,A.vN(),n.x,m,m,m,m,m,2,B.OE,B.P,!0,m,!0,m,!0,m,B.c_,m,m,m,m,m,m,m,m,m,m,m,!1,"\u2022",m,m,m,m,m,!1,m,m,!1,m,!0,m,B.cD,m,m,m,m,m,m,m,m,m,m,m,B.a4d,!0,B.aj,B.il,B.db,m,m,m,m),B.l,m,m,new A.b3(B.X,m,q,r,m,m,m,B.B),m,300,m,m,m,m,m)
+r=A.bh(m,A.qs(m,B.c8,!1,m,!0,B.H,m,A.vN(),n.x,m,m,m,m,m,2,B.OD,B.P,!0,m,!0,m,!0,m,B.c_,m,m,m,m,m,m,m,m,m,m,m,!1,"\u2022",m,m,m,m,m,!1,m,m,!1,m,!0,m,B.cD,m,m,m,m,m,m,m,m,m,m,m,B.a4d,!0,B.aj,B.il,B.db,m,m,m,m),B.l,m,m,new A.b3(B.X,m,q,r,m,m,m,B.B),m,300,m,m,m,m,m)
 q=A.uP(B.a5C,new A.aG9(a),m)
 p=n.y?m:n.gajt()
 o=A.wX(m,m,B.p,m,m,m,0,m,m,m,m,m,m,m,new A.cF(A.b5(12),B.q),m,m,m,m,m)
@@ -104425,7 +104425,7 @@ n===$&&A.a()
 p=p.f
 s=p?B.cp:B.aj
 p=p?A.aNR().$3$color$fontSize$fontWeight(B.a7,14,B.G):B.os
-return A.dK(A.fn(!1,B.K,!0,q,A.qs(q,B.c8,!1,q,!0,B.H,q,A.vN(),n,q,q,q,q,q,2,B.OA,B.P,!0,q,!0,q,!1,r.e,B.c_,q,q,q,q,q,q,q,q,1,q,q,!1,"\u2022",q,new A.aDM(r),new A.aDN(r),new A.aDO(r),q,!1,q,q,!1,q,!0,q,B.cD,q,q,q,q,q,q,q,q,q,q,q,p,!0,s,q,B.db,q,q,q,q),B.l,B.x,0,q,q,q,q,q,B.bv),q,o)}}
+return A.dK(A.fn(!1,B.K,!0,q,A.qs(q,B.c8,!1,q,!0,B.H,q,A.vN(),n,q,q,q,q,q,2,B.Oz,B.P,!0,q,!0,q,!1,r.e,B.c_,q,q,q,q,q,q,q,q,1,q,q,!1,"\u2022",q,new A.aDM(r),new A.aDN(r),new A.aDO(r),q,!1,q,q,!1,q,!0,q,B.cD,q,q,q,q,q,q,q,q,q,q,q,p,!0,s,q,B.db,q,q,q,q),B.l,B.x,0,q,q,q,q,q,B.bv),q,o)}}
 A.aDP.prototype={
 $1(a){var s=this.a
 s.e.h2()
@@ -105604,7 +105604,7 @@ k=A.bh(n,A.dl(j.e,j.gbH(0),n,24),B.l,n,n,new A.b3(l,n,n,k,n,n,n,B.B),n,n,n,B.L8,
 l=o.y
 l===$&&A.a()
 j=t.p
-l=A.bF(A.b([k,B.ih,A.ea(A.qs(n,B.c8,!1,n,!0,B.H,n,A.vN(),l,n,n,n,n,n,2,B.OC,B.P,!0,n,!0,n,!1,n,B.c_,n,n,n,n,n,n,n,n,1,n,n,!1,"\u2022",n,new A.azA(o),n,n,n,!1,n,n,!1,n,!0,n,B.cD,n,n,n,n,n,n,n,n,n,n,n,B.E2,!0,B.aj,n,B.db,n,n,n,n),1,n),A.lS(B.Q,n,B.Oi,n,n,new A.azB(a),n,n,n)],j),B.r,B.o,B.v,0)
+l=A.bF(A.b([k,B.ih,A.ea(A.qs(n,B.c8,!1,n,!0,B.H,n,A.vN(),l,n,n,n,n,n,2,B.OB,B.P,!0,n,!0,n,!1,n,B.c_,n,n,n,n,n,n,n,n,1,n,n,!1,"\u2022",n,new A.azA(o),n,n,n,!1,n,n,!1,n,!0,n,B.cD,n,n,n,n,n,n,n,n,n,n,n,B.E2,!0,B.aj,n,B.db,n,n,n,n),1,n),A.lS(B.Q,n,B.Oi,n,n,new A.azB(a),n,n,n)],j),B.r,B.o,B.v,0)
 k=A.aH("SYSTEM CONFIGURATION",n,n,n,A.cf(n,n,B.Q.b5(0.6),n,n,n,n,n,n,n,n,11,n,n,B.ae,n,n,!0,n,1.2,n,n,n,n,n,n),n,n)
 s=o.w
 s===$&&A.a()
@@ -105625,7 +105625,7 @@ q=A.bF(A.b([B.a5s,A.aX4(B.p,B.yd,new A.azK(o),q)],j),B.r,B.ej,B.v,0)
 p=o.at
 p===$&&A.a()
 p=p==null?B.dc:new A.cN(p,B.cM,B.b2)
-B.b.M(r,A.b([l,B.bV,B.a5j,B.b0,A.bh(n,A.cb(A.b([q,B.qQ,A.qs(n,B.c8,!1,n,!0,B.H,n,A.vN(),new A.h_(p,$.at()),n,n,n,n,n,2,B.OG,B.P,!0,n,!0,n,!1,n,B.c_,n,n,n,n,n,n,n,n,4,n,n,!1,"\u2022",n,new A.azL(o),n,n,n,!1,n,n,!1,n,!0,n,B.cD,n,n,n,n,n,n,n,n,n,n,n,B.a1z,!0,B.aj,n,B.db,n,n,n,n)],j),B.Y,B.o,B.v),B.l,n,n,new A.b3(B.b5,n,s,k,n,n,n,B.B),n,n,n,B.f1,n,n,n),B.bV],j))}l=o.a.d.b
+B.b.M(r,A.b([l,B.bV,B.a5j,B.b0,A.bh(n,A.cb(A.b([q,B.qQ,A.qs(n,B.c8,!1,n,!0,B.H,n,A.vN(),new A.h_(p,$.at()),n,n,n,n,n,2,B.OF,B.P,!0,n,!0,n,!1,n,B.c_,n,n,n,n,n,n,n,n,4,n,n,!1,"\u2022",n,new A.azL(o),n,n,n,!1,n,n,!1,n,!0,n,B.cD,n,n,n,n,n,n,n,n,n,n,n,B.a1z,!0,B.aj,n,B.db,n,n,n,n)],j),B.Y,B.o,B.v),B.l,n,n,new A.b3(B.b5,n,s,k,n,n,n,B.B),n,n,n,B.f1,n,n,n),B.bV],j))}l=o.a.d.b
 if(l===B.bh||l===B.ci){l=o.as
 l===$&&A.a()
 B.b.M(r,A.b([A.bF(A.b([B.a5d,A.bF(A.b([A.aH(""+l,n,n,n,B.fN,n,n),new A.Hc(l,new A.azM(o),0,3600,n)],j),B.r,B.o,B.v,0)],j),B.r,B.ej,B.v,0),B.bV],j))}r.push(B.Kx)
@@ -105809,10 +105809,10 @@ s=this.y
 s.L$=r
 s.a4$=0
 this.aG()},
-I(a){var s,r=this,q=null,p=A.aH("Share your system design with other architects. Others will be able to view, simulate, and review your architecture.",q,q,q,A.cf(q,q,B.ad,q,q,q,q,q,q,q,q,13,q,q,q,q,q,!0,q,q,q,q,q,q,q,q),q,q),o=A.avA(r.x,B.OD,1,!1,q,new A.aG1()),n=r.z,m=t.fo
+I(a){var s,r=this,q=null,p=A.aH("Share your system design with other architects. Others will be able to view, simulate, and review your architecture.",q,q,q,A.cf(q,q,B.ad,q,q,q,q,q,q,q,q,13,q,q,q,q,q,!0,q,q,q,q,q,q,q,q),q,q),o=A.avA(r.x,B.OC,1,!1,q,new A.aG1()),n=r.z,m=t.fo
 m=A.W(new A.a_(A.b(["General","Social Media","E-Commerce","FinTech","Real-time"],t.s),new A.aG2(),m),m.h("ad.E"))
 s=t.p
-m=A.uG(A.aUH(A.cb(A.b([p,B.Dr,o,B.by,A.b67(B.Oz,n,m,new A.aG3(r),t.N),B.by,A.avA(r.y,B.OF,3,!1,q,new A.aG4())],s),B.r,B.o,B.a9),r.w),q,q,B.al)
+m=A.uG(A.aUH(A.cb(A.b([p,B.Dr,o,B.by,A.b67(B.Oy,n,m,new A.aG3(r),t.N),B.by,A.avA(r.y,B.OE,3,!1,q,new A.aG4())],s),B.r,B.o,B.a9),r.w),q,q,B.al)
 p=r.Q
 o=A.uP(B.a5c,p?q:new A.aG5(a),q)
 p=p?q:r.gaoT()
@@ -111114,30 +111114,30 @@ B.Ot=new A.S5(!0,!0,B.ni)
 B.aL=s([],t.oU)
 B.Ou=new A.nu("\ufffc",null,null,null,!0,!0,B.aL)
 B.Ov=new A.Ej(null,null,null,null,null,null,null,null,null,B.rq,B.pw,!1,null,!1,null,null,null,null,null,null,null,null,!1,null,null,null,null,null,null,null,null,null,null,null,!1,null,null)
-B.ku=new A.n(!0,B.ad,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
-B.Fm=new A.aR(B.Q,1,B.m,-1)
-B.a71=new A.k5(B.lh,B.Fm)
-B.Ow=new A.hk(null,null,null,"Design Name",B.ku,null,null,null,null,null,"e.g., My URL Shortener v1",null,null,null,null,null,!0,!0,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.a71,null,!0,null,null,null,null)
 B.a2s=new A.n(!0,B.Q,null,null,null,null,14,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
 B.ez=new A.a1m(B.q)
-B.Ox=new A.hk(null,null,null,null,null,null,null,null,null,null,"Add to the discussion...",null,B.a2s,null,null,null,!0,!0,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.ez,!0,null,null,null,null)
+B.Ow=new A.hk(null,null,null,null,null,null,null,null,null,null,"Add to the discussion...",null,B.a2s,null,null,null,!0,!0,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.ez,!0,null,null,null,null)
 B.MM=new A.ao(58289,"MaterialIcons",!1)
 B.Oc=new A.ce(B.MM,20,null,null,null)
 B.pg=new A.aR(B.n,1,B.m,-1)
 B.hW=new A.hp(4,B.h3,B.pg)
-B.Oy=new A.hk(null,null,null,"Password",null,null,null,null,null,null,null,null,null,null,null,null,!0,!0,null,null,null,null,null,null,null,null,null,B.Oc,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.hW,!0,null,null,null,null)
-B.Oz=new A.hk(null,null,null,"Category",null,null,null,null,null,null,null,null,null,null,null,null,!0,!0,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.hW,!0,null,null,null,null)
-B.OA=new A.hk(null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,!0,!0,null,null,null,null,null,null,!0,B.f4,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.ez,!0,null,null,null,null)
+B.Ox=new A.hk(null,null,null,"Password",null,null,null,null,null,null,null,null,null,null,null,null,!0,!0,null,null,null,null,null,null,null,null,null,B.Oc,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.hW,!0,null,null,null,null)
+B.Oy=new A.hk(null,null,null,"Category",null,null,null,null,null,null,null,null,null,null,null,null,!0,!0,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.hW,!0,null,null,null,null)
+B.Oz=new A.hk(null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,!0,!0,null,null,null,null,null,null,!0,B.f4,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.ez,!0,null,null,null,null)
 B.Ni=new A.ao(61464,"MaterialIcons",!1)
 B.Om=new A.ce(B.Ni,20,null,null,null)
-B.OB=new A.hk(null,null,null,"Email",null,null,null,null,null,null,null,null,null,null,null,null,!0,!0,null,null,null,null,null,null,null,null,null,B.Om,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.hW,!0,null,null,null,null)
-B.OC=new A.hk(null,null,null,null,null,null,null,null,null,null,"Component Name",null,null,null,null,null,!0,!0,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.ez,!0,null,null,null,null)
-B.OD=new A.hk(null,null,null,"Design Title",null,null,null,null,null,null,null,null,null,null,null,null,!0,!0,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.hW,!0,null,null,null,null)
+B.OA=new A.hk(null,null,null,"Email",null,null,null,null,null,null,null,null,null,null,null,null,!0,!0,null,null,null,null,null,null,null,null,null,B.Om,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.hW,!0,null,null,null,null)
+B.OB=new A.hk(null,null,null,null,null,null,null,null,null,null,"Component Name",null,null,null,null,null,!0,!0,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.ez,!0,null,null,null,null)
+B.OC=new A.hk(null,null,null,"Design Title",null,null,null,null,null,null,null,null,null,null,null,null,!0,!0,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.hW,!0,null,null,null,null)
 B.E0=new A.n(!0,B.Q,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
-B.OE=new A.hk(null,null,null,null,null,null,null,null,null,null,"Describe your architecture, tradeoffs, and design decisions...\n\n- Why did you choose this database?\n- How do you handle scaling?\n- What are the bottlenecks?",null,B.E0,null,null,null,!0,!0,null,null,null,null,null,null,null,B.dr,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.ez,!0,null,null,null,null)
-B.OF=new A.hk(null,null,null,"Description / Documentation",null,null,null,null,null,null,null,null,null,null,null,null,!0,!0,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.hW,!0,null,!0,null,null)
+B.OD=new A.hk(null,null,null,null,null,null,null,null,null,null,"Describe your architecture, tradeoffs, and design decisions...\n\n- Why did you choose this database?\n- How do you handle scaling?\n- What are the bottlenecks?",null,B.E0,null,null,null,!0,!0,null,null,null,null,null,null,null,B.dr,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.ez,!0,null,null,null,null)
+B.OE=new A.hk(null,null,null,"Description / Documentation",null,null,null,null,null,null,null,null,null,null,null,null,!0,!0,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.hW,!0,null,!0,null,null)
 B.DZ=new A.n(!0,B.Q,null,null,null,null,12,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
-B.OG=new A.hk(null,null,null,null,null,null,null,null,null,null,"CREATE TABLE users (\n  id UUID PRIMARY KEY,\n  email VARCHAR(255)\n);",null,B.DZ,null,null,null,!0,!0,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.ez,!0,null,null,null,null)
+B.OF=new A.hk(null,null,null,null,null,null,null,null,null,null,"CREATE TABLE users (\n  id UUID PRIMARY KEY,\n  email VARCHAR(255)\n);",null,B.DZ,null,null,null,!0,!0,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.ez,!0,null,null,null,null)
+B.ku=new A.n(!0,B.ad,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null)
+B.Fm=new A.aR(B.Q,1,B.m,-1)
+B.a71=new A.k5(B.lh,B.Fm)
+B.OG=new A.hk(null,null,null,"Design Name",B.ku,null,null,null,null,null,"e.g., My System Design v1",null,null,null,null,null,!0,!0,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,B.a71,null,!0,null,null,null,null)
 B.a9k=new A.hk(null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,!0,!0,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,!0,null,null,null,null)
 B.OI=new A.dZ(0.25,0.5,B.a_)
 B.VH=new A.h(0.05,0)
@@ -114497,7 +114497,7 @@ s($,"bmT","aSG",()=>A.fU("supabase.supabase_flutter"))
 s($,"bkM","lu",()=>new A.Hz())
 s($,"bk9","Bk",()=>A.b([$.aSn(),$.b0D(),$.b0F(),$.b0H(),$.b0E(),$.b0G()],A.ax("C<ix>")))
 s($,"bke","aSn",()=>{var q="loadBalancer",p="appServer",o="apiGateway",n=t.s
-return A.FJ(B.X7,"Design a URL shortening service like bit.ly",1,A.b(["Redirects (reads) are much more frequent than URL creations (writes)","Short URLs are read-heavy - perfect for caching","Consider using a cache to reduce database load","A single database might become a bottleneck at scale"],n),"url_shortener",!0,A.b(["loadBalancer","appServer","cache","database"],n),A.b([A.PQ(q,o),A.PQ(q,p),A.PQ(o,p),A.PQ(p,"database"),A.PQ(p,"cache")],t.Xo),"You're building a URL shortening service that:\n\u2022 Takes long URLs and generates short, unique links\n\u2022 Redirects users from short links to original URLs\n\u2022 Tracks click analytics\n\nThe service must handle millions of daily users with low latency redirects.\n","URL Shortener")})
+return A.FJ(B.X7,"Design a scalable system architecture",1,A.b(["Redirects (reads) are much more frequent than URL creations (writes)","Short URLs are read-heavy - perfect for caching","Consider using a cache to reduce database load","A single database might become a bottleneck at scale"],n),"url_shortener",!0,A.b(["loadBalancer","appServer","cache","database"],n),A.b([A.PQ(q,o),A.PQ(q,p),A.PQ(o,p),A.PQ(p,"database"),A.PQ(p,"cache")],t.Xo),"You're building a URL shortening service that:\n\u2022 Takes long URLs and generates short, unique links\n\u2022 Redirects users from short links to original URLs\n\u2022 Tracks click analytics\n\nThe service must handle millions of daily users with low latency redirects.\n","Design Your Systems")})
 s($,"bka","b0D",()=>{var q=t.s
 return A.FJ(B.X3,"Design a real-time messaging system like WhatsApp",2,A.b(["Real-time messaging requires persistent connections (WebSockets)","Consider pub/sub for message fanout to group members","Message delivery confirmation needs careful handling","Users expect messages to persist even when offline"],q),"chat_app",!1,A.b(["loadBalancer","apiGateway","appServer","cache","database","pubsub","queue"],q),B.hF,"Build a real-time chat application that:\n\u2022 Delivers messages instantly between users\n\u2022 Supports group chats with up to 256 members\n\u2022 Shows online/offline status and typing indicators\n\u2022 Stores message history\n\nThe system must feel instant while handling millions of concurrent connections.\n","Chat Application")})
 s($,"bkc","b0F",()=>{var q=t.s
