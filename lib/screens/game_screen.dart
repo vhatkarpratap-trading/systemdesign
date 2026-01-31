@@ -114,7 +114,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           decoration: const InputDecoration(
             labelText: 'Design Name',
             labelStyle: TextStyle(color: AppTheme.textSecondary),
-            hintText: 'e.g., My URL Shortener v1',
+            hintText: 'e.g., My System Design v1',
             enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: AppTheme.textMuted)),
           ),
         ),

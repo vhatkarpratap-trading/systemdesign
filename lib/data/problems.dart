@@ -13,11 +13,11 @@ class Problems {
     uber,
   ];
 
-  /// Level 1: URL Shortener
+  /// Level 1: Design Your Systems
   static final urlShortener = Problem(
     id: 'url_shortener',
-    title: 'URL Shortener',
-    description: 'Design a URL shortening service like bit.ly',
+    title: 'Design Your Systems',
+    description: 'Design a scalable system architecture',
     scenario: '''
 You're building a URL shortening service that:
 • Takes long URLs and generates short, unique links

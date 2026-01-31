@@ -154,7 +154,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
                 TextField(
                   controller: _titleController,
                   style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16),
-                  decoration: _inputDecoration('e.g., Scalable URL Shortener'),
+                  decoration: _inputDecoration('e.g., Scalable System Design'),
                 ),
 
                 const SizedBox(height: 24),
