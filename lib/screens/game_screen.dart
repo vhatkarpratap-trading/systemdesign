@@ -91,7 +91,68 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   }
 
   void _handleSaveDesign() {}
-  void _handleProfileTap() {}
+  
+  Future<void> _handleProfileTap() async {
+    final user = SupabaseService().currentUser;
+    if (user == null) {
+      await showDialog(
+        context: context,
+        builder: (context) => const Dialog(
+          backgroundColor: Colors.transparent,
+          child: LoginScreen(),
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    
+    // Show profile info and logout button
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.person_outline_rounded, color: AppTheme.primary),
+            const SizedBox(width: 12),
+            const Text('Architect Profile', style: TextStyle(color: AppTheme.textPrimary)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Email', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+            Text(user.email ?? 'Unknown', style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w500)),
+            const SizedBox(height: 16),
+            Text('Role', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+            const Text('Senior System Architect', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w500)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CLOSE', style: TextStyle(color: AppTheme.textSecondary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.error.withOpacity(0.1),
+              foregroundColor: AppTheme.error,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () async {
+              await SupabaseService().signOut();
+              if (mounted) Navigator.pop(context);
+            },
+            child: const Text('LOGOUT'),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildWebLayout(SimulationState simState, bool hasComponents, Problem problem, BoxConstraints constraints) {
     return Row(
