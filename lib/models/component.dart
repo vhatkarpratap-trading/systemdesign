@@ -45,9 +45,9 @@ enum ComponentType {
 
   // Utilities
   text('Text Note', 'Free text label', Icons.text_fields),
-  circle('Circle', 'Geometric circle', Icons.radio_button_unchecked),
+  circle('Circle', 'Geometric circle', Icons.circle_outlined),
   rectangle('Rectangle', 'Geometric rectangle', Icons.crop_square),
-  diamond('Diamond', 'Geometric diamond', Icons.diamond_outlined),
+  diamond('Diamond', 'Geometric diamond', Icons.change_history_rounded),
   arrow('Arrow', 'Directional arrow', Icons.trending_flat),
   line('Line', 'Straight line', Icons.horizontal_rule);
 

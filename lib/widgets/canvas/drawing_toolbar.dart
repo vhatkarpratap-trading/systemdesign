@@ -62,14 +62,14 @@ class DrawingToolbar extends ConsumerWidget {
               onTap: () => ref.read(canvasToolProvider.notifier).state = CanvasTool.rectangle,
             ),
             _ToolButton(
-              icon: Icons.radio_button_unchecked,
+              icon: Icons.circle_outlined,
               tool: CanvasTool.circle,
               isActive: activeTool == CanvasTool.circle,
               shortcut: '3',
               onTap: () => ref.read(canvasToolProvider.notifier).state = CanvasTool.circle,
             ),
             _ToolButton(
-              icon: Icons.change_history_outlined,
+              icon: Icons.change_history_rounded,
               tool: CanvasTool.diamond,
               isActive: activeTool == CanvasTool.diamond,
               shortcut: '4',

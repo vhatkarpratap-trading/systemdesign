@@ -122,10 +122,10 @@ class ComponentNode extends ConsumerWidget {
                              component.type == ComponentType.diamond ||
                              component.type == ComponentType.arrow || 
                              component.type == ComponentType.line))
-                  ? Colors.transparent
+                  ? AppTheme.border.withValues(alpha: 0.4)
                   : (isConnecting
                       ? AppTheme.secondary.withValues(alpha: 0.5)
-                      : Colors.transparent), // No border for standard components by default
+                      : Colors.transparent),
           width: isSelected ? 2.5 : 1,
         ),
       ),
