@@ -8,7 +8,8 @@ import 'level_select_screen.dart';
 
 /// Results screen shown after simulation completes
 class ResultsScreen extends ConsumerWidget {
-  const ResultsScreen({super.key});
+  final VoidCallback? onClose;
+  const ResultsScreen({super.key, this.onClose});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -194,7 +195,11 @@ class ResultsScreen extends ConsumerWidget {
                         ref.read(canvasProvider.notifier).resetForProblem();
                         ref.read(simulationProvider.notifier).reset();
                         ref.read(scoreProvider.notifier).state = null;
-                        Navigator.pop(context);
+                        if (onClose != null) {
+                          onClose!();
+                        } else {
+                          Navigator.pop(context);
+                        }
                       },
                       icon: const Icon(Icons.refresh),
                       label: const Text('Try Again'),

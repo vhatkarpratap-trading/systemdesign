@@ -118,7 +118,8 @@ class BlueprintExporter {
     if (comp.customName != null && comp.customName!.isNotEmpty) {
       return comp.customName!.toLowerCase().replaceAll(' ', '_').replaceAll(RegExp(r'[^a-z0-9_]'), '');
     }
-    return comp.id.substring(0, 8); // Use first 8 chars of UUID if no name
+    // Safety check for ID length to avoid RangeError
+    return comp.id.length >= 8 ? comp.id.substring(0, 8) : comp.id;
   }
 
   static Map<String, dynamic> _getComponentProperties(SystemComponent comp) {
@@ -163,9 +164,9 @@ class BlueprintExporter {
     };
 
     return connections.map((conn) => {
-      "id": conn.id.substring(0, 8),
-      "from": idLookup[conn.sourceId] ?? conn.sourceId.substring(0, 8),
-      "to": idLookup[conn.targetId] ?? conn.targetId.substring(0, 8),
+      "id": conn.id.length >= 8 ? conn.id.substring(0, 8) : conn.id,
+      "from": idLookup[conn.sourceId] ?? (conn.sourceId.length >= 8 ? conn.sourceId.substring(0, 8) : conn.sourceId),
+      "to": idLookup[conn.targetId] ?? (conn.targetId.length >= 8 ? conn.targetId.substring(0, 8) : conn.targetId),
       "protocol": conn.type == ConnectionType.replication ? "TCP" : "HTTPS",
       "sync": conn.type != ConnectionType.async
     }).toList();

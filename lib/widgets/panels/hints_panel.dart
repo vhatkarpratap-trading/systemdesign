@@ -49,10 +49,10 @@ class HintsPanel extends ConsumerWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    validation.isValid ? 'Ready to Simulate' : 'Design Hints',
-                    style: const TextStyle(
-                      color: AppTheme.textPrimary,
-                      fontWeight: FontWeight.w500,
+                    validation.isValid ? 'Optimized' : 'Design Hints',
+                    style: TextStyle(
+                      color: validation.isValid ? AppTheme.success : AppTheme.textPrimary,
+                      fontWeight: FontWeight.w600,
                       fontSize: 13,
                     ),
                   ),

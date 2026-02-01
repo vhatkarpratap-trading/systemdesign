@@ -1,19 +1,21 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../providers/auth_provider.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _isLoading = false;
-  bool _isLogin = true; // Toggle between Login and Sign Up
+  bool _isLogin = true; 
   String? _errorMessage;
   
   final _emailController = TextEditingController();
@@ -28,7 +30,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final error = await SupabaseService().signInWithGoogle();
-      if (error != null) {
+      if (error == null) {
+        if (mounted) {
+          ref.read(guestModeProvider.notifier).state = false;
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop(true);
+          }
+        }
+        return;
+      } else {
         setState(() => _errorMessage = error);
       }
     } catch (e) {
@@ -61,11 +71,19 @@ class _LoginScreenState extends State<LoginScreen> {
                SnackBar(content: Text(error!)),
              );
            }
-           // Do NOT pop here, user needs to confirm first.
-           // Maybe switch to login mode?
            if (mounted) setState(() => _errorMessage = null);
            return; 
         }
+      }
+
+      if (error == null) {
+        if (mounted) {
+          ref.read(guestModeProvider.notifier).state = false;
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop(true);
+          }
+        }
+        return;
       }
 
       if (error != null) {
@@ -78,68 +96,78 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Widget _buildWelcomeHeader() {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: AppTheme.primary.withOpacity(0.1),
+            shape: BoxShape.circle,
+            border: Border.all(color: AppTheme.primary.withOpacity(0.2)),
+          ),
+          child: const Icon(
+            Icons.rocket_launch_rounded,
+            size: 48,
+            color: AppTheme.primary,
+          ),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          'Architect Login',
+          style: GoogleFonts.outfit(
+            fontSize: 32,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.textPrimary,
+            letterSpacing: -1,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+            _isLogin 
+              ? 'Sign in to access your blueprints.' 
+              : 'Join the community of system architects.',
+          style: GoogleFonts.inter(
+            fontSize: 16,
+            color: AppTheme.textSecondary,
+            letterSpacing: 0.5,
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.background,
-      body: Center(
-        child: SingleChildScrollView(
-          child: Container(
-            width: 400,
-            padding: const EdgeInsets.all(32),
-            decoration: BoxDecoration(
-              color: AppTheme.surface,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: AppTheme.border),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
+    return Center(
+      child: SingleChildScrollView(
+        child: Container(
+          width: 400,
+          margin: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.all(32),
+          decoration: BoxDecoration(
+            color: AppTheme.surface.withOpacity(0.95),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: AppTheme.border.withOpacity(0.5)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.4),
+                blurRadius: 40,
+                offset: const Offset(0, 20),
+              ),
+            ],
+          ),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
             child: Form(
               key: _formKey,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppTheme.primary.withOpacity(0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(Icons.cloud_upload_rounded, 
-                      size: 48, 
-                      color: AppTheme.primary
-                    ).animate().scale(duration: 600.ms, curve: Curves.easeOutBack),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    _isLogin ? 'Welcome Back' : 'Create Account',
-                    style: GoogleFonts.outfit(
-                      fontSize: 24, 
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _isLogin 
-                      ? 'Sign in to access your blueprints.' 
-                      : 'Join the community of system architects.',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      color: Colors.white70,
-                      height: 1.5,
-                    ),
-                  ),
+                   _buildWelcomeHeader(),
                   const SizedBox(height: 32),
                   
-                  // Form Fields
                   TextFormField(
                     controller: _emailController,
                     style: const TextStyle(color: Colors.white),
@@ -187,7 +215,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
 
-                  // Email Auth Button
                   ElevatedButton(
                     onPressed: _isLoading ? null : _handleEmailAuth,
                     style: ElevatedButton.styleFrom(
@@ -206,35 +233,37 @@ class _LoginScreenState extends State<LoginScreen> {
                   const Row(children: [Expanded(child: Divider(color: Colors.white24)), Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text('OR', style: TextStyle(color: Colors.white24, fontSize: 12))), Expanded(child: Divider(color: Colors.white24))]),
                   const SizedBox(height: 16),
 
-                  // Google Auth Button
                   OutlinedButton(
                     onPressed: _isLoading ? null : _handleGoogleSignIn,
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      side: const BorderSide(color: Colors.white24),
+                      side: BorderSide(color: Colors.white.withOpacity(0.1)),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       minimumSize: const Size(double.infinity, 48),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.g_mobiledata, size: 24), // Placeholder for G-Logo
-                        SizedBox(width: 8),
-                        Text('Continue with Google'),
+                        Image.network(
+                          'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1200px-Google_%22G%22_logo.svg.png',
+                          height: 20,
+                          errorBuilder: (context, error, stackTrace) => const Icon(Icons.g_mobiledata, size: 24, color: Colors.white),
+                        ),
+                        const SizedBox(width: 12),
+                        const Text('Continue with Google'),
                       ],
                     ),
                   ),
 
                   const SizedBox(height: 24),
                   
-                  // Toggle Mode
                   GestureDetector(
                     onTap: () => setState(() => _isLogin = !_isLogin),
                     child: RichText(
                       text: TextSpan(
                         text: _isLogin ? "Don't have an account? " : "Already have an account? ",
-                        style: const TextStyle(color: Colors.white54),
+                        style: const TextStyle(color: Colors.white54, fontSize: 13),
                         children: [
                           TextSpan(
                             text: _isLogin ? 'Sign Up' : 'Log In',
@@ -245,7 +274,24 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   
+                  const SizedBox(height: 24),
+                  const Divider(color: Colors.white10),
                   const SizedBox(height: 16),
+
+                  TextButton(
+                    onPressed: _isLoading ? null : () {
+                      ref.read(guestModeProvider.notifier).state = true;
+                    },
+                    child: Text(
+                      'CONTINUE AS GUEST',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.5),
+                        fontSize: 12,
+                        letterSpacing: 1.2,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),

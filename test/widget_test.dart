@@ -17,9 +17,17 @@ void main() {
         child: SystemDesignSimulatorApp(),
       ),
     );
+    
+    // Wait for animations and providers (especially the 300ms validation debounce) to settle
+    await tester.pump(const Duration(seconds: 1));
 
-    // Verify that the home screen is shown
-    expect(find.text('System Design\nSimulator'), findsOneWidget);
-    expect(find.text('Start Learning'), findsOneWidget);
+    // Verify that the login screen is NOT shown anymore on launch
+    expect(find.text('Welcome Back'), findsNothing);
+    
+    // Verify that the GameScreen (Simulator) is shown
+    expect(find.text('Design Your Systems'), findsOneWidget); // Default problem title
+    
+    // Dismiss the app to clear any remaining timers
+    await tester.pumpWidget(const SizedBox());
   });
 }

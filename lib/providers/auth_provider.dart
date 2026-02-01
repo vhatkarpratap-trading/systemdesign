@@ -14,3 +14,15 @@ final currentUserProvider = Provider<User?>((ref) {
     error: (_, __) => null,
   );
 });
+
+final guestModeProvider = StateProvider<bool>((ref) => false);
+
+final profileProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
+  final userId = ref.watch(currentUserProvider.select((u) => u?.id));
+  if (userId == null) return null;
+  
+  // Only fetch if we have an initialized Supabase instance
+  if (!SupabaseService.isInitialized) return null;
+  
+  return SupabaseService().getCurrentProfile();
+});

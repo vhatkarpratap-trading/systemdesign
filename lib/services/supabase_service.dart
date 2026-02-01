@@ -9,7 +9,19 @@ class SupabaseService {
   factory SupabaseService() => _instance;
   SupabaseService._internal();
 
-  final SupabaseClient client = Supabase.instance.client;
+  SupabaseClient get client => Supabase.instance.client;
+
+  bool get _isSafe => kDebugMode || !kReleaseMode; // Simple proxy for potential test environment if we can't check init
+
+  /// Checks if Supabase is initialized before accessing it
+  static bool get isInitialized {
+    try {
+      Supabase.instance;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// Google Sign-In configuration
   /// Web: Client ID is handled via meta tag or Supabase dashboard
@@ -20,10 +32,13 @@ class SupabaseService {
   );
 
   /// Stream of auth state changes
-  Stream<AuthState> get authStateChanges => client.auth.onAuthStateChange;
+  Stream<AuthState> get authStateChanges => isInitialized ? client.auth.onAuthStateChange : const Stream.empty();
 
   /// Current user
-  User? get currentUser => client.auth.currentUser;
+  User? get currentUser {
+    if (!isInitialized) return null;
+    return client.auth.currentUser;
+  }
 
   /// Sign in with Google
   /// Returns null if successful, error message otherwise
@@ -100,6 +115,7 @@ class SupabaseService {
 
   /// Get current user profile (display name, etc)
   Future<Map<String, dynamic>?> getCurrentProfile() async {
+    if (!isInitialized) return null;
     final user = currentUser;
     if (user == null) return null;
     

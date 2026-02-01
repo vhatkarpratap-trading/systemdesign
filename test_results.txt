@@ -1,0 +1,182 @@
+Resolving dependencies...
+Downloading packages...
+  _fe_analyzer_shared 85.0.0 (94.0.0 available)
+  analyzer 7.6.0 (10.0.2 available)
+  analyzer_plugin 0.13.4 (0.14.2 available)
+  app_links 6.4.1 (7.0.0 available)
+  build 2.5.4 (4.0.4 available)
+  build_config 1.1.2 (1.2.0 available)
+  build_resolvers 2.5.4 (3.0.4 available)
+  build_runner 2.5.4 (2.10.5 available)
+  build_runner_core 9.1.2 (9.3.2 available)
+  characters 1.4.0 (1.4.1 available)
+  custom_lint_core 0.7.5 (0.8.2 available)
+  custom_lint_visitor 1.0.0+7.7.0 (1.0.0+9.0.0 available)
+  dart_style 3.1.1 (3.1.5 available)
+  flutter_riverpod 2.6.1 (3.2.0 available)
+  google_fonts 6.3.3 (8.0.0 available)
+  google_sign_in 6.3.0 (7.2.0 available)
+  google_sign_in_android 6.2.1 (7.2.7 available)
+  google_sign_in_ios 5.9.0 (6.2.5 available)
+  google_sign_in_platform_interface 2.5.0 (3.1.0 available)
+  google_sign_in_web 0.12.4+4 (1.1.0 available)
+  json_annotation 4.9.0 (4.10.0 available)
+  lints 6.0.0 (6.1.0 available)
+  matcher 0.12.17 (0.12.18 available)
+  material_color_utilities 0.11.1 (0.13.0 available)
+  meta 1.17.0 (1.18.1 available)
+  objective_c 9.2.4 (9.2.5 available)
+  riverpod 2.6.1 (3.2.0 available)
+  riverpod_annotation 2.6.1 (4.0.1 available)
+  riverpod_generator 2.6.5 (4.0.2 available)
+  source_gen 2.0.0 (4.2.0 available)
+  test_api 0.7.7 (0.7.9 available)
+Got dependencies!
+31 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+00:00 +0: loading /Users/pratapvhatkar/Documents/VibeCodiing/systemdesign/test/widget_test.dart                                                                                                        00:00 +0: App launches successfully                                                                                                                                                                    00:01 +0: App launches successfully                                                                                                                                                                    00:01 +0: App launches successfully                                                                                                                                                                    
+Pending timers:
+Timer (duration: 0:00:00.300000, periodic: false), created:
+#0      new FakeTimer._ (package:fake_async/fake_async.dart:342:62)
+#1      FakeAsync._createTimer (package:fake_async/fake_async.dart:260:29)
+#2      FakeAsync.run.<anonymous closure> (package:fake_async/fake_async.dart:185:15)
+#6      validationProvider.<anonymous closure> (package:system_design_simulator/providers/game_provider.dart:812:16)
+#7      FutureProvider._create (package:riverpod/src/future_provider/base.dart:71:65)
+#8      FutureProviderElement.create.<anonymous closure> (package:riverpod/src/future_provider/base.dart:117:22)
+#9      FutureHandlerProviderElementMixin.handleFuture.<anonymous closure> (package:riverpod/src/async_notifier/base.dart:341:30)
+#10     FutureHandlerProviderElementMixin._handleAsync (package:riverpod/src/async_notifier/base.dart:388:47)
+#11     FutureHandlerProviderElementMixin.handleFuture (package:riverpod/src/async_notifier/base.dart:335:5)
+#12     FutureProviderElement.create (package:riverpod/src/future_provider/base.dart:116:5)
+#13     ProviderElementBase.buildState (package:riverpod/src/framework/element.dart:426:7)
+#14     ProviderElementBase._performBuild (package:riverpod/src/framework/element.dart:363:5)
+#15     ProviderElementBase.flush (package:riverpod/src/framework/element.dart:324:7)
+#16     ProviderScheduler._performRefresh (package:riverpod/src/framework/scheduler.dart:100:41)
+#17     ProviderScheduler._task (package:riverpod/src/framework/scheduler.dart:88:5)
+#18     ProviderScheduler.vsync.<anonymous closure>.invoke (package:riverpod/src/framework/scheduler.dart:41:15)
+#19     _UncontrolledProviderScopeElement.build (package:flutter_riverpod/src/framework.dart:396:12)
+#20     ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5820:15)
+#21     Element.rebuild (package:flutter/src/widgets/framework.dart:5532:7)
+#22     BuildScope._tryRebuild (package:flutter/src/widgets/framework.dart:2750:15)
+#23     BuildScope._flushDirtyElements (package:flutter/src/widgets/framework.dart:2807:11)
+#24     BuildOwner.buildScope (package:flutter/src/widgets/framework.dart:3111:18)
+#25     AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:1506:19)
+#26     RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:495:5)
+#27     SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1434:15)
+#28     SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1347:9)
+#29     AutomatedTestWidgetsFlutterBinding.pump.<anonymous closure> (package:flutter_test/src/binding.dart:1335:9)
+#32     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#33     AutomatedTestWidgetsFlutterBinding.pump (package:flutter_test/src/binding.dart:1324:27)
+#34     WidgetTester.pump.<anonymous closure> (package:flutter_test/src/widget_tester.dart:652:53)
+#37     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#38     WidgetTester.pump (package:flutter_test/src/widget_tester.dart:652:27)
+#39     main.<anonymous closure> (file:///Users/pratapvhatkar/Documents/VibeCodiing/systemdesign/test/widget_test.dart:22:18)
+<asynchronous suspension>
+#40     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#41     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1059:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 8 frames from dart:async and package:stack_trace)
+
+Timer (duration: 0:00:00.000000, periodic: false), created:
+#0      new FakeTimer._ (package:fake_async/fake_async.dart:342:62)
+#1      FakeAsync._createTimer (package:fake_async/fake_async.dart:260:29)
+#2      FakeAsync.run.<anonymous closure> (package:fake_async/fake_async.dart:185:15)
+#6      _AnimateState._restart (package:flutter_animate/src/animate.dart:318:23)
+#7      _AnimateState.initState (package:flutter_animate/src/animate.dart:290:5)
+#8      StatefulElement._firstBuild (package:flutter/src/widgets/framework.dart:5953:55)
+#9      ComponentElement.mount (package:flutter/src/widgets/framework.dart:5796:5)
+...     Normal element mounting (7 frames)
+#16     Element.inflateWidget (package:flutter/src/widgets/framework.dart:4590:20)
+#17     MultiChildRenderObjectElement.inflateWidget (package:flutter/src/widgets/framework.dart:7269:36)
+#18     Element.updateChild (package:flutter/src/widgets/framework.dart:4059:18)
+#19     Element.updateChildren (package:flutter/src/widgets/framework.dart:4258:32)
+#20     MultiChildRenderObjectElement.update (package:flutter/src/widgets/framework.dart:7302:17)
+#21     Element.updateChild (package:flutter/src/widgets/framework.dart:4037:15)
+#22     ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5844:16)
+#23     Element.rebuild (package:flutter/src/widgets/framework.dart:5532:7)
+#24     ProxyElement.update (package:flutter/src/widgets/framework.dart:6152:5)
+#25     Element.updateChild (package:flutter/src/widgets/framework.dart:4037:15)
+#26     Element.updateChildren (package:flutter/src/widgets/framework.dart:4194:32)
+#27     MultiChildRenderObjectElement.update (package:flutter/src/widgets/framework.dart:7302:17)
+#28     Element.updateChild (package:flutter/src/widgets/framework.dart:4037:15)
+#29     SingleChildRenderObjectElement.update (package:flutter/src/widgets/framework.dart:7125:14)
+#30     Element.updateChild (package:flutter/src/widgets/framework.dart:4037:15)
+#31     ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5844:16)
+#32     Element.rebuild (package:flutter/src/widgets/framework.dart:5532:7)
+#33     ProxyElement.update (package:flutter/src/widgets/framework.dart:6152:5)
+#34     Element.updateChild (package:flutter/src/widgets/framework.dart:4037:15)
+#35     Element.updateChildren (package:flutter/src/widgets/framework.dart:4194:32)
+#36     MultiChildRenderObjectElement.update (package:flutter/src/widgets/framework.dart:7302:17)
+#37     Element.updateChild (package:flutter/src/widgets/framework.dart:4037:15)
+#38     _LayoutBuilderElement._rebuildWithConstraints.updateChildCallback (package:flutter/src/widgets/layout_builder.dart:248:18)
+#39     BuildOwner.buildScope (package:flutter/src/widgets/framework.dart:3101:19)
+#40     _LayoutBuilderElement._rebuildWithConstraints (package:flutter/src/widgets/layout_builder.dart:271:12)
+#41     RenderAbstractLayoutBuilderMixin.layoutCallback (package:flutter/src/widgets/layout_builder.dart:334:38)
+#42     RenderObjectWithLayoutCallbackMixin.runLayoutCallback.<anonymous closure> (package:flutter/src/rendering/object.dart:4169:33)
+#43     RenderObject.invokeLayoutCallback.<anonymous closure> (package:flutter/src/rendering/object.dart:2894:17)
+#44     PipelineOwner._enableMutationsToDirtySubtrees (package:flutter/src/rendering/object.dart:1219:15)
+#45     RenderObject.invokeLayoutCallback (package:flutter/src/rendering/object.dart:2893:14)
+#46     RenderObjectWithLayoutCallbackMixin.runLayoutCallback (package:flutter/src/rendering/object.dart:4169:5)
+#47     _RenderLayoutBuilder.performLayout (package:flutter/src/widgets/layout_builder.dart:448:5)
+#48     RenderObject.layout (package:flutter/src/rendering/object.dart:2775:7)
+#49     RenderPadding.performLayout (package:flutter/src/rendering/shifted_box.dart:243:12)
+#50     RenderObject.layout (package:flutter/src/rendering/object.dart:2775:7)
+#51     ChildLayoutHelper.layoutChild (package:flutter/src/rendering/layout_helper.dart:62:11)
+#52     RenderStack._computeSize (package:flutter/src/rendering/stack.dart:645:43)
+#53     RenderStack.performLayout (package:flutter/src/rendering/stack.dart:680:12)
+#54     RenderObject.layout (package:flutter/src/rendering/object.dart:2775:7)
+#55     MultiChildLayoutDelegate.layoutChild (package:flutter/src/rendering/custom_layout.dart:180:12)
+#56     _ScaffoldLayout.performLayout (package:flutter/src/material/scaffold.dart:1112:7)
+#57     MultiChildLayoutDelegate._callPerformLayout (package:flutter/src/rendering/custom_layout.dart:249:7)
+#58     RenderCustomMultiChildLayoutBox.performLayout (package:flutter/src/rendering/custom_layout.dart:420:14)
+#59     RenderObject._layoutWithoutResize (package:flutter/src/rendering/object.dart:2623:7)
+#60     PipelineOwner.flushLayout (package:flutter/src/rendering/object.dart:1170:18)
+#61     PipelineOwner.flushLayout (package:flutter/src/rendering/object.dart:1183:15)
+#62     AutomatedTestWidgetsFlutterBinding.drawFrame (package:flutter_test/src/binding.dart:1508:27)
+#63     RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:495:5)
+#64     SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1434:15)
+#65     SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1347:9)
+#66     AutomatedTestWidgetsFlutterBinding.pump.<anonymous closure> (package:flutter_test/src/binding.dart:1335:9)
+#69     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#70     AutomatedTestWidgetsFlutterBinding.pump (package:flutter_test/src/binding.dart:1324:27)
+#71     WidgetTester.pump.<anonymous closure> (package:flutter_test/src/widget_tester.dart:652:53)
+#74     TestAsyncUtils.guard (package:flutter_test/src/test_async_utils.dart:74:41)
+#75     WidgetTester.pump (package:flutter_test/src/widget_tester.dart:652:27)
+#76     main.<anonymous closure> (file:///Users/pratapvhatkar/Documents/VibeCodiing/systemdesign/test/widget_test.dart:22:18)
+<asynchronous suspension>
+#77     testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:192:15)
+<asynchronous suspension>
+#78     TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1059:5)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 8 frames from dart:async and package:stack_trace)
+
+══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
+The following assertion was thrown running a test:
+A Timer is still pending even after the widget tree was disposed.
+'package:flutter_test/src/binding.dart':
+Failed assertion: line 1617 pos 12: '!timersPending'
+
+When the exception was thrown, this was the stack:
+#2      AutomatedTestWidgetsFlutterBinding._verifyInvariants (package:flutter_test/src/binding.dart:1617:12)
+#3      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1078:7)
+<asynchronous suspension>
+<asynchronous suspension>
+(elided 3 frames from class _AssertionError and package:stack_trace)
+
+The test description was:
+  App launches successfully
+════════════════════════════════════════════════════════════════════════════════════════════════════
+00:01 +0 -1: App launches successfully [E]                                                                                                                                                             
+  Test failed. See exception logs above.
+  The test description was: App launches successfully
+  
+Warning: At least one test in this suite creates an HttpClient. When running a test suite that uses
+TestWidgetsFlutterBinding, all HTTP requests will return status code 400, and no network request
+will actually be made. Any test expecting a real network connection and status code will fail.
+To test code that needs an HttpClient, provide your own HttpClient implementation to the code under
+test, so that your test can consistently provide a testable response to the code under test.
+
+To run this test again: /Users/pratapvhatkar/Documents/FlutterProjects/flutter/bin/cache/dart-sdk/bin/dart test /Users/pratapvhatkar/Documents/VibeCodiing/systemdesign/test/widget_test.dart -p vm --plain-name 'App launches successfully'
+00:01 +0 -1: Some tests failed.                                                                                                                                                                        

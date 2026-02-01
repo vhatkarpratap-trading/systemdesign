@@ -32,196 +32,200 @@ class HomeScreen extends ConsumerWidget {
             children: [
 
               Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 600),
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      children: [
-                        const Spacer(),
-
-                        // Logo/Icon
-                        Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primary,
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppTheme.primary.withValues(alpha: 0.3),
-                                blurRadius: 20,
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.architecture,
-                            size: 64,
-                            color: Colors.white,
-                          ),
-                        ).animate()
-                            .fadeIn(duration: 600.ms)
-                            .scale(begin: const Offset(0.8, 0.8)),
-
-                        const SizedBox(height: 32),
-
-                        // Title
-                        const Text(
-                          'System Design\nSimulator',
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textPrimary,
-                            height: 1.2,
-                          ),
-                          textAlign: TextAlign.center,
-                        )
-                            .animate()
-                            .fadeIn(delay: 200.ms, duration: 600.ms)
-                            .slideY(begin: 0.2, end: 0),
-
-                        const SizedBox(height: 16),
-
-                        // Subtitle
-                        const Text(
-                          'Learn to build scalable systems\nthrough interactive simulation',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: AppTheme.textSecondary,
-                            height: 1.5,
-                          ),
-                          textAlign: TextAlign.center,
-                        )
-                            .animate()
-                            .fadeIn(delay: 400.ms, duration: 600.ms),
-
-                        const Spacer(),
-
-                        // Features list
-                        _FeatureRow(
-                          icon: Icons.widgets_outlined,
-                          text: 'Drag & drop system components',
-                        )
-                            .animate()
-                            .fadeIn(delay: 500.ms)
-                            .slideX(begin: -0.2),
-                        const SizedBox(height: 12),
-                        _FeatureRow(
-                          icon: Icons.play_circle_outline,
-                          text: 'Watch your system handle traffic',
-                        )
-                            .animate()
-                            .fadeIn(delay: 600.ms)
-                            .slideX(begin: -0.2),
-                        const SizedBox(height: 12),
-                        _FeatureRow(
-                          icon: Icons.warning_amber_outlined,
-                          text: 'See failures and fix bottlenecks',
-                        )
-                            .animate()
-                            .fadeIn(delay: 700.ms)
-                            .slideX(begin: -0.2),
-                        const SizedBox(height: 12),
-                        _FeatureRow(
-                          icon: Icons.emoji_events_outlined,
-                          text: 'Score and improve your design',
-                        )
-                            .animate()
-                            .fadeIn(delay: 800.ms)
-                            .slideX(begin: -0.2),
-
-                        const Spacer(),
-
-                        // Start button
-                        SizedBox(
-                          width: double.infinity,
-                          height: 56,
-                          child: ElevatedButton(
-                            onPressed: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const LevelSelectScreen(),
-                                ),
-                              );
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.primary,
-                              foregroundColor: AppTheme.background,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Text(
-                                  'Start Learning',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                const Icon(Icons.arrow_forward_rounded),
-                              ],
-                            ),
-                          ),
-                        )
-                            .animate()
-                            .fadeIn(delay: 900.ms)
-                            .slideY(begin: 0.3),
-
-                        const SizedBox(height: 16),
-
-                        // Community button
-                        SizedBox(
-                          width: double.infinity,
-                          height: 56,
-                          child: OutlinedButton(
-                            onPressed: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => const CommunityScreen(),
-                                ),
-                              );
-                            },
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: AppTheme.primary,
-                              side: const BorderSide(color: AppTheme.primary),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.public_rounded, size: 20),
-                                const SizedBox(width: 12),
-                                const Text(
-                                  'Explore Community Designs',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                child: SingleChildScrollView(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 600),
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox(height: 48), // Added top spacing for scrollable content
+                          
+                          // Logo/Icon
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primary,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppTheme.primary.withValues(alpha: 0.3),
+                                  blurRadius: 20,
                                 ),
                               ],
                             ),
+                            child: const Icon(
+                              Icons.architecture,
+                              size: 64,
+                              color: Colors.white,
+                            ),
+                          ).animate()
+                              .fadeIn(duration: 600.ms)
+                              .scale(begin: const Offset(0.8, 0.8)),
+  
+                          const SizedBox(height: 32),
+  
+                          // Title
+                          const Text(
+                            'System Design\nSimulator',
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textPrimary,
+                              height: 1.2,
+                            ),
+                            textAlign: TextAlign.center,
+                          )
+                              .animate()
+                              .fadeIn(delay: 200.ms, duration: 600.ms)
+                              .slideY(begin: 0.2, end: 0),
+  
+                          const SizedBox(height: 16),
+  
+                          // Subtitle
+                          const Text(
+                            'Learn to build scalable systems\nthrough interactive simulation',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: AppTheme.textSecondary,
+                              height: 1.5,
+                            ),
+                            textAlign: TextAlign.center,
+                          )
+                              .animate()
+                              .fadeIn(delay: 400.ms, duration: 600.ms),
+  
+                          const SizedBox(height: 48),
+  
+                          // Features list
+                          _FeatureRow(
+                            icon: Icons.widgets_outlined,
+                            text: 'Drag & drop system components',
+                          )
+                              .animate()
+                              .fadeIn(delay: 500.ms)
+                              .slideX(begin: -0.2),
+                          const SizedBox(height: 12),
+                          _FeatureRow(
+                            icon: Icons.play_circle_outline,
+                            text: 'Watch your system handle traffic',
+                          )
+                              .animate()
+                              .fadeIn(delay: 600.ms)
+                              .slideX(begin: -0.2),
+                          const SizedBox(height: 12),
+                          _FeatureRow(
+                            icon: Icons.warning_amber_outlined,
+                            text: 'See failures and fix bottlenecks',
+                          )
+                              .animate()
+                              .fadeIn(delay: 700.ms)
+                              .slideX(begin: -0.2),
+                          const SizedBox(height: 12),
+                          _FeatureRow(
+                            icon: Icons.emoji_events_outlined,
+                            text: 'Score and improve your design',
+                          )
+                              .animate()
+                              .fadeIn(delay: 800.ms)
+                              .slideX(begin: -0.2),
+  
+                          const SizedBox(height: 48),
+  
+                          // Start button
+                          SizedBox(
+                            width: double.infinity,
+                            height: 56,
+                            child: ElevatedButton(
+                              onPressed: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const LevelSelectScreen(),
+                                  ),
+                                );
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.primary,
+                                foregroundColor: AppTheme.background,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Text(
+                                    'Start Learning',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Icon(Icons.arrow_forward_rounded),
+                                ],
+                              ),
+                            ),
+                          )
+                              .animate()
+                              .fadeIn(delay: 900.ms)
+                              .slideY(begin: 0.3),
+  
+                          const SizedBox(height: 16),
+  
+                          // Community button
+                          SizedBox(
+                            width: double.infinity,
+                            height: 56,
+                            child: OutlinedButton(
+                              onPressed: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const CommunityScreen(),
+                                  ),
+                                );
+                              },
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppTheme.primary,
+                                side: const BorderSide(color: AppTheme.primary),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.public_rounded, size: 20),
+                                  const SizedBox(width: 12),
+                                  const Text(
+                                    'Explore Community Designs',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                              .animate()
+                              .fadeIn(delay: 1000.ms)
+                              .slideY(begin: 0.3),
+  
+                          const SizedBox(height: 24),
+  
+                          // Version
+                          const Text(
+                            'v1.0.0',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.textMuted,
+                            ),
                           ),
-                        )
-                            .animate()
-                            .fadeIn(delay: 1000.ms)
-                            .slideY(begin: 0.3),
-
-                        const SizedBox(height: 24),
-
-                        // Version
-                        const Text(
-                          'v1.0.0',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppTheme.textMuted,
-                          ),
-                        ),
-                      ],
+                          const SizedBox(height: 24),
+                        ],
+                      ),
                     ),
                   ),
                 ),

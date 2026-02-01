@@ -805,15 +805,16 @@ final scoreProvider = StateProvider<Score?>((ref) => null);
 
 /// Validation provider (Asynchronous and Debounced)
 final validationProvider = FutureProvider<ValidationResult>((ref) async {
-  final canvasState = ref.watch(canvasProvider);
+  final components = ref.watch(canvasProvider.select((s) => s.components));
+  final connections = ref.watch(canvasProvider.select((s) => s.connections));
   final problem = ref.watch(currentProblemProvider);
 
   // Debounce to avoid excessive isolate spawning during drags
   await Future.delayed(const Duration(milliseconds: 300));
 
   return compute(_validateDesignIsolate, _ValidationData(
-    components: canvasState.components,
-    connections: canvasState.connections,
+    components: components,
+    connections: connections,
     problem: problem,
   ));
 });

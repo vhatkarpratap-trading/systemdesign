@@ -156,16 +156,17 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
     ref.listen(canvasProvider, (previous, next) {
       // If the user is currently interacting with the canvas directly, 
       // do NOT let the provider fight the transformation controller.
-      if (_isUserInteracting) return;
+      if (_isUserInteracting || _isExternalUpdate) return;
 
       if (next.scale != null && next.panOffset != null) {
         final currentMatrix = _transformController.value;
         final currentTranslation = currentMatrix.getTranslation();
-        final currentScale = currentMatrix.getMaxScaleOnAxis();
+        final currentScale = (currentMatrix.getMaxScaleOnAxis() * 1000).round() / 1000;
+        final nextScale = (next.scale! * 1000).round() / 1000;
 
-        final hasChanged = (currentScale - next.scale!).abs() > 0.001 ||
-                           (currentTranslation.x - next.panOffset!.dx).abs() > 1.0 ||
-                           (currentTranslation.y - next.panOffset!.dy).abs() > 1.0;
+        final hasChanged = (currentScale - nextScale).abs() > 0.001 ||
+                           (currentTranslation.x - next.panOffset!.dx).abs() > 0.5 ||
+                           (currentTranslation.y - next.panOffset!.dy).abs() > 0.5;
 
         if (hasChanged) {
            final matrix = Matrix4.identity()
