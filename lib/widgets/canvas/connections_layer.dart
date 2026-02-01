@@ -347,8 +347,8 @@ class _ConnectionsPainter extends CustomPainter {
       ..color = color
       ..style = PaintingStyle.fill;
 
-    const arrowSize = 8.0;
-    const arrowAngle = math.pi / 6;
+    const arrowSize = 12.0;
+    const arrowAngle = math.pi / 5;
 
     final path = Path()
       ..moveTo(tip.dx, tip.dy)

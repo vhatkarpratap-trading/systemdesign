@@ -1152,8 +1152,8 @@ class _PreviewCablePainter extends CustomPainter {
       ..style = PaintingStyle.fill;
 
     final angle = math.atan2(to.dy - from.dy, to.dx - from.dx);
-    const arrowSize = 8.0;
-    const arrowAngle = math.pi / 6;
+    const arrowSize = 12.0;
+    const arrowAngle = math.pi / 5;
 
     final path = Path()
       ..moveTo(to.dx, to.dy)
