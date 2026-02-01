@@ -41,7 +41,7 @@ class GameScreen extends ConsumerStatefulWidget {
 }
 
 class _GameScreenState extends ConsumerState<GameScreen> {
-  bool _showHints = true;
+  bool _showHints = false;
   bool _showGuide = false;
   bool _showResultsOverlay = false;
   Map<String, dynamic>? _activeCommunityDesign = null;
@@ -54,12 +54,6 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     if (widget.initialCommunityDesign != null) {
       _activeCommunityDesign = widget.initialCommunityDesign;
     }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (ref.read(canvasProvider).components.isEmpty) {
-        setState(() => _showGuide = true);
-      }
-    });
   }
 
   Future<void> _handlePublishDesign() async {
