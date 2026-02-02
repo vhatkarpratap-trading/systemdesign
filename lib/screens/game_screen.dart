@@ -7,6 +7,7 @@ import '../providers/game_provider.dart';
 import '../providers/auth_provider.dart';
 import '../simulation/simulation_engine.dart';
 import '../models/problem.dart';
+import '../models/metrics.dart';
 import '../theme/app_theme.dart';
 import '../utils/responsive_layout.dart';
 import '../widgets/canvas/system_canvas.dart';
@@ -26,6 +27,8 @@ import '../data/problems.dart';
 import '../services/supabase_service.dart';
 import 'login_screen.dart';
 import 'publish_screen.dart';
+import '../widgets/simulation/error_fix_dialog.dart';
+import '../widgets/simulation/chaos_controls_panel.dart';
 import 'dart:ui';
 
 class GameScreen extends ConsumerStatefulWidget {
@@ -54,6 +57,11 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     if (widget.initialCommunityDesign != null) {
       _activeCommunityDesign = widget.initialCommunityDesign;
     }
+    
+    // Auto-load a complex design for testing simulation and click-to-fix
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(canvasProvider.notifier).loadSolution(ref.read(currentProblemProvider));
+    });
   }
 
   Future<void> _handlePublishDesign() async {
@@ -279,6 +287,9 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           // Simulation Overlays
           if (simState.isFailed && !_showResultsOverlay)
             _FailureAlerts(failures: simState.failures),
+          
+          // Chaos Engineering Controls
+          const ChaosControlsPanel(),
             
           if (_showResultsOverlay)
              ResultsScreen(
@@ -514,12 +525,12 @@ class _BottomControls extends ConsumerWidget {
   }
 }
 
-class _FailureAlerts extends StatelessWidget {
+class _FailureAlerts extends ConsumerWidget {
   final List<dynamic> failures;
   const _FailureAlerts({required this.failures});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Positioned(
       bottom: 120,
       right: 24,
@@ -528,36 +539,93 @@ class _FailureAlerts extends StatelessWidget {
         children: failures.asMap().entries.map((entry) {
           final index = entry.key;
           final failure = entry.value;
-          return Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: AppTheme.error.withOpacity(0.9),
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.3),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
-                const SizedBox(width: 12),
-                Text(
-                  failure.toString(),
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-          )
-          .animate()
-          .fadeIn(delay: Duration(milliseconds: 100 * index))
-          .shake(hz: 2, offset: const Offset(2, 0));
+          return _ClickableErrorCard(failure: failure, index: index);
         }).toList(),
+      ),
+    );
+  }
+}
+
+class _ClickableErrorCard extends StatefulWidget {
+  final FailureEvent failure;
+  final int index;
+
+  const _ClickableErrorCard({
+    required this.failure,
+    required this.index,
+  });
+
+  @override
+  State<_ClickableErrorCard> createState() => _ClickableErrorCardState();
+}
+
+class _ClickableErrorCardState extends State<_ClickableErrorCard> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: () {
+          showDialog(
+            context: context,
+            builder: (context) => ErrorFixDialog(failure: widget.failure),
+          );
+        },
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppTheme.error.withOpacity(_isHovered ? 1.0 : 0.9),
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(_isHovered ? 0.4 : 0.3),
+                blurRadius: _isHovered ? 12 : 10,
+                offset: Offset(0, _isHovered ? 6 : 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Text(
+                  widget.failure.message,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
+                ),
+              ),
+              if (widget.failure.fixType != null) ...[
+                const SizedBox(width: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'CLICK TO FIX',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        )
+        .animate()
+        .fadeIn(delay: Duration(milliseconds: 100 * widget.index))
+        .shake(hz: 2, offset: const Offset(2, 0)),
       ),
     );
   }

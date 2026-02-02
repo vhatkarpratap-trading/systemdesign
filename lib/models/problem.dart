@@ -113,6 +113,9 @@ class ProblemConstraints {
     if (percentage >= 99) return '99%';
     return '${percentage.toStringAsFixed(1)}%';
   }
+  
+  /// Alias for latencySlaMsP95 for convenience
+  int get maxLatencyMs => latencySlaMsP95;
 
   /// Format DAU for display
   String get dauFormatted {

@@ -6,7 +6,6 @@ import '../models/score.dart';
 import '../models/component.dart';
 import '../models/connection.dart';
 import '../models/problem.dart';
-import '../models/canvas_state.dart';
 import '../providers/game_provider.dart';
 import 'design_validator.dart';
 import 'simulation_isolate.dart';
@@ -21,9 +20,6 @@ class SimulationEngine {
 
   /// Start the simulation
   void start() {
-    final canvasState = _ref.read(canvasProvider);
-    final problem = _ref.read(currentProblemProvider);
-    
     // Validate design before starting
     _runValidationAndStart();
   }
@@ -45,11 +41,34 @@ class SimulationEngine {
     final simulationNotifier = _ref.read(simulationProvider.notifier);
     simulationNotifier.start();
 
-    // Run at 10 ticks per second (100ms interval)
+    // Run with initial speed
+    final speed = _ref.read(simulationProvider).simulationSpeed;
+    _startTimer(speed);
+  }
+
+  void _startTimer(double speed) {
+    _simulationTimer?.cancel();
+    
+    // speed <= 0.05 is effectively paused
+    if (speed <= 0.05) {
+      _simulationTimer = null;
+      return;
+    }
+
+    // Base interval is 100ms. Higher speed = shorter interval.
+    final intervalMs = (100 / speed).round(); 
+    
     _simulationTimer = Timer.periodic(
-      const Duration(milliseconds: 100),
+      Duration(milliseconds: intervalMs),
       (_) => _tick(),
     );
+  }
+
+  /// Update simulation speed dynamically
+  void updateSpeed(double speed) {
+    if (_simulationTimer != null && _simulationTimer!.isActive) {
+      _startTimer(speed);
+    }
   }
 
   static ValidationResult _validateDesign(_ValidationData data) {
@@ -75,11 +94,24 @@ class SimulationEngine {
     _simulationTimer?.cancel();
     _simulationTimer = null;
     _isProcessingTick = false;
+    
+    // Sync final metrics to ensure UI state is consistent
+    final finalMetrics = _ref.read(simulationMetricsProvider);
+    if (finalMetrics.isNotEmpty) {
+      _ref.read(canvasProvider.notifier).updateMetrics(finalMetrics);
+    }
+    
     _ref.read(simulationProvider.notifier).stop();
   }
 
   /// Complete the simulation and calculate score
   Future<void> complete() async {
+    // Sync final metrics to canvas state for accurate scoring
+    final finalMetrics = _ref.read(simulationMetricsProvider);
+    if (finalMetrics.isNotEmpty) {
+      _ref.read(canvasProvider.notifier).updateMetrics(finalMetrics);
+    }
+
     stop();
     _ref.read(simulationProvider.notifier).complete();
 
@@ -129,17 +161,19 @@ class SimulationEngine {
 
       simNotifier.tick();
       
-      canvasNotifier.updateMetrics(result.componentMetrics);
+      // OPTIMIZATION: Update ephemeral metrics provider instead of full canvas rebuild
+      // canvasNotifier.updateMetrics(result.componentMetrics); <--- Removing this heavy call
+      _ref.read(simulationMetricsProvider.notifier).state = result.componentMetrics;
+
       canvasNotifier.updateConnectionTraffic(result.connectionTraffic);
 
-      for (final failure in result.failures) {
-        simNotifier.addFailure(failure);
-      }
+      // Update failures (replace entire list to reflect resolved issues)
+      simNotifier.setFailures(result.failures);
 
       simNotifier.updateMetrics(result.globalMetrics);
 
-      // Auto-complete after 10 seconds (100 ticks at 10 ticks/sec)
-      if (simState.tickCount >= 100 || result.isCompleted) {
+      // Auto-complete after 30 seconds (300 ticks at 10 ticks/sec)
+      if (simState.tickCount >= 300 || result.isCompleted) {
         complete();
       }
     } catch (e) {

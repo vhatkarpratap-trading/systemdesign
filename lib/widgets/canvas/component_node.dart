@@ -7,6 +7,7 @@ import '../../theme/app_theme.dart';
 import '../../data/excalidraw_definitions.dart';
 import 'excalidraw_painter.dart';
 import '../../providers/game_provider.dart';
+import 'failure_animations.dart';
 
 /// Minimal component node for the canvas
 class ComponentNode extends ConsumerWidget {
@@ -41,10 +42,22 @@ class ComponentNode extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // OPTIMIZATION: Watch specific metrics for this component only
+    // This prevents the entire canvas from rebuilding when one component updates
+    final ephemeralMetrics = ref.watch(simulationMetricsProvider.select((map) => map[component.id]));
+    final metrics = ephemeralMetrics ?? component.metrics;
+
     final status = component.status;
     final color = component.type.color;
-    final isActive = component.metrics.currentRps > 0;
+    final isActive = metrics.currentRps > 0;
     final isSketchy = component.type.isSketchy;
+    
+    // Determine visual failure states
+    final hasError = metrics.errorRate > 0.1;
+    final isOverloaded = metrics.cpuUsage > 0.9;
+    final isScaling = metrics.isScaling;
+    final isSlow = metrics.isSlow;
+    final connectionExhaustion = metrics.connectionPoolUtilization > 0.9;
 
     // Text components are transparent and just text
     // Text components are transparent and just text
@@ -75,7 +88,7 @@ class ComponentNode extends ConsumerWidget {
         );
     }
 
-    return AnimatedContainer(
+    Widget child = AnimatedContainer(
       duration: const Duration(milliseconds: 150),
       width: component.size.width,
       height: component.size.height,
@@ -101,41 +114,63 @@ class ComponentNode extends ConsumerWidget {
                   isSelected ? AppTheme.surface : AppTheme.surface.withValues(alpha: 0.7),
                 ],
               ),
-        boxShadow: (isSelected || isActive || (!isSketchy && component.type != ComponentType.text)) 
+        boxShadow: (isSelected || isActive || hasError || isSlow || (!isSketchy && component.type != ComponentType.text)) 
             ? [
                 BoxShadow(
-                  color: (isSelected || isActive) 
-                      ? color.withValues(alpha: isSelected ? 0.3 : 0.15)
-                      : Colors.black.withValues(alpha: 0.3),
-                  blurRadius: isSelected ? 12 : 4,
-                  spreadRadius: isSelected ? 1 : 0,
-                  offset: isSelected ? Offset.zero : const Offset(0, 2),
+                  color: hasError 
+                      ? Colors.red.withValues(alpha: 0.4)
+                      : isSlow
+                          ? Colors.yellow.withValues(alpha: 0.3)
+                          : (isSelected || isActive) 
+                              ? color.withValues(alpha: isSelected ? 0.3 : 0.15)
+                              : Colors.black.withValues(alpha: 0.3),
+                  blurRadius: hasError || isSlow ? 16 : (isSelected ? 12 : 4),
+                  spreadRadius: hasError || isSlow ? 2 : (isSelected ? 1 : 0),
+                  offset: (hasError || isSlow || isSelected) ? Offset.zero : const Offset(0, 2),
                 ),
               ] 
             : null,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isSelected
-              ? AppTheme.primary
-              : (isSketchy && (component.type == ComponentType.rectangle || 
-                             component.type == ComponentType.circle || 
-                             component.type == ComponentType.diamond ||
-                             component.type == ComponentType.arrow || 
-                             component.type == ComponentType.line))
-                  ? AppTheme.border.withValues(alpha: 0.4)
-                  : (isConnecting
-                      ? AppTheme.secondary.withValues(alpha: 0.5)
-                      : Colors.transparent),
-          width: isSelected ? 2.5 : 1,
+          color: hasError
+              ? Colors.red.withValues(alpha: 0.7)
+              : isSlow
+                  ? Colors.yellow.withValues(alpha: 0.6)
+                  : isSelected
+                      ? AppTheme.primary
+                      : (isSketchy && (component.type == ComponentType.rectangle || 
+                                     component.type == ComponentType.circle || 
+                                     component.type == ComponentType.diamond ||
+                                     component.type == ComponentType.arrow || 
+                                     component.type == ComponentType.line))
+                          ? AppTheme.border.withValues(alpha: 0.4)
+                          : (isConnecting
+                              ? AppTheme.secondary.withValues(alpha: 0.5)
+                              : Colors.transparent),
+          width: hasError || isSlow ? 3 : (isSelected ? 2.5 : 1),
         ),
       ),
-      child: GestureDetector(
-        onDoubleTap: onDoubleTap, // Use passed callback if any
-        child: isSketchy 
+      child: isSketchy 
           ? _buildSketchyContent()
           : _buildStandardContent(status, color, isActive),
-      ),
     );
+    
+    // Add pulsing animation for errors
+    if (hasError) {
+      child = PulsingWrapper(child: child, color: Colors.red);
+    }
+    
+    // Add shaking animation for overload
+    if (isOverloaded) {
+      child = ShakingWrapper(child: child);
+    }
+    
+    // Add scaling pulse for autoscaling
+    if (isScaling) {
+      child = ScalingPulseWrapper(child: child);
+    }
+    
+    return child;
   }
 
   Widget _buildTextContent() {
@@ -158,96 +193,190 @@ class ComponentNode extends ConsumerWidget {
   }
 
   Widget _buildStandardContent(ComponentStatus status, Color color, bool isActive) {
-      return Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      final config = component.config;
+      
+      return Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
         children: [
-          // Icon with status indicator
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Icon(
-                component.type.icon,
-                color: color,
-                size: 20, // Slightly smaller to prevent overflow
+          // Replication Shadow (Faded replicas behind)
+          if (config.replication && config.replicationFactor > 1)
+            Positioned(
+              top: 2,
+              left: 2,
+              child: Opacity(
+                opacity: 0.3,
+                child: Icon(component.type.icon, color: color, size: 20),
               ),
-              // Minimal status dot removed per user request (was status.color)
-              // Instance count
-              if (component.config.instances > 1)
-                Positioned(
-                  left: -5,
-                  bottom: -3,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: AppTheme.textMuted,
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                    child: Text(
-                      '×${component.config.instances}',
-                      style: const TextStyle(
-                        fontSize: 6,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
+            ),
+            
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Icon with status indicator
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  // Visual Instances (Stacked Icons behind)
+                  // Show up to 3 icons total for instances
+                  if (config.instances > 1)
+                    ...List.generate(math.min(config.instances - 1, 2), (i) => Positioned(
+                      left: (i + 1) * 3.0,
+                      top: (i + 1) * 2.0,
+                      child: Icon(
+                        component.type.icon,
+                        color: color.withValues(alpha: 0.5 - (i * 0.15)),
+                        size: 20,
+                      ),
+                    )),
+
+                  // Read Replicas Visual (Small satellite icons)
+                  if (config.replication && config.replicationFactor > 1)
+                     ...List.generate(math.min(config.replicationFactor - 1, 3), (i) => Positioned(
+                        right: -8.0 - (i * 4.0),
+                        bottom: 0,
+                        child: Icon(
+                          component.type.icon,
+                          color: color.withValues(alpha: 0.6),
+                          size: 10,
+                        ),
+                      )),
+
+                  // Sharding Visual (Multiple Icons if sharded - keeping this but adjusting)
+                  if (config.sharding)
+                    ...List.generate(math.min(config.partitionCount, 3), (i) => Positioned(
+                      left: -i * 4.0,
+                      bottom: i * 2.0,
+                      child: Icon(
+                        component.type.icon,
+                        color: color.withValues(alpha: 0.8 - (i * 0.2)),
+                        size: 14,
+                      ),
+                    )),
+                    
+                  Icon(
+                    component.type.icon,
+                    color: color,
+                    size: 20,
+                  ),
+                  
+                  // Replica/Instance count badge
+                  if (config.instances > 1 || (config.replication && config.replicationFactor > 1))
+                    Positioned(
+                      left: -8,
+                      bottom: -4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primary,
+                          borderRadius: BorderRadius.circular(4),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.2),
+                              blurRadius: 2,
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          config.instances > 1 ? '×${config.instances}' : 'R:${config.replicationFactor}',
+                          style: const TextStyle(
+                            fontSize: 7,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
                     ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              // Name (Flexible to avoid overflow)
+              Flexible(
+                child: Text(
+                  component.customName ?? component.type.displayName,
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w500,
+                    color: isActive ? AppTheme.textPrimary : AppTheme.textSecondary,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              
+              // Strategy Indicators (Sharding/Consistent Hashing/Quorum labels)
+              if (config.sharding || config.consistentHashing || config.replication)
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Text(
+                    [
+                      if (config.sharding) 'SHARDED',
+                      if (config.consistentHashing) 'HASH',
+                      if (config.replication) 'REP',
+                    ].join(' • '),
+                    style: const TextStyle(fontSize: 5, fontWeight: FontWeight.bold, color: AppTheme.textMuted),
                   ),
                 ),
+
+              // Schema View (Optional)
+              if (component.type == ComponentType.database && config.showSchema && config.dbSchema != null) ...[
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceLight.withValues(alpha: 0.9),
+                    border: Border.all(color: AppTheme.border.withValues(alpha: 0.5)),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    config.dbSchema!,
+                    style: GoogleFonts.robotoMono(
+                      fontSize: 6,
+                      color: AppTheme.textSecondary,
+                      height: 1.2,
+                    ),
+                    maxLines: 6,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ],
           ),
-          const SizedBox(height: 2),
-          // Name (Flexible to avoid overflow)
-          Flexible(
-            child: Text(
-              component.customName ?? component.type.displayName,
-              style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w500,
-                color: isActive ? AppTheme.textPrimary : AppTheme.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          /* Removed RPS metric per user request for clean UI
-          if (isActive) ...[
-            const SizedBox(height: 1),
-            Text(
-              _formatRps(component.metrics.currentRps),
-              style: TextStyle(
-                fontSize: 7,
-                fontWeight: FontWeight.w500,
-                color: status.color.withValues(alpha: 0.8),
-              ),
-            ),
-          ],
-          */
-
           
-          // Schema View (Optional)
-          if (component.type == ComponentType.database && component.config.showSchema && component.config.dbSchema != null) ...[
-            const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: AppTheme.surfaceLight.withValues(alpha: 0.9),
-                border: Border.all(color: AppTheme.border.withValues(alpha: 0.5)),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                component.config.dbSchema!,
-                style: GoogleFonts.robotoMono(
-                  fontSize: 6,
-                  color: AppTheme.textSecondary,
-                  height: 1.2,
-                ),
-                maxLines: 6,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
+          // Strategy Overlays (Badges)
+          _buildStrategyBadges(config),
         ],
       );
+  }
+
+  Widget _buildStrategyBadges(ComponentConfig config) {
+    return Positioned(
+      right: -4,
+      top: -4,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (config.rateLimiting) _badgeItem(Icons.speed, Colors.orange),
+          if (config.circuitBreaker) _badgeItem(Icons.power_off, Colors.red),
+          if (config.retries) _badgeItem(Icons.replay, Colors.blue),
+          if (config.dlq) _badgeItem(Icons.warning_amber, Colors.redAccent),
+        ],
+      ),
+    );
+  }
+
+  Widget _badgeItem(IconData icon, Color color) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 2),
+      padding: const EdgeInsets.all(1.5),
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 0.5),
+      ),
+      child: Icon(icon, size: 6, color: Colors.white),
+    );
   }
 
   Widget _buildSketchyContent() {

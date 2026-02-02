@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/component.dart';
 import '../models/connection.dart';
 import '../models/problem.dart';
+import '../models/metrics.dart';
 import '../theme/app_theme.dart';
 
 /// Validation result for system design
@@ -32,12 +33,14 @@ class ValidationIssue {
   final String description;
   final ValidationSeverity severity;
   final String? componentId;
+  final FixType? fixType;
 
   const ValidationIssue({
     required this.title,
     required this.description,
     required this.severity,
     this.componentId,
+    this.fixType,
   });
 }
 
@@ -192,6 +195,117 @@ class DesignValidator {
             'Tip: Consider connecting ${optConn.fromType} to ${optConn.toType} for better flow.',
           );
         }
+      }
+    }
+
+    // PRODUCTION-READY CHECKS
+    
+    // Check: Circuit breakers on external calls
+    for (final connection in connections) {
+      try {
+        final source = components.firstWhere((c) => c.id == connection.sourceId);
+        final target = components.firstWhere((c) => c.id == connection.targetId);
+        
+        // Services calling databases or external APIs should have circuit breakers
+        if ((source.type == ComponentType.appServer || 
+             source.type == ComponentType.worker) &&
+            (target.type == ComponentType.database || 
+             target.type == ComponentType.queue ||
+             target.type == ComponentType.customService)) {
+          if (!source.config.circuitBreaker) {
+            suggestions.add(
+              'Add circuit breaker to ${source.type.displayName} calling ${target.type.displayName}'
+            );
+            // Suggestion isn't same as issue, need to be careful.
+            // But we can add an issue too if it's strict?
+            // Existing logic uses suggestions for this check. I will convert it to an issue for actionable fix.
+             issues.add(ValidationIssue(
+               title: 'Missing Circuit Breaker',
+               description: 'Call to ${target.type.displayName} needs circuit breaker',
+               severity: ValidationSeverity.warning,
+               componentId: source.id,
+               fixType: FixType.addCircuitBreaker,
+             ));
+          }
+        }
+      } catch (_) {
+        // Component not found, skip
+      }
+    }
+    
+    // Check: Rate limiting on public endpoints
+    final publicEndpoints = components.where((c) => 
+        c.type == ComponentType.apiGateway || 
+        c.type == ComponentType.loadBalancer);
+    
+    for (final endpoint in publicEndpoints) {
+      if (!endpoint.config.rateLimiting) {
+        issues.add(ValidationIssue(
+          title: 'No rate limiting on ${endpoint.type.displayName}',
+          description: 'Public endpoint vulnerable to DDoS without rate limiting',
+          severity: ValidationSeverity.warning,
+          componentId: endpoint.id,
+          fixType: FixType.enableRateLimiting,
+        ));
+      }
+    }
+    
+    // Check: Retry configuration  
+    final services = components.where((c) => 
+        c.type == ComponentType.appServer || 
+        c.type == ComponentType.worker ||
+        c.type == ComponentType.serverless);
+    
+    for (final service in services) {
+      if (service.config.retries && !service.config.circuitBreaker) {
+        issues.add(ValidationIssue(
+          title: 'Retries without circuit breaker',
+          description: '${service.type.displayName} may cause retry storms without circuit breaker',
+          severity: ValidationSeverity.warning,
+          componentId: service.id,
+        ));
+      }
+    }
+    
+    // Check: Database replication for data durability
+    final databases = components.where((c) => c.type == ComponentType.database);
+    for (final db in databases) {
+      if (!db.config.replication || db.config.replicationFactor < 2) {
+        suggestions.add(
+          'Enable replication on ${db.customName ?? db.type.displayName} for data durability'
+        );
+      }
+      
+      // Check for quorum configuration with replication
+      if (db.config.replication && db.config.replicationFactor >= 3) {
+        if (db.config.quorumWrite == null || db.config.quorumWrite! < 2) {
+          suggestions.add(
+            'Consider quorum writes on ${db.customName ?? db.type.displayName} to prevent split-brain'
+          );
+        }
+      }
+    }
+    
+    // Check: Caching for read-heavy workloads
+    if (problem.constraints.readWriteRatio > 10) {
+      final hasCache = components.any((c) => c.type == ComponentType.cache);
+      if (!hasCache) {
+        suggestions.add('Read-heavy workload: Add a Cache (Redis/Memcached) to reduce DB load');
+        score += 0; // Don't add points for missing cache
+      } else {
+        // Check if cache is connected to database
+        final caches = components.where((c) => c.type == ComponentType.cache);
+        for (final cache in caches) {
+          final cacheToDbs = connections.where((c) => 
+            c.sourceId == cache.id && 
+            components.any((comp) => comp.id == c.targetId && comp.type == ComponentType.database)
+          );
+          
+          if (cacheToDbs.isEmpty) {
+            suggestions.add('Connect ${cache.customName ?? 'Cache'} to Database for caching to work');
+          }
+        }
+        score += 10;
       }
     }
 

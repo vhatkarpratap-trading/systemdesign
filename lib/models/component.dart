@@ -161,11 +161,12 @@ enum ComponentType {
         ComponentType.apiGateway =>
           ComponentCategory.traffic,
         ComponentType.client ||
-        ComponentType.appServer ||
-        ComponentType.worker ||
-        ComponentType.serverless ||
         ComponentType.customService => 
           ComponentCategory.user,
+        ComponentType.appServer ||
+        ComponentType.worker ||
+        ComponentType.serverless => 
+          ComponentCategory.compute,
         ComponentType.cache ||
         ComponentType.database ||
         ComponentType.objectStore =>
@@ -245,11 +246,24 @@ class ComponentConfig {
   final int cacheTtlSeconds;
   final bool replication;
   final int replicationFactor;
+  final String? replicationStrategy; // New: Leader-Follower, Multi-Leader
+  final bool sharding; // New: Toggle sharded state
   final String? shardingStrategy;
+  final int partitionCount; // New: Number of partitions/shards
+  final bool consistentHashing; // New: Toggle consistent hashing
   final List<String> regions;
   final double costPerHour;
-  final String? dbSchema; // New field
-  final bool showSchema;  // New field
+  final String? dbSchema;
+  final bool showSchema;
+  
+  // New resilience & traffic properties
+  final bool rateLimiting;
+  final int? rateLimitRps;
+  final bool circuitBreaker;
+  final bool retries;
+  final bool dlq;
+  final int? quorumRead;
+  final int? quorumWrite;
 
   const ComponentConfig({
     this.capacity = 10000,
@@ -261,11 +275,22 @@ class ComponentConfig {
     this.cacheTtlSeconds = 300,
     this.replication = false,
     this.replicationFactor = 1,
+    this.replicationStrategy,
+    this.sharding = false,
     this.shardingStrategy,
+    this.partitionCount = 1,
+    this.consistentHashing = false,
     this.regions = const ['us-east-1'],
     this.costPerHour = 0.10,
     this.dbSchema,
     this.showSchema = false,
+    this.rateLimiting = false,
+    this.rateLimitRps,
+    this.circuitBreaker = false,
+    this.retries = false,
+    this.dlq = false,
+    this.quorumRead,
+    this.quorumWrite,
   });
 
   ComponentConfig copyWith({
@@ -278,11 +303,22 @@ class ComponentConfig {
     int? cacheTtlSeconds,
     bool? replication,
     int? replicationFactor,
+    String? replicationStrategy,
+    bool? sharding,
     String? shardingStrategy,
+    int? partitionCount,
+    bool? consistentHashing,
     List<String>? regions,
     double? costPerHour,
     String? dbSchema,
     bool? showSchema,
+    bool? rateLimiting,
+    int? rateLimitRps,
+    bool? circuitBreaker,
+    bool? retries,
+    bool? dlq,
+    int? quorumRead,
+    int? quorumWrite,
   }) {
     return ComponentConfig(
       capacity: capacity ?? this.capacity,
@@ -294,11 +330,22 @@ class ComponentConfig {
       cacheTtlSeconds: cacheTtlSeconds ?? this.cacheTtlSeconds,
       replication: replication ?? this.replication,
       replicationFactor: replicationFactor ?? this.replicationFactor,
+      replicationStrategy: replicationStrategy ?? this.replicationStrategy,
+      sharding: sharding ?? this.sharding,
       shardingStrategy: shardingStrategy ?? this.shardingStrategy,
+      partitionCount: partitionCount ?? this.partitionCount,
+      consistentHashing: consistentHashing ?? this.consistentHashing,
       regions: regions ?? this.regions,
       costPerHour: costPerHour ?? this.costPerHour,
       dbSchema: dbSchema ?? this.dbSchema,
       showSchema: showSchema ?? this.showSchema,
+      rateLimiting: rateLimiting ?? this.rateLimiting,
+      rateLimitRps: rateLimitRps ?? this.rateLimitRps,
+      circuitBreaker: circuitBreaker ?? this.circuitBreaker,
+      retries: retries ?? this.retries,
+      dlq: dlq ?? this.dlq,
+      quorumRead: quorumRead ?? this.quorumRead,
+      quorumWrite: quorumWrite ?? this.quorumWrite,
     );
   }
 
@@ -432,11 +479,22 @@ class ComponentConfig {
       cacheTtlSeconds: json['cacheTtlSeconds'] as int? ?? 300,
       replication: json['replication'] as bool? ?? false,
       replicationFactor: json['replicationFactor'] as int? ?? 1,
+      replicationStrategy: json['replicationStrategy'] as String?,
+      sharding: json['sharding'] as bool? ?? false,
       shardingStrategy: json['shardingStrategy'] as String?,
+      partitionCount: json['partitionCount'] as int? ?? 1,
+      consistentHashing: json['consistentHashing'] as bool? ?? false,
       regions: (json['regions'] as List<dynamic>?)?.map((e) => e as String).toList() ?? const ['us-east-1'],
       costPerHour: (json['costPerHour'] as num?)?.toDouble() ?? 0.10,
       dbSchema: json['dbSchema'] as String?,
       showSchema: json['showSchema'] as bool? ?? false,
+      rateLimiting: json['rateLimiting'] as bool? ?? false,
+      rateLimitRps: json['rateLimitRps'] as int?,
+      circuitBreaker: json['circuitBreaker'] as bool? ?? false,
+      retries: json['retries'] as bool? ?? false,
+      dlq: json['dlq'] as bool? ?? false,
+      quorumRead: json['quorumRead'] as int?,
+      quorumWrite: json['quorumWrite'] as int?,
     );
   }
 
@@ -450,55 +508,126 @@ class ComponentConfig {
         'cacheTtlSeconds': cacheTtlSeconds,
         'replication': replication,
         'replicationFactor': replicationFactor,
+        'replicationStrategy': replicationStrategy,
+        'sharding': sharding,
         'shardingStrategy': shardingStrategy,
+        'partitionCount': partitionCount,
+        'consistentHashing': consistentHashing,
         'regions': regions,
         'costPerHour': costPerHour,
         'dbSchema': dbSchema,
         'showSchema': showSchema,
+        'rateLimiting': rateLimiting,
+        'rateLimitRps': rateLimitRps,
+        'circuitBreaker': circuitBreaker,
+        'retries': retries,
+        'dlq': dlq,
+        'quorumRead': quorumRead,
+        'quorumWrite': quorumWrite,
       };
 }
 
-/// Metrics for a component during simulation
+/// Runtime metrics for a component
 class ComponentMetrics {
-  final double cpuUsage; // 0.0 - 1.0
-  final double memoryUsage; // 0.0 - 1.0
-  final int currentRps;
-  final double avgLatencyMs;
-  final double p95LatencyMs;
-  final double errorRate; // 0.0 - 1.0
-  final int queueDepth;
-  final double cacheHitRate; // 0.0 - 1.0
+  final int currentRps; // Requests per second at this tick
+  final double latencyMs; // Average latency
+  final double p95LatencyMs; // 95th percentile latency
+  final double cpuUsage; // 0.0 to 1.0
+  final double memoryUsage; // 0.0 to 1.0
+  final double errorRate; // 0.0 to 1.0
+  final double cacheHitRate; // For Cache components (0.0 to 1.0)
+  final double queueDepth; // For Queue components (number of messages)
+  final double jitter; // Latency jitter/variance
+  
+  // NEW: Resilience metrics
+  final double evictionRate; // Evictions/sec
+  final bool isThrottled;
+  final bool isCircuitOpen;
+  
+  // NEW: Connection pool metrics
+  final double connectionPoolUtilization; // 0.0 to 1.0
+  final int activeConnections;
+  final int maxConnections;
+  
+  // NEW: Autoscaling state
+  final bool isScaling;
+  final int targetInstances;
+  final int readyInstances; // Instances fully warmed up
+  final int coldStartingInstances; // Instances still warming up
+  
+  // NEW: Performance indicators
+  final bool isSlow; // Is this node performing significantly slower?
+  final double slownessFactor; // 1.0 = normal, 10.0 = 10x slower
 
   const ComponentMetrics({
-    this.cpuUsage = 0.0,
-    this.memoryUsage = 0.0,
     this.currentRps = 0,
-    this.avgLatencyMs = 0.0,
-    this.p95LatencyMs = 0.0,
-    this.errorRate = 0.0,
+    this.latencyMs = 0,
+    this.p95LatencyMs = 0,
+    this.cpuUsage = 0,
+    this.memoryUsage = 0,
+    this.errorRate = 0,
+    this.cacheHitRate = 0,
     this.queueDepth = 0,
-    this.cacheHitRate = 0.0,
+    this.jitter = 0,
+    this.evictionRate = 0,
+    this.isThrottled = false,
+    this.isCircuitOpen = false,
+    this.connectionPoolUtilization = 0,
+    this.activeConnections = 0,
+    this.maxConnections = 100,
+    this.isScaling = false,
+    this.targetInstances = 1,
+    this.readyInstances = 1,
+    this.coldStartingInstances = 0,
+    this.isSlow = false,
+    this.slownessFactor = 1.0,
   });
 
   ComponentMetrics copyWith({
+    int? currentRps,
+    double? latencyMs,
+    double? p95LatencyMs,
     double? cpuUsage,
     double? memoryUsage,
-    int? currentRps,
-    double? avgLatencyMs,
-    double? p95LatencyMs,
     double? errorRate,
-    int? queueDepth,
     double? cacheHitRate,
+    double? queueDepth,
+    double? jitter,
+    double? evictionRate,
+    bool? isThrottled,
+    bool? isCircuitOpen,
+    double? connectionPoolUtilization,
+    int? activeConnections,
+    int? maxConnections,
+    bool? isScaling,
+    int? targetInstances,
+    int? readyInstances,
+    int? coldStartingInstances,
+    bool? isSlow,
+    double? slownessFactor,
   }) {
     return ComponentMetrics(
+      currentRps: currentRps ?? this.currentRps,
+      latencyMs: latencyMs ?? this.latencyMs,
+      p95LatencyMs: p95LatencyMs ?? this.p95LatencyMs,
       cpuUsage: cpuUsage ?? this.cpuUsage,
       memoryUsage: memoryUsage ?? this.memoryUsage,
-      currentRps: currentRps ?? this.currentRps,
-      avgLatencyMs: avgLatencyMs ?? this.avgLatencyMs,
-      p95LatencyMs: p95LatencyMs ?? this.p95LatencyMs,
       errorRate: errorRate ?? this.errorRate,
-      queueDepth: queueDepth ?? this.queueDepth,
       cacheHitRate: cacheHitRate ?? this.cacheHitRate,
+      queueDepth: queueDepth ?? this.queueDepth,
+      jitter: jitter ?? this.jitter,
+      evictionRate: evictionRate ?? this.evictionRate,
+      isThrottled: isThrottled ?? this.isThrottled,
+      isCircuitOpen: isCircuitOpen ?? this.isCircuitOpen,
+      connectionPoolUtilization: connectionPoolUtilization ?? this.connectionPoolUtilization,
+      activeConnections: activeConnections ?? this.activeConnections,
+      maxConnections: maxConnections ?? this.maxConnections,
+      isScaling: isScaling ?? this.isScaling,
+      targetInstances: targetInstances ?? this.targetInstances,
+      readyInstances: readyInstances ?? this.readyInstances,
+      coldStartingInstances: coldStartingInstances ?? this.coldStartingInstances,
+      isSlow: isSlow ?? this.isSlow,
+      slownessFactor: slownessFactor ?? this.slownessFactor,
     );
   }
 

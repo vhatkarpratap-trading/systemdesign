@@ -597,17 +597,36 @@ class _FailuresSummary extends StatelessWidget {
               ),
             );
           }),
+
+          
           if (failures.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              failures.first.recommendation,
-              style: const TextStyle(
-                fontSize: 12,
-                fontStyle: FontStyle.italic,
-                color: AppTheme.textSecondary,
-              ),
-            ),
-          ],
+            const SizedBox(height: 16),
+            ...failures.where((f) => f.fixType != null).take(2).map((f) {
+              return Padding(
+                 padding: const EdgeInsets.only(bottom: 8),
+                 child: Consumer(
+                   builder: (context, ref, _) {
+                     return ElevatedButton.icon(
+                       onPressed: () {
+                         ref.read(canvasProvider.notifier).applyFix(f.fixType!, f.componentId);
+                         ScaffoldMessenger.of(context).showSnackBar(
+                           SnackBar(content: Text('Applied fix: ${f.fixType!.label}')),
+                         );
+                       },
+                       icon: Icon(f.fixType!.icon, size: 16),
+                       label: Text('Fix: ${f.fixType!.label}'),
+                       style: ElevatedButton.styleFrom(
+                         backgroundColor: AppTheme.primary,
+                         foregroundColor: Colors.white,
+                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                         minimumSize: const Size(0, 36),
+                       ),
+                     );
+                   }
+                 ),
+              );
+            }),
+          ]
         ],
       ),
     );

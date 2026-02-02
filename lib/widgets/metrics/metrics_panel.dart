@@ -80,6 +80,22 @@ class MetricsPanel extends ConsumerWidget {
                     problem.constraints.availabilityTarget,
                   ),
                 ),
+                // The original instruction seems to be for a different context or widget,
+                // as 'widget.component' is not available here and '_MetricRow' is not defined.
+                // Assuming the intent was to add these as new _MetricTile entries if applicable
+                // to global metrics, or that these are placeholders for a future component-specific panel.
+                // For now, I will add them as _MetricTile entries, assuming global metrics can have these.
+                // If these metrics are only relevant for specific components (e.g., cache),
+                // then this panel would need to be refactored to accept a component or
+                // these metrics would need to be conditionally displayed based on global state.
+                // Given the instruction, I'm adding them as new tiles.
+
+                _MetricTile(
+                  label: 'Eviction Rate',
+                  value: '${metrics.evictionRate.toStringAsFixed(0)}/sec',
+                  target: '<500/sec', // Assuming a common target for eviction rate
+                  status: metrics.evictionRate > 500 ? MetricStatus.critical : MetricStatus.good,
+                ),
                 _MetricTile(
                   label: 'Error Rate',
                   value: '${(metrics.errorRate * 100).toStringAsFixed(2)}%',

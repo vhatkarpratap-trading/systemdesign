@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
@@ -6,6 +9,7 @@ import '../models/connection.dart';
 import '../models/problem.dart';
 import '../models/metrics.dart';
 import '../models/score.dart';
+import '../models/chaos_event.dart';
 import '../data/problems.dart';
 import '../models/canvas_state.dart';
 export '../models/canvas_state.dart';
@@ -229,6 +233,46 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
     return null;
   }
 
+  /// Apply an automated fix
+  void applyFix(FixType type, String? componentId) {
+    if (componentId == null) return;
+    
+    final component = state.getComponent(componentId);
+    if (component == null) return;
+    
+    var config = component.config;
+    
+    switch (type) {
+      case FixType.enableAutoscaling:
+        config = config.copyWith(autoScale: true);
+        break;
+      case FixType.addCircuitBreaker:
+        config = config.copyWith(circuitBreaker: true);
+        break;
+      case FixType.increaseReplicas:
+        config = config.copyWith(instances: config.instances + 2);
+        break;
+      case FixType.enableReplication:
+        config = config.copyWith(
+          replication: true, 
+          replicationFactor: config.replicationFactor < 2 ? 2 : config.replicationFactor
+        );
+        break;
+      case FixType.enableRateLimiting:
+        config = config.copyWith(rateLimiting: true, rateLimitRps: 1000);
+        break;
+      case FixType.increaseConnectionPool:
+        // Increasing capacity as a proxy for connection pool limits
+        config = config.copyWith(capacity: (config.capacity * 1.5).toInt());
+        break;
+      case FixType.addDlq:
+        config = config.copyWith(dlq: true);
+        break;
+    }
+    
+    updateComponentConfig(componentId, config);
+  }
+
   /// Cancel connecting
   void cancelConnecting() {
     state = state.copyWith(clearConnecting: true);
@@ -368,7 +412,9 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
     // Logic: Loading solution REPLACES current canvas
     
     if (problem.id == 'url_shortener') {
-      _loadUrlShortenerSolution();
+      _loadUrlShortenerSolution().then((_) => _save());
+    } else {
+      _save();
     }
     // Add other solutions here
     _save();
@@ -624,67 +670,28 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
     _save();
   }
 
-  void _loadUrlShortenerSolution() {
-    final components = <SystemComponent>[];
-    final connections = <Connection>[];
-    
-    // Helper to add component
-    void addComp(String id, ComponentType type, double x, double y, {Size? size}) {
-      components.add(SystemComponent(
-        id: id,
-        type: type,
-        position: Offset(x, y),
-        size: size ?? const Size(80, 64),
-        config: ComponentConfig.defaultFor(type),
-      ));
+  Future<void> _loadUrlShortenerSolution() async {
+    try {
+      final jsonString = await rootBundle.loadString('assets/solutions/url_shortener_solution.json');
+      final data = jsonDecode(jsonString) as Map<String, dynamic>;
+
+      final components = (data['components'] as List)
+          .map((c) => SystemComponent.fromJson(c))
+          .toList();
+
+      final connections = (data['connections'] as List)
+          .map((c) => Connection.fromJson(c))
+          .toList();
+
+      state = state.copyWith(
+        components: components,
+        connections: connections,
+      );
+    } catch (e, stack) {
+      debugPrint('Error loading solution: $e\n$stack');
     }
-
-    // Helper to connect
-    void connect(String from, String to) {
-      connections.add(Connection(
-        id: _uuid.v4(),
-        sourceId: from,
-        targetId: to,
-        direction: ConnectionDirection.unidirectional,
-      ));
-    }
-
-    // Beautiful Symmetrical Tree Layout
-    // Center Axis: x=5000
-    
-    // Level 1: Load Balancer (Top)
-    addComp('lb', ComponentType.loadBalancer, 5000, 4700);
-    
-    // Level 2: API Gateway
-    addComp('api', ComponentType.apiGateway, 5000, 4900);
-    
-    // Level 3: App Server Cluster (Spread)
-    addComp('app1', ComponentType.appServer, 4850, 5100);
-    addComp('app2', ComponentType.appServer, 5150, 5100);
-    
-    // Level 4: Data Layer (Spread)
-    // DB (Left under App1), Cache (Right under App2)
-    addComp('db', ComponentType.database, 4850, 5300);
-    addComp('cache', ComponentType.cache, 5150, 5300);
-    
-    // Connect them
-    connect('lb', 'api');
-    connect('api', 'app1');
-    connect('api', 'app2');
-    
-    connect('app1', 'db'); // Read/Write
-    connect('app1', 'cache'); // Read
-    
-    connect('app2', 'db');
-    connect('app2', 'cache');
-
-    state = state.copyWith(
-      components: components,
-      connections: connections,
-      panOffset: const Offset(-5000 + 200, -5000 + 400),
-      scale: 1.0,
-    );
   }
+
 }
 
 final canvasProvider = StateNotifierProvider<CanvasNotifier, CanvasState>((ref) {
@@ -707,6 +714,8 @@ class SimulationState {
   final List<FailureEvent> failures;
   final int tickCount;
   final double simulationSpeed;
+  final List<ChaosEvent> activeChaosEvents;
+  final ChaosMultipliers chaosMultipliers;
 
   const SimulationState({
     this.status = SimulationStatus.idle,
@@ -714,6 +723,8 @@ class SimulationState {
     this.failures = const [],
     this.tickCount = 0,
     this.simulationSpeed = 1.0,
+    this.activeChaosEvents = const [],
+    this.chaosMultipliers = ChaosMultipliers.normal,
   });
 
   SimulationState copyWith({
@@ -722,6 +733,8 @@ class SimulationState {
     List<FailureEvent>? failures,
     int? tickCount,
     double? simulationSpeed,
+    List<ChaosEvent>? activeChaosEvents,
+    ChaosMultipliers? chaosMultipliers,
   }) {
     return SimulationState(
       status: status ?? this.status,
@@ -729,6 +742,8 @@ class SimulationState {
       failures: failures ?? this.failures,
       tickCount: tickCount ?? this.tickCount,
       simulationSpeed: simulationSpeed ?? this.simulationSpeed,
+      activeChaosEvents: activeChaosEvents ?? this.activeChaosEvents,
+      chaosMultipliers: chaosMultipliers ?? this.chaosMultipliers,
     );
   }
 
@@ -754,10 +769,6 @@ class SimulationNotifier extends StateNotifier<SimulationState> {
   }
 
   void resume() {
-    if (state.status == SimulationStatus.failed) {
-      // Cannot resume from failed state without resetting
-      return;
-    }
     state = state.copyWith(status: SimulationStatus.running);
   }
 
@@ -778,22 +789,102 @@ class SimulationNotifier extends StateNotifier<SimulationState> {
     state = state.copyWith(globalMetrics: metrics);
   }
 
+  void setFailures(List<FailureEvent> failures) {
+    state = state.copyWith(failures: failures);
+    // Note: We no longer stop the simulation on failure
+  }
+
   void addFailure(FailureEvent failure) {
-    // Strict Validation: Fail immediately on first error
-    state = state.copyWith(
-      failures: [...state.failures, failure],
-      status: SimulationStatus.failed, // Stop simulation immediately
+    // Check if we already have this failure to avoid duplicates
+    final exists = state.failures.any((f) => 
+      f.componentId == failure.componentId && f.type == failure.type
     );
+    
+    if (!exists) {
+      state = state.copyWith(
+        failures: [...state.failures, failure],
+        // status: SimulationStatus.running, // Keep running!
+      );
+    }
   }
 
   void setSpeed(double speed) {
-    state = state.copyWith(simulationSpeed: speed.clamp(0.5, 3.0));
+    state = state.copyWith(simulationSpeed: speed.clamp(0.0, 5.0));
   }
 
   void reset() {
     state = const SimulationState();
   }
+
+  /// Add a chaos event to the simulation
+  void addChaosEvent(ChaosEvent event) {
+    state = state.copyWith(
+      activeChaosEvents: [...state.activeChaosEvents, event],
+    );
+    _updateChaosMultipliers();
+  }
+
+  /// Remove expired chaos events and update multipliers
+  void updateChaosEvents() {
+    final activeEvents = state.activeChaosEvents.where((e) => e.isActive).toList();
+    if (activeEvents.length != state.activeChaosEvents.length) {
+      state = state.copyWith(activeChaosEvents: activeEvents);
+      _updateChaosMultipliers();
+    }
+  }
+
+  /// Calculate and apply chaos multipliers based on active events
+  void _updateChaosMultipliers() {
+    var multipliers = ChaosMultipliers.normal;
+
+    for (final event in state.activeChaosEvents.where((e) => e.isActive)) {
+      switch (event.type) {
+        case ChaosType.trafficSpike:
+          final mult = event.parameters['multiplier'] as double? ?? 4.0;
+          multipliers = multipliers.copyWith(
+            trafficMultiplier: multipliers.trafficMultiplier * mult,
+          );
+          break;
+
+        case ChaosType.networkLatency:
+          final latency = event.parameters['latencyMs'] as int? ?? 300;
+          multipliers = multipliers.copyWith(
+            latencyMultiplier: multipliers.latencyMultiplier * (1 + latency / 100),
+          );
+          break;
+
+        case ChaosType.networkPartition:
+          // Would require component IDs - simplified for now
+          break;
+
+        case ChaosType.databaseSlowdown:
+          final mult = event.parameters['multiplier'] as double? ?? 8.0;
+          multipliers = multipliers.copyWith(
+            databaseLatencyMultiplier: multipliers.databaseLatencyMultiplier * mult,
+          );
+          break;
+
+        case ChaosType.cacheMissStorm:
+          final drop = event.parameters['hitRateDrop'] as double? ?? 0.9;
+          multipliers = multipliers.copyWith(
+            cacheHitRate: multipliers.cacheHitRate * (1 - drop),
+          );
+          break;
+
+        case ChaosType.componentCrash:
+          multipliers = multipliers.copyWith(
+            failureRateMultiplier: multipliers.failureRateMultiplier * 10,
+          );
+          break;
+      }
+    }
+// Provider for real-time simulation metrics (decoupled from structure for performance)
+    state = state.copyWith(chaosMultipliers: multipliers);
+  }
 }
+
+// Provider for real-time simulation metrics (decoupled from structure for performance)
+final simulationMetricsProvider = StateProvider<Map<String, ComponentMetrics>>((ref) => {});
 
 final simulationProvider =
     StateNotifierProvider<SimulationNotifier, SimulationState>((ref) {

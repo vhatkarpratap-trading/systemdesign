@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -40,6 +41,10 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
   String? _editingComponentId; // ID of component being edited inline
   final FocusNode _focusNode = FocusNode();
   Offset? _lastDoubleTapGlobalPos;
+  DateTime? _lastTapTime;
+  String? _lastTappedId;
+  bool _showSettingsSidebar = false;
+  SystemComponent? _selectedComponentForSidebar;
 
   @override
   void initState() {
@@ -252,399 +257,390 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
         }
         return KeyEventResult.ignored;
       },
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppTheme.background,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppTheme.border),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-        child: Stack(
-          children: [
-            // Listener for one-tap add from toolbox
-            Consumer(
-              builder: (context, ref, _) {
-                ref.listen(addComponentTriggerProvider, (prev, next) {
-                  if (next != null) {
-                    _addComponentAtCenter(next);
-                    // Reset trigger
-                    ref.read(addComponentTriggerProvider.notifier).state = null;
-                  }
-                });
-                return const SizedBox.shrink();
-              },
-            ),
+      child: Stack(
+        fit: StackFit.expand, // Force stack to fill parent
+        children: [
+          Positioned.fill( // Constrain canvas to stack size
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppTheme.background,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: DragTarget<ComponentType>(
+                onWillAcceptWithDetails: (details) => true,
+                onMove: (details) {
+                  final canvasPos = _getCanvasPosition(details.offset);
+                  setState(() => _dragPreviewPosition = canvasPos);
+                },
+                onLeave: (_) {
+                  setState(() {
+                    _dragPreviewPosition = null;
+                  });
+                },
+                onAcceptWithDetails: (details) {
+                  final canvasPos = _getCanvasPosition(details.offset);
+                  ref.read(canvasProvider.notifier).addComponent(
+                    details.data,
+                    Offset(canvasPos.dx.clamp(50, 9900), canvasPos.dy.clamp(50, 9900)),
+                  );
+                  setState(() => _dragPreviewPosition = null);
+                },
+                builder: (context, candidateData, rejectedData) {
+                  final isDragging = candidateData.isNotEmpty;
+                  
+                  return Listener(
+                    onPointerSignal: (pointerSignal) {
+                      if (pointerSignal is PointerScrollEvent && !isSimulating) {
+                        final isControl = HardwareKeyboard.instance.isControlPressed || 
+                                         HardwareKeyboard.instance.isMetaPressed;
+                        
+                        if (isControl) {
+                          _isUserInteracting = true;
+                          _scrollEndTimer?.cancel();
+                          _scrollEndTimer = Timer(const Duration(milliseconds: 300), () {
+                            if (mounted) {
+                              _isUserInteracting = false;
+                              _syncToProvider();
+                            }
+                          });
 
-            // Main interactive area
-            DragTarget<ComponentType>(
-              builder: (context, candidateData, rejectedData) {
-                final isDragging = candidateData.isNotEmpty;
-                
-                return Listener(
-                  onPointerSignal: (pointerSignal) {
-                    if (pointerSignal is PointerScrollEvent && !isSimulating) {
-                      final isControl = HardwareKeyboard.instance.isControlPressed || 
-                                       HardwareKeyboard.instance.isMetaPressed;
-                      
-                      if (isControl) {
-                        // 1. Mark as interacting to block external sync
-                        _isUserInteracting = true;
-                        _scrollEndTimer?.cancel();
-                        _scrollEndTimer = Timer(const Duration(milliseconds: 300), () {
-                          if (mounted) {
-                            _isUserInteracting = false;
-                            _syncToProvider();
-                          }
-                        });
-
-                        // 2. Perform Zoom
-                        final double zoomDelta = -pointerSignal.scrollDelta.dy / 250;
-                        final double currentScale = _transformController.value.getMaxScaleOnAxis();
-                        final double newScale = (currentScale + zoomDelta).clamp(0.1, 5.0);
-                        
-                        final Offset localPos = pointerSignal.localPosition;
-                        final Matrix4 matrix = _transformController.value.clone();
-                        final Offset untransformedPos = MatrixUtils.transformPoint(Matrix4.inverted(matrix), localPos);
-                        
-                        final Matrix4 newMatrix = Matrix4.identity()
-                          ..translate(localPos.dx, localPos.dy)
-                          ..scale(newScale)
-                          ..translate(-untransformedPos.dx, -untransformedPos.dy);
-                        
-                        _updateController(newMatrix);
-                      }
-                    }
-                  },
-                  child: InteractiveViewer(
-                    transformationController: _transformController,
-                    minScale: 0.1,
-                    maxScale: 5.0,
-                    constrained: false,
-                    panEnabled: !isSimulating,
-                    scaleEnabled: !isSimulating,
-                    trackpadScrollCausesScale: false, // Unified manual zoom via Listener
-                    boundaryMargin: const EdgeInsets.all(5000),
-                    onInteractionStart: (_) {
-                      _isUserInteracting = true;
-                      _debounceTimer?.cancel();
-                      _scrollEndTimer?.cancel();
-                    },
-                    onInteractionEnd: (_) {
-                      _isUserInteracting = false;
-                      _syncToProvider();
-                    },
-                  child: SizedBox(
-                    width: 10000,
-                    height: 10000,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.translucent, // Changed from opaque
-                      onTap: () {
-                        if (isHandMode) return;
-                        ref.read(canvasProvider.notifier).selectComponent(null);
-                        setState(() => _editingComponentId = null);
-                        _focusNode.requestFocus();
-                      },
-                      onDoubleTapDown: (details) {
-                        if (isSelectionMode) {
-                          _lastDoubleTapGlobalPos = details.globalPosition;
+                          final double zoomDelta = -pointerSignal.scrollDelta.dy / 250;
+                          final double currentScale = _transformController.value.getMaxScaleOnAxis();
+                          final double newScale = (currentScale + zoomDelta).clamp(0.1, 5.0);
+                          
+                          final Offset localPos = pointerSignal.localPosition;
+                          final Matrix4 matrix = _transformController.value.clone();
+                          final Offset untransformedPos = MatrixUtils.transformPoint(Matrix4.inverted(matrix), localPos);
+                          
+                          final Matrix4 newMatrix = Matrix4.identity()
+                            ..translate(localPos.dx, localPos.dy)
+                            ..scale(newScale)
+                            ..translate(-untransformedPos.dx, -untransformedPos.dy);
+                          
+                          _updateController(newMatrix);
                         }
+                      }
+                    },
+                    child: InteractiveViewer(
+                      transformationController: _transformController,
+                      minScale: 0.1,
+                      maxScale: 5.0,
+                      constrained: false,
+                      panEnabled: !isSimulating,
+                      scaleEnabled: !isSimulating,
+                      trackpadScrollCausesScale: false,
+                      boundaryMargin: const EdgeInsets.all(5000),
+                      onInteractionStart: (_) {
+                        _isUserInteracting = true;
+                        _debounceTimer?.cancel();
+                        _scrollEndTimer?.cancel();
                       },
-                      onDoubleTap: () {
-                         if (isSelectionMode && _lastDoubleTapGlobalPos != null) {
-                           _addTextAt(_lastDoubleTapGlobalPos!);
-                           _lastDoubleTapGlobalPos = null;
-                         }
+                      onInteractionEnd: (_) {
+                        _isUserInteracting = false;
+                        _syncToProvider();
                       },
-                      onPanStart: isDrawingMode ? (details) {
-                        setState(() {
-                          _drawStartPos = details.localPosition;
-                          _drawEndPos = _drawStartPos;
-                        });
-                      } : null,
-                      onPanUpdate: isDrawingMode ? (details) {
-                        setState(() {
-                          _drawEndPos = details.localPosition;
-                        });
-                      } : null,
-                      onPanEnd: isDrawingMode ? (details) {
-                        _finishDrawing(activeTool);
-                      } : null,
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          // Grid (Isolated for performance)
-                          RepaintBoundary(
-                            child: CustomPaint(
-                              size: const Size(10000, 10000),
-                              painter: _GridPainter(
-                                color: AppTheme.border.withValues(alpha: 0.3),
-                              ),
-                            ),
-                          ),
-
-                          // Connection Lines Layer (Production Ready: Single Painter)
-                          Positioned.fill(
-                            child: RepaintBoundary(
-                              child: ConnectionsLayer(
-                                canvasState: canvasState,
-                                isSimulating: isSimulating,
-                                onTap: (connection) {
-                                  if (!isSimulating) {
-                                    _showConnectionOptions(connection);
-                                  }
-                                },
-                              ),
-                            ),
-                          ),
-
-                          // Connecting line preview (elastic cable)
-                          if (_draggingFromId != null && _draggingCurrentPos != null)
-                            _buildElasticCable(canvasState),
-
-                          // Drawing preview
-                          if (_drawStartPos != null && _drawEndPos != null && isDrawingMode)
-                            _buildDrawingPreview(activeTool),
-
-                          // Component nodes
-                          ...canvasState.components.map((component) {
-                            final isSelected = component.id == canvasState.selectedComponentId;
-                            final isConnectSource = component.id == canvasState.connectingFromId;
-                            final isHovered = _hoveredComponentId == component.id;
-                            final isArrowActive = activeTool == CanvasTool.arrow;
-                            
-                            // Valid target if explicitly connecting OR using Arrow tool and hovering
-                            final isValidTarget = (isConnecting && canvasState.connectingFromId != component.id) || 
-                                                (isArrowActive && isHovered && !isSimulating);
-
-                            // Show handles if SELECTED (Selection-based interaction)
-                            // Handles don't show on text nodes usually, but let's allow it for consistency if needed?
-                            // Actually, text connection is niche, but allowed.
-                            // User request: "when selected component have four selectors dots"
-                            final showHandles = isSelected && !isConnecting && !isSimulating;
-
-                            return Positioned(
-                              left: component.position.dx,
-                              top: component.position.dy,
-                              child: Stack(
-                                clipBehavior: Clip.none,
-                                children: [
-                                  MouseRegion(
-                                    onEnter: (_) {
-                                      if (!isSimulating && activeTool == CanvasTool.arrow) {
-                                        setState(() => _hoveredComponentId = component.id);
-                                      }
-                                    },
-                                      onExit: (_) {
-                                        if (_hoveredComponentId == component.id && _draggingFromId == null) {
-                                          setState(() => _hoveredComponentId = null);
-                                        }
-                                      },
-                                      cursor: _getCursorForTool(activeTool),
-                                    child: GestureDetector(
-                                      // Consumer gestures to prevent canvas panning when interacting with component
-                                      onTap: () {
-                                        if (activeTool == CanvasTool.eraser) {
-                                          ref.read(canvasProvider.notifier).removeComponent(component.id);
-                                          // Reset to Select after eraser use
-                                          ref.read(canvasToolProvider.notifier).state = CanvasTool.select;
-                                          return;
-                                        }
-                                        if (isHandMode) return;
-                                        _onComponentTap(component, isConnecting);
-                                        _focusNode.requestFocus();
-                                      },
-                                      onDoubleTap: isSimulating ? null : () {
-                                         // Prevent editing if Arrow tool is active (Connection Focus)
-                                         if (activeTool == CanvasTool.arrow) return;
-
-                                         final canEdit = component.type.isSketchy || 
-                                                        component.type == ComponentType.text;
-                                         
-                                         if (canEdit) {
-                                            // Enable inline editing
-                                            setState(() => _editingComponentId = component.id);
-                                            // Ensure selected
-                                            if (canvasState.selectedComponentId != component.id) {
-                                               ref.read(canvasProvider.notifier).selectComponent(component.id);
-                                            }
-                                            // Clear any connecting state just in case
-                                            ref.read(canvasProvider.notifier).cancelConnecting(); 
-                                         } else if (canvasState.selectedComponentId != component.id) {
-                                            // Just select if not editable
-                                            ref.read(canvasProvider.notifier).selectComponent(component.id);
-                                         }
-                                      },
-                                      onLongPress: (isSimulating || !isSelectionMode) ? null : () => _showComponentOptions(component),
-                                      onPanStart: (details) {
-                                         if (activeTool == CanvasTool.arrow) {
-                                            _onDragConnectStart(component, startPos: _getCanvasPosition(details.globalPosition));
-                                         }
-                                      }, 
-                                      onPanUpdate: (details) {
-                                         if (activeTool == CanvasTool.arrow) {
-                                            _onDragConnectUpdate(details.globalPosition);
-                                            return;
-                                         }
-                                         if (!isSimulating && isSelectionMode) {
-                                            _moveComponent(component, details.delta);
-                                         }
-                                      },
-                                      onPanEnd: (details) {
-                                         if (activeTool == CanvasTool.arrow) {
-                                            _onDragConnectEnd();
-                                         }
-                                      },
-                                      child: RepaintBoundary(
-                                        child: AnimatedContainer(
-                                          duration: const Duration(milliseconds: 150),
-                                          decoration: isValidTarget
-                                              ? BoxDecoration(
-                                                  borderRadius: BorderRadius.circular(14),
-                                                  boxShadow: [
-                                                    BoxShadow(
-                                                      color: AppTheme.primary.withValues(alpha: 0.4),
-                                                      blurRadius: 12,
-                                                      spreadRadius: 2,
-                                                    ),
-                                                  ],
-                                                )
-                                              : null,
-                                          child: ComponentNode(
-                                            component: component,
-                                            isSelected: isSelected,
-                                            isConnecting: isConnectSource,
-                                            isValidTarget: isValidTarget,
-                                            isEditing: _editingComponentId == component.id,
-                                            onTextChange: (newName) {
-                                              ref.read(canvasProvider.notifier).renameComponent(component.id, newName);
-                                              _resizeComponentToFitText(component, newName);
-                                            },
-                                            onEditDone: () {
-                                              setState(() => _editingComponentId = null);
-                                            },
-                                          ),
+                      child: SizedBox(
+                        width: 10000,
+                        height: 10000,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onTap: () {
+                            if (isHandMode) return;
+                            ref.read(canvasProvider.notifier).selectComponent(null);
+                            setState(() {
+                              _editingComponentId = null;
+                              _showSettingsSidebar = false;
+                              _selectedComponentForSidebar = null;
+                            });
+                            _focusNode.requestFocus();
+                          },
+                          onDoubleTapDown: (details) {
+                            if (isSelectionMode) {
+                              _lastDoubleTapGlobalPos = details.globalPosition;
+                            }
+                          },
+                          onPanStart: isDrawingMode ? (details) {
+                            setState(() {
+                              _drawStartPos = details.localPosition;
+                              _drawEndPos = _drawStartPos;
+                            });
+                          } : null,
+                          onPanUpdate: isDrawingMode ? (details) {
+                            setState(() {
+                              _drawEndPos = details.localPosition;
+                            });
+                          } : null,
+                          onPanEnd: isDrawingMode ? (details) {
+                            _finishDrawing(activeTool);
+                          } : null,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                                    // Grid
+                                    RepaintBoundary(
+                                      child: CustomPaint(
+                                        size: const Size(10000, 10000),
+                                        painter: _GridPainter(
+                                          color: AppTheme.border.withValues(alpha: 0.3),
                                         ),
                                       ),
                                     ),
-                                  ),
-                                  
 
-                                  
-                                  // Connection handles removed per user request
-                                ],
-                              ),
-                            ); // Positioned
-                          }),
-
-                          // Issue Markers
-                          ...simState.failures.map((failure) {
-                            final component = canvasState.getComponent(failure.componentId);
-                            if (component == null) return const SizedBox.shrink();
-                            return IssueMarker(
-                              failure: failure,
-                              position: component.position,
-                            );
-                          }),
-
-                          // Drop preview
-                          if (isDragging && _dragPreviewPosition != null)
-                            Positioned(
-                              left: _dragPreviewPosition!.dx - 40,
-                              top: _dragPreviewPosition!.dy - 32,
-                              child: IgnorePointer(
-                                child: Container(
-                                  width: 80,
-                                  height: 64,
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.primary.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: AppTheme.primary.withValues(alpha: 0.5),
+                                    // Connections
+                                    Positioned.fill(
+                                      child: RepaintBoundary(
+                                        child: ConnectionsLayer(
+                                          canvasState: canvasState,
+                                          isSimulating: isSimulating,
+                                          onTap: (connection) {
+                                            if (!isSimulating) {
+                                              _showConnectionOptions(connection);
+                                            }
+                                          },
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                  child: Icon(
-                                    candidateData.first?.icon ?? Icons.add,
-                                    color: AppTheme.primary.withValues(alpha: 0.7),
-                                    size: 24,
-                                  ),
-                                ),
-                              ),
+
+                                    // Elastic cable
+                                    if (_draggingFromId != null && _draggingCurrentPos != null)
+                                      _buildElasticCable(canvasState),
+
+                                    // Drawing preview
+                                    if (_drawStartPos != null && _drawEndPos != null && isDrawingMode)
+                                      _buildDrawingPreview(activeTool),
+
+                                    // Components
+                                    ...canvasState.components.map((component) {
+                                      final isSelected = component.id == canvasState.selectedComponentId;
+                                      final isConnectSource = component.id == canvasState.connectingFromId;
+                                      final isHovered = _hoveredComponentId == component.id;
+                                      final isArrowActive = activeTool == CanvasTool.arrow;
+                                      final isValidTarget = (isConnecting && canvasState.connectingFromId != component.id) || 
+                                                          (isArrowActive && isHovered && !isSimulating);
+                                      
+                                      return Positioned(
+                                        left: component.position.dx,
+                                        top: component.position.dy,
+                                        child: MouseRegion(
+                                          onEnter: (_) {
+                                            if (!isSimulating && activeTool == CanvasTool.arrow) {
+                                              setState(() => _hoveredComponentId = component.id);
+                                            }
+                                          },
+                                          onExit: (_) {
+                                            if (_hoveredComponentId == component.id && _draggingFromId == null) {
+                                              setState(() => _hoveredComponentId = null);
+                                            }
+                                          },
+                                          cursor: _getCursorForTool(activeTool),
+                                          child: GestureDetector(
+                                            behavior: HitTestBehavior.opaque,
+                                            onTap: () {
+                                              debugPrint('Component Tap: ${component.id}');
+                                              final now = DateTime.now();
+                                              if (_lastTappedId == component.id && 
+                                                  _lastTapTime != null) {
+                                                final diff = now.difference(_lastTapTime!).inMilliseconds;
+                                                debugPrint('Tap separation: ${diff}ms');
+                                                if (diff < 600) {
+                                                  debugPrint('Manual DoubleTap Detected: ${component.id}');
+                                                  _showComponentOptions(component);
+                                                  _lastTapTime = null; 
+                                                  _lastTappedId = null;
+                                                } else {
+                                                  _lastTapTime = now;
+                                                  _lastTappedId = component.id;
+                                                }
+                                              } else {
+                                                _lastTapTime = now;
+                                                _lastTappedId = component.id;
+                                              }
+
+                                              if (activeTool == CanvasTool.eraser) {
+                                                ref.read(canvasProvider.notifier).removeComponent(component.id);
+                                                ref.read(canvasToolProvider.notifier).state = CanvasTool.select;
+                                                return;
+                                              }
+                                              if (isHandMode) return;
+                                              _onComponentTap(component, isConnecting);
+                                              _focusNode.requestFocus();
+                                            },
+                                            onDoubleTap: isSimulating ? null : () {
+                                              debugPrint('Flutter DoubleTap: ${component.id}');
+                                              // Fallback if manual fails or Flutter starts working
+                                              if (activeTool == CanvasTool.arrow) return;
+                                              final canEditInline = component.type.isSketchy || component.type == ComponentType.text;
+                                              if (canEditInline) {
+                                                setState(() => _editingComponentId = component.id);
+                                              } else {
+                                                _showComponentOptions(component);
+                                              }
+                                            },
+                                            onPanStart: (details) {
+                                              if (activeTool == CanvasTool.arrow) {
+                                                _onDragConnectStart(component, startPos: _getCanvasPosition(details.globalPosition));
+                                              }
+                                            },
+                                            onPanUpdate: (details) {
+                                              if (activeTool == CanvasTool.arrow) {
+                                                _onDragConnectUpdate(details.globalPosition);
+                                                return;
+                                              }
+                                              if (!isSimulating && isSelectionMode) {
+                                                _moveComponent(component, details.delta);
+                                              }
+                                            },
+                                            onPanEnd: (details) {
+                                              if (activeTool == CanvasTool.arrow) {
+                                                _onDragConnectEnd();
+                                              }
+                                            },
+                                            child: RepaintBoundary(
+                                              child: AnimatedContainer(
+                                                duration: const Duration(milliseconds: 150),
+                                                decoration: isValidTarget
+                                                    ? BoxDecoration(
+                                                        borderRadius: BorderRadius.circular(14),
+                                                        boxShadow: [
+                                                          BoxShadow(
+                                                            color: AppTheme.primary.withValues(alpha: 0.4),
+                                                            blurRadius: 12,
+                                                            spreadRadius: 2,
+                                                          ),
+                                                        ],
+                                                      )
+                                                    : null,
+                                                child: ComponentNode(
+                                                  component: component,
+                                                  isSelected: isSelected,
+                                                  isConnecting: isConnectSource,
+                                                  isValidTarget: isValidTarget,
+                                                  isEditing: _editingComponentId == component.id,
+                                                  onTextChange: (newName) {
+                                                    ref.read(canvasProvider.notifier).renameComponent(component.id, newName);
+                                                    _resizeComponentToFitText(component, newName);
+                                                  },
+                                                  onEditDone: () {
+                                                    setState(() => _editingComponentId = null);
+                                                  },
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }),
+
+                                    // Issue Markers
+                                    ...simState.failures.map((failure) {
+                                      final component = canvasState.getComponent(failure.componentId);
+                                      if (component == null) return const SizedBox.shrink();
+                                      return IssueMarker(
+                                        failure: failure,
+                                        position: component.position,
+                                      );
+                                    }),
+
+                                    // Drop preview
+                                    if (isDragging && _dragPreviewPosition != null)
+                                      Positioned(
+                                        left: _dragPreviewPosition!.dx - 40,
+                                        top: _dragPreviewPosition!.dy - 32,
+                                        child: IgnorePointer(
+                                          child: Container(
+                                            width: 80,
+                                            height: 64,
+                                            decoration: BoxDecoration(
+                                              color: AppTheme.primary.withValues(alpha: 0.1),
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(color: AppTheme.primary.withValues(alpha: 0.5)),
+                                            ),
+                                            child: Icon(
+                                              candidateData.first?.icon ?? Icons.add,
+                                              color: AppTheme.primary.withValues(alpha: 0.7),
+                                              size: 24,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              );
-            },
-              onWillAcceptWithDetails: (details) => true,
-              onMove: (details) {
-                final canvasPos = _getCanvasPosition(details.offset);
-                setState(() => _dragPreviewPosition = canvasPos);
-              },
-              onLeave: (_) {
-                setState(() {
-                  _dragPreviewPosition = null;
-                });
-              },
-              onAcceptWithDetails: (details) {
-                final canvasPos = _getCanvasPosition(details.offset);
-                ref.read(canvasProvider.notifier).addComponent(
-                  details.data,
-                  Offset(canvasPos.dx.clamp(50, 9900), canvasPos.dy.clamp(50, 9900)),
-                );
-                setState(() => _dragPreviewPosition = null);
-              },
+                  );
+                },
+              ),
             ),
-
-            // Connecting mode overlay - hidden for stealth mode
-            // if (isConnecting)
-            //   Positioned(
-            //     top: 8,
-            //     left: 0,
-            //     right: 0,
-            //     child: Center(
-            //       child: _ConnectingIndicator(
-            //         onCancel: () => ref.read(canvasProvider.notifier).cancelConnecting(),
-            //       ),
-            //     ),
-            //   ),
-
-            // Empty state
-            if (canvasState.components.isEmpty)
-              Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.add_circle_outline,
-                      size: 40,
-                      color: AppTheme.textMuted.withValues(alpha: 0.3),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Drag components here',
-                      style: TextStyle(
-                        color: AppTheme.textMuted.withValues(alpha: 0.5),
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Pinch to zoom • Drag to pan',
-                      style: TextStyle(
-                        color: AppTheme.textMuted.withValues(alpha: 0.3),
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
+          ),
+          ),
+          
+          // 2. Settings Sidebar Layer (Overlay)
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.fastOutSlowIn,
+            top: 0,
+            bottom: 0,
+            right: (_showSettingsSidebar && _selectedComponentForSidebar != null) ? 0 : -350,
+            width: 350,
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppTheme.surface.withValues(alpha: 0.95),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.4),
+                    blurRadius: 20,
+                    spreadRadius: 5,
+                  ),
+                ],
+                border: const Border(
+                  left: BorderSide(color: AppTheme.border, width: 1),
                 ),
               ),
-          ],
-        ),
+              child: ClipRRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: Material(
+                    color: Colors.transparent,
+                    elevation: 0,
+                    child: _selectedComponentForSidebar != null 
+                        ? _buildSettingsSidebar(_selectedComponentForSidebar!)
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // 3. Empty state
+          if (canvasState.components.isEmpty)
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.add_circle_outline,
+                    size: 40,
+                    color: AppTheme.textMuted.withValues(alpha: 0.3),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Drag components here',
+                    style: TextStyle(color: AppTheme.textMuted, fontSize: 13),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Pinch to zoom • Drag to pan',
+                    style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
-    ),
     );
   }
 
@@ -1036,14 +1032,67 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
   }
 
   void _showComponentOptions(SystemComponent component) {
+    debugPrint('Show Component Options: ${component.id} (${component.type.displayName})');
     ref.read(canvasProvider.notifier).selectComponent(component.id);
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppTheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    setState(() {
+      _selectedComponentForSidebar = component;
+      _showSettingsSidebar = true;
+    });
+  }
+
+  void _closeSidebar() {
+    setState(() {
+      _showSettingsSidebar = false;
+      _selectedComponentForSidebar = null;
+    });
+  }
+
+  Widget _buildSettingsSidebar(SystemComponent component) {
+    return Container(
+      width: 320,
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        border: Border(left: BorderSide(color: AppTheme.border.withValues(alpha: 0.5))),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 20,
+            offset: const Offset(-5, 0),
+          ),
+        ],
       ),
-      builder: (context) => _ComponentSheet(component: component),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                const Icon(Icons.settings_outlined, color: AppTheme.primary, size: 20),
+                const SizedBox(width: 12),
+                const Text(
+                  'Component Settings',
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 20),
+                  onPressed: _closeSidebar,
+                  color: AppTheme.textSecondary,
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: _ComponentSheet(component: component),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1496,21 +1545,54 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
   late TextEditingController _nameController;
   late String? _algorithm;
   late bool _replication;
+  late int _replicationFactor;
+  late String? _replicationStrategy;
+  late bool _sharding;
+  late String? _shardingStrategy;
+  late int _partitionCount;
+  late bool _consistentHashing;
   late int _cacheTtl;
   late String? _dbSchema;
   late bool _showSchema;
+  
+  // New resilience properties
+  late bool _rateLimiting;
+  late int? _rateLimitRps;
+  late bool _circuitBreaker;
+  late bool _retries;
+  late bool _dlq;
+  late int? _quorumRead;
+
+  late int? _quorumWrite;
+  late String _region;
 
   @override
   void initState() {
     super.initState();
-    _instances = widget.component.config.instances;
-    _capacity = widget.component.config.capacity;
+    final config = widget.component.config;
+    _instances = config.instances;
+    _capacity = config.capacity;
     _nameController = TextEditingController(text: widget.component.customName ?? widget.component.type.displayName);
-    _algorithm = widget.component.config.algorithm;
-    _replication = widget.component.config.replication;
-    _cacheTtl = widget.component.config.cacheTtlSeconds;
-    _dbSchema = widget.component.config.dbSchema;
-    _showSchema = widget.component.config.showSchema;
+    _algorithm = config.algorithm;
+    _replication = config.replication;
+    _replicationFactor = config.replicationFactor;
+    _replicationStrategy = config.replicationStrategy;
+    _sharding = config.sharding;
+    _shardingStrategy = config.shardingStrategy;
+    _partitionCount = config.partitionCount;
+    _consistentHashing = config.consistentHashing;
+    _cacheTtl = config.cacheTtlSeconds;
+    _dbSchema = config.dbSchema;
+    _showSchema = config.showSchema;
+    _rateLimiting = config.rateLimiting;
+    _rateLimitRps = config.rateLimitRps;
+    _circuitBreaker = config.circuitBreaker;
+    _retries = config.retries;
+    _dlq = config.dlq;
+    _quorumRead = config.quorumRead;
+
+    _quorumWrite = config.quorumWrite;
+    _region = config.regions.isNotEmpty ? config.regions.first : 'us-east-1';
   }
 
   @override
@@ -1522,253 +1604,246 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
   @override
   Widget build(BuildContext context) {
     return Container(
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
       padding: EdgeInsets.only(
         left: 20,
         right: 20,
         top: 20,
         bottom: MediaQuery.of(context).viewInsets.bottom + 20,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: widget.component.type.color.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(widget.component.type.icon, color: widget.component.type.color, size: 24),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: TextField(
-                  controller: _nameController,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: widget.component.type.color.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    hintText: 'Component Name',
-                  ),
-                  onChanged: (val) {
-                    ref.read(canvasProvider.notifier).renameComponent(widget.component.id, val);
-                  },
+                  child: Icon(widget.component.type.icon, color: widget.component.type.color, size: 28),
                 ),
-              ),
-              IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close),
-                color: AppTheme.textMuted,
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          
-          // Technical Stats
-          Text(
-            'SYSTEM CONFIGURATION',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.textMuted.withValues(alpha: 0.6),
-              letterSpacing: 1.2,
+                const SizedBox(width: 20),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.component.customName ?? widget.component.type.displayName,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 12),
-
-          // Instance Count
-          _ConfigRow(
-            label: 'Replicas / Instances',
-            value: '$_instances',
-            onMinus: () {
-              setState(() {
-                _instances = (_instances - 1).clamp(1, 100);
-              });
-              _updateConfig();
-            },
-            onPlus: () {
-              setState(() {
-                _instances = (_instances + 1).clamp(1, 100);
-              });
-              _updateConfig();
-            },
-          ),
-          const SizedBox(height: 12),
-
-          // Capacity
-          _ConfigRow(
-            label: 'Worker Capacity (RPS)',
-            value: _formatCapacity(_capacity),
-            onMinus: () {
-              setState(() {
-                _capacity = (_capacity - 500).clamp(100, 1000000);
-              });
-              _updateConfig();
-            },
-            onPlus: () {
-              setState(() {
-                _capacity = (_capacity + 500).clamp(100, 1000000);
-              });
-              _updateConfig();
-            },
-          ),
-          const SizedBox(height: 12),
-
-          // Conditional Configs
-          if (widget.component.type == ComponentType.loadBalancer) ...[
+            const SizedBox(height: 20),
+            
+            // Scaling & Distribution Section
+            _buildSectionHeader('DEPLOYMENT'),
             _DropdownRow(
-              label: 'Balancing Strategy',
-              value: _algorithm ?? 'round_robin',
+              label: 'Deployment Region',
+              value: _region,
               options: const {
-                'round_robin': 'Round Robin',
-                'least_conn': 'Least Connections',
-                'ip_hash': 'IP Hash',
+                'us-east-1': 'US East (N. Virginia)',
+                'us-west-2': 'US West (Oregon)',
+                'eu-central-1': 'Europe (Frankfurt)',
+                'ap-southeast-1': 'Asia Pacific (Singapore)',
               },
-              onChanged: (val) {
-                setState(() {
-                  _algorithm = val;
-                });
-                _updateConfig();
-              },
+              onChanged: (val) { if(val != null) { setState(() => _region = val); _updateConfig(); } },
             ),
             const SizedBox(height: 12),
-          ],
 
-          if (widget.component.type == ComponentType.database) ...[
-             Row(
-               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-               children: [
-                 const Text('Read Replicas', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
-                 Switch(
-                   value: _replication,
-                   activeColor: AppTheme.primary,
-                   onChanged: (val) {
-                     setState(() {
-                       _replication = val;
-                     });
-                     _updateConfig();
-                   },
+            _buildSectionHeader('SCALING & DISTRIBUTION'),
+            _ConfigRow(
+              label: 'Replicas / Instances',
+              value: '$_instances',
+              onMinus: () { setState(() => _instances = (_instances - 1).clamp(1, 100)); _updateConfig(); },
+              onPlus: () { setState(() => _instances = (_instances + 1).clamp(1, 100)); _updateConfig(); },
+            ),
+            const SizedBox(height: 12),
+            _ConfigRow(
+              label: 'Node Capacity (RPS)',
+              value: _formatCapacity(_capacity),
+              onMinus: () { setState(() => _capacity = (_capacity - 500).clamp(100, 1000000)); _updateConfig(); },
+              onPlus: () { setState(() => _capacity = (_capacity + 500).clamp(100, 1000000)); _updateConfig(); },
+            ),
+            const SizedBox(height: 12),
+  
+            // Sharding & Partitioning
+            if (widget.component.type.category == ComponentCategory.storage || 
+                widget.component.type.category == ComponentCategory.messaging) ...[
+              _SwitchRow(
+                label: 'Enable Sharding / Partitioning',
+                value: _sharding,
+                onChanged: (val) { setState(() => _sharding = val); _updateConfig(); },
+              ),
+              if (_sharding) ...[
+                const SizedBox(height: 8),
+                _ConfigRow(
+                  label: 'Partition / Shard Count',
+                  value: '$_partitionCount',
+                  onMinus: () { setState(() => _partitionCount = (_partitionCount - 1).clamp(1, 64)); _updateConfig(); },
+                  onPlus: () { setState(() => _partitionCount = (_partitionCount + 1).clamp(1, 64)); _updateConfig(); },
+                ),
+                const SizedBox(height: 8),
+                _SwitchRow(
+                  label: 'Consistent Hashing',
+                  value: _consistentHashing,
+                  onChanged: (val) { setState(() => _consistentHashing = val); _updateConfig(); },
+                ),
+              ],
+              const SizedBox(height: 12),
+            ],
+  
+            // Replication & Consistency
+            _buildSectionHeader('CONSISTENCY & HIGH AVAILABILITY'),
+            _SwitchRow(
+              label: 'Enable Replication',
+              value: _replication,
+              onChanged: (val) { setState(() => _replication = val); _updateConfig(); },
+            ),
+            if (_replication) ...[
+              const SizedBox(height: 8),
+              _DropdownRow(
+                label: 'Replication Strategy',
+                value: _replicationStrategy ?? 'Leader-Follower',
+                options: const {
+                  'Leader-Follower': 'Leader-Follower (Master-Slave)',
+                  'Multi-Leader': 'Multi-Leader / Multi-Master',
+                  'Leaderless': 'Leaderless (Dynamo-style)',
+                },
+                onChanged: (val) { setState(() => _replicationStrategy = val); _updateConfig(); },
+              ),
+              const SizedBox(height: 8),
+              _ConfigRow(
+                label: 'Replication Factor',
+                value: '$_replicationFactor',
+                onMinus: () { setState(() => _replicationFactor = (_replicationFactor - 1).clamp(1, 7)); _updateConfig(); },
+                onPlus: () { setState(() => _replicationFactor = (_replicationFactor + 1).clamp(1, 7)); _updateConfig(); },
+              ),
+            ],
+            const SizedBox(height: 12),
+  
+            // Conditional Configs
+            if (widget.component.type == ComponentType.loadBalancer) ...[
+              _DropdownRow(
+                label: 'Balancing Strategy',
+                value: _algorithm ?? 'round_robin',
+                options: const {
+                  'round_robin': 'Round Robin',
+                  'least_conn': 'Least Connections',
+                  'ip_hash': 'IP Hash',
+                  'consistent_hashing': 'Consistent Hashing',
+                },
+                onChanged: (val) { setState(() => _algorithm = val); _updateConfig(); },
+              ),
+              const SizedBox(height: 12),
+            ],
+  
+            // Resilience & Reliability Section
+            _buildSectionHeader('RESILIENCE & RELIABILITY'),
+            _SwitchRow(label: 'Circuit Breaker', value: _circuitBreaker, onChanged: (val) { setState(() => _circuitBreaker = val); _updateConfig(); }),
+            _SwitchRow(label: 'Automatic Retries (with Jitter)', value: _retries, onChanged: (val) { setState(() => _retries = val); _updateConfig(); }),
+            if (widget.component.type.category == ComponentCategory.messaging || widget.component.type == ComponentType.worker)
+              _SwitchRow(label: 'Dead Letter Queue (DLQ)', value: _dlq, onChanged: (val) { setState(() => _dlq = val); _updateConfig(); }),
+            const SizedBox(height: 12),
+  
+            // Traffic Control Section
+            _buildSectionHeader('TRAFFIC CONTROL'),
+            _SwitchRow(label: 'Rate Limiting', value: _rateLimiting, onChanged: (val) { setState(() => _rateLimiting = val); _updateConfig(); }),
+            if (_rateLimiting) ...[
+              const SizedBox(height: 8),
+              _ConfigRow(
+                label: 'Max RPS (Throttle)',
+                value: '${_rateLimitRps ?? 1000}',
+                onMinus: () { setState(() => _rateLimitRps = ((_rateLimitRps ?? 1000) - 100).clamp(10, 100000)); _updateConfig(); },
+                onPlus: () { setState(() => _rateLimitRps = ((_rateLimitRps ?? 1000) + 100).clamp(10, 100000)); _updateConfig(); },
+              ),
+            ],
+            const SizedBox(height: 12),
+  
+            if (widget.component.type == ComponentType.database) ...[
+               const SizedBox(height: 12),
+               // Schema Editor
+               _buildSectionHeader('DATABASE SCHEMA'),
+               Container(
+                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                 decoration: BoxDecoration(
+                   color: AppTheme.surfaceLight,
+                   borderRadius: BorderRadius.circular(8),
+                   border: Border.all(color: AppTheme.border),
                  ),
-               ],
-             ),
-             const SizedBox(height: 12),
-             
-             // Schema Editor
-             const Text('Database Schema', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
-             const SizedBox(height: 8),
-             Container(
-               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-               decoration: BoxDecoration(
-                 color: AppTheme.surfaceLight,
-                 borderRadius: BorderRadius.circular(8),
-                 border: Border.all(color: AppTheme.border),
-               ),
-               child: Column(
-                 crossAxisAlignment: CrossAxisAlignment.start,
-                 children: [
-                   Row(
-                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                     children: [
-                       const Text('Show on Canvas', style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
-                       Switch(
-                         value: _showSchema,
-                         activeColor: AppTheme.primary,
-                         onChanged: (val) {
-                           setState(() {
-                             _showSchema = val;
-                           });
-                           _updateConfig();
-                         },
-                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                       ),
-                     ],
-                   ),
-                   const Divider(height: 1),
-                   TextField(
-                     controller: TextEditingController(text: _dbSchema),
-                     maxLines: 4,
-                     style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                     decoration: const InputDecoration(
-                       border: InputBorder.none,
-                       hintText: 'CREATE TABLE users (\n  id UUID PRIMARY KEY,\n  email VARCHAR(255)\n);',
-                       hintStyle: TextStyle(color: AppTheme.textMuted, fontSize: 12),
-                     ),
-                     onChanged: (val) {
-                       _dbSchema = val;
-                       _updateConfig(); // Note: Debouncing recommended for texts
-                     },
-                   ),
-                 ],
-               ),
-             ),
-             const SizedBox(height: 12),
-          ],
-
-          if (widget.component.type == ComponentType.cache || widget.component.type == ComponentType.apiGateway) ...[
-            Row(
-               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-               children: [
-                 const Text('Cache TTL (s)', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
-                 Row(
+                 child: Column(
+                   crossAxisAlignment: CrossAxisAlignment.start,
                    children: [
-                     Text('$_cacheTtl', style: const TextStyle(fontWeight: FontWeight.bold)),
-                     Slider(
-                       value: _cacheTtl.toDouble(),
-                       min: 0,
-                       max: 3600,
-                       onChanged: (val) {
-                         setState(() {
-                           _cacheTtl = val.toInt();
-                         });
-                         _updateConfig();
-                       },
+                     _SwitchRow(label: 'Show on Canvas', value: _showSchema, onChanged: (val) { setState(() => _showSchema = val); _updateConfig(); }),
+                     const Divider(height: 1),
+                     TextField(
+                       controller: TextEditingController(text: _dbSchema),
+                       maxLines: 4,
+                       style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                       decoration: const InputDecoration(
+                         border: InputBorder.none,
+                         hintText: 'CREATE TABLE users (\n  id UUID PRIMARY KEY,\n  email VARCHAR(255)\n);',
+                         hintStyle: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+                       ),
+                       onChanged: (val) { _dbSchema = val; _updateConfig(); },
                      ),
                    ],
                  ),
-               ],
-             ),
-             const SizedBox(height: 12),
-          ],
-
-          const Divider(height: 32),
-
-          // Actions
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    ref.read(canvasProvider.notifier).removeComponent(widget.component.id);
-                    Navigator.pop(context);
-                  },
-                  icon: const Icon(Icons.delete_outline, size: 18),
-                  label: const Text('Delete Component'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.error,
-                    side: BorderSide(color: AppTheme.error.withValues(alpha: 0.3)),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  child: const Text('Close Settings'),
-                ),
-              ),
+               ),
+               const SizedBox(height: 12),
             ],
-          ),
-        ],
+  
+            if (widget.component.type == ComponentType.cache || widget.component.type == ComponentType.apiGateway) ...[
+              _buildSectionHeader('CACHING'),
+              Row(
+                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                 children: [
+                   const Text('Cache TTL (s)', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+                   Row(
+                     children: [
+                       Text('$_cacheTtl', style: const TextStyle(fontWeight: FontWeight.bold)),
+                       Slider(
+                         value: _cacheTtl.toDouble(),
+                         min: 0,
+                         max: 3600,
+                         onChanged: (val) { setState(() => _cacheTtl = val.toInt()); _updateConfig(); },
+                       ),
+                     ],
+                   ),
+                 ],
+               ),
+               const SizedBox(height: 12),
+            ],
+  
+            const SizedBox(height: 40),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20, top: 24),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          color: AppTheme.textMuted.withValues(alpha: 0.5),
+          letterSpacing: 1.2,
+        ),
       ),
     );
   }
@@ -1781,9 +1856,23 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
         capacity: _capacity,
         algorithm: _algorithm,
         replication: _replication,
+        replicationFactor: _replicationFactor,
+        replicationStrategy: _replicationStrategy,
+        sharding: _sharding,
+        shardingStrategy: _shardingStrategy,
+        partitionCount: _partitionCount,
+        consistentHashing: _consistentHashing,
         cacheTtlSeconds: _cacheTtl,
         dbSchema: _dbSchema,
         showSchema: _showSchema,
+        rateLimiting: _rateLimiting,
+        rateLimitRps: _rateLimitRps,
+        circuitBreaker: _circuitBreaker,
+        retries: _retries,
+        dlq: _dlq,
+        quorumRead: _quorumRead,
+        quorumWrite: _quorumWrite,
+        regions: [_region],
       ),
     );
   }
@@ -1792,6 +1881,48 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
     if (cap >= 1000000) return '${(cap / 1000000).toStringAsFixed(1)}M';
     if (cap >= 1000) return '${(cap / 1000).toStringAsFixed(1)}K';
     return cap.toString();
+  }
+}
+
+class _SwitchRow extends StatelessWidget {
+  final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _SwitchRow({required this.label, required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Text(
+              label, 
+              style: TextStyle(
+                color: AppTheme.textSecondary.withValues(alpha: 0.8), 
+                fontSize: 15,
+                fontWeight: FontWeight.w400,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Transform.scale(
+            scale: 0.9,
+            child: Switch(
+              value: value,
+              activeColor: AppTheme.primary,
+              activeTrackColor: AppTheme.primary.withValues(alpha: 0.3),
+              inactiveThumbColor: AppTheme.textMuted,
+              inactiveTrackColor: AppTheme.surfaceLight,
+              onChanged: onChanged,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1813,16 +1944,27 @@ class _DropdownRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+        Expanded(
+          child: Text(label, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+        ),
+        const SizedBox(width: 8),
         DropdownButton<String>(
           value: value,
           dropdownColor: AppTheme.surface,
           underline: const SizedBox.shrink(),
           onChanged: onChanged,
+          isExpanded: false,
           items: options.entries.map((e) {
             return DropdownMenuItem(
               value: e.key,
-              child: Text(e.value, style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary)),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 160),
+                child: Text(
+                  e.value, 
+                  style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             );
           }).toList(),
         ),
@@ -1846,42 +1988,69 @@ class _ConfigRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(label, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
-        ),
-        Container(
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceLight,
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Row(
-            children: [
-              IconButton(
-                onPressed: onMinus,
-                icon: const Icon(Icons.remove, size: 14),
-                color: AppTheme.textMuted,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label, 
+              style: TextStyle(
+                color: AppTheme.textSecondary.withValues(alpha: 0.8), 
+                fontSize: 15,
               ),
-              SizedBox(
-                width: 45,
-                child: Text(
-                  value,
-                  style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w500, fontSize: 12),
-                  textAlign: TextAlign.center,
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceLight.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _StepperButton(icon: Icons.remove, onTap: onMinus),
+                SizedBox(
+                  width: 60,
+                  child: Text(
+                    value,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
-              ),
-              IconButton(
-                onPressed: onPlus,
-                icon: const Icon(Icons.add, size: 14),
-                color: AppTheme.primary,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-              ),
-            ],
+                _StepperButton(icon: Icons.add, onTap: onPlus),
+              ],
+            ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StepperButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _StepperButton({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(6),
         ),
-      ],
+        child: Icon(icon, color: AppTheme.primary, size: 16),
+      ),
     );
   }
 }

@@ -96,29 +96,50 @@ class FailureOverlay extends ConsumerWidget {
                 children: [
                   OutlinedButton(
                     onPressed: () {
-                      // Reset and retry
                       ref.read(simulationProvider.notifier).reset();
                     },
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: const BorderSide(color: Colors.white),
+                      foregroundColor: AppTheme.textSecondary,
+                      side: const BorderSide(color: AppTheme.textMuted),
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                     ),
-                    child: const Text('RETRY'),
+                    child: const Text('Dismiss'),
                   ),
-                  const SizedBox(width: 16),
-                  ElevatedButton(
-                    onPressed: () {
-                      // Just close overlay to allow fixing
-                      ref.read(simulationProvider.notifier).stop();
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primary,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  
+                  if (firstFailure.fixType != null) ...[
+                    const SizedBox(width: 16),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        // Apply fix
+                        ref.read(canvasProvider.notifier).applyFix(
+                          firstFailure.fixType!, 
+                          firstFailure.componentId,
+                        );
+                        
+                        // Show feedback
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Applied fix: ${firstFailure.fixType!.label}'),
+                            backgroundColor: AppTheme.success,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                        
+                        // Reset simulation to try again
+                        ref.read(simulationProvider.notifier).reset();
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                        elevation: 4,
+                        shadowColor: AppTheme.primary.withOpacity(0.4),
+                      ),
+                      icon: Icon(firstFailure.fixType!.icon, size: 18),
+                      label: Text('Fix: ${firstFailure.fixType!.label}'),
                     ),
-                    child: const Text('FIX ISSUE'),
-                  ),
+                  ],
+
                 ],
               ),
             ],
