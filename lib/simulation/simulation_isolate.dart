@@ -1,8 +1,11 @@
 import 'dart:math';
+import 'dart:ui'; // Needed for Offset
 import '../models/component.dart';
 import '../models/connection.dart';
 import '../models/metrics.dart';
 import '../models/problem.dart';
+
+import '../models/chaos_event.dart';
 
 /// Data required to run a simulation tick
 class SimulationData {
@@ -11,6 +14,8 @@ class SimulationData {
   final Problem problem;
   final GlobalMetrics currentGlobalMetrics;
   final int tickCount;
+  final List<ChaosEvent> activeChaosEvents;
+  final Map<String, ComponentMetrics> previousMetrics;
 
   SimulationData({
     required this.components,
@@ -18,6 +23,8 @@ class SimulationData {
     required this.problem,
     required this.currentGlobalMetrics,
     required this.tickCount,
+    this.activeChaosEvents = const [],
+    this.previousMetrics = const {},
   });
 }
 
@@ -49,12 +56,20 @@ SimulationResult runSimulationTick(SimulationData data) {
   final targetRps = problem.constraints.effectiveQps;
   final multiplier = _getTrafficMultiplier(data.tickCount);
   
+  // Apply Chaos Traffic Spikes
+  double chaosMultiplier = 1.0;
+  for (final event in data.activeChaosEvents) {
+    if (event.type == ChaosType.trafficSpike) {
+      chaosMultiplier *= (event.parameters['multiplier'] ?? 4.0);
+    }
+  }
+
   // Add some jitter to simulated traffic
-  final currentRps = (targetRps * multiplier * (0.95 + random.nextDouble() * 0.1)).toInt();
+  final currentRps = (targetRps * multiplier * chaosMultiplier * (0.95 + random.nextDouble() * 0.1)).toInt();
 
   // Process traffic
   final (componentMetrics, connectionTraffic, failures) =
-      _processTraffic(components, connections, currentRps, problem, random);
+      _processTraffic(components, connections, currentRps, problem, random, data.activeChaosEvents, data.previousMetrics);
 
   // Check for consistency issues (replication lag, stale reads, etc.)
   final consistencyIssues = _checkConsistencyIssues(
@@ -116,6 +131,8 @@ SimulationResult runSimulationTick(SimulationData data) {
   int incomingRps,
   Problem problem,
   Random random,
+  List<ChaosEvent> activeChaosEvents,
+  Map<String, ComponentMetrics> previousMetrics,
 ) {
   final componentMetrics = <String, ComponentMetrics>{};
   final connectionTraffic = <String, double>{};
@@ -125,32 +142,67 @@ SimulationResult runSimulationTick(SimulationData data) {
     return (componentMetrics, connectionTraffic, failures);
   }
 
-  // Find entry points
-  final hasIncoming = connections.map((c) => c.targetId).toSet();
-  final entryPoints = components
-      .where((c) => !hasIncoming.contains(c.id))
-      .map((c) => c.id)
-      .toList();
-
-  // Distribute traffic
-  final rpsPerEntry = entryPoints.isEmpty ? 0 : incomingRps ~/ entryPoints.length;
-
-  // Process each component
-  for (final component in components) {
-    int componentRps;
-    if (entryPoints.contains(component.id)) {
-      componentRps = rpsPerEntry;
-    } else {
-      componentRps = connections
-          .where((c) => c.targetId == component.id)
-          .fold(0, (sum, c) {
-        final sourceMetrics = componentMetrics[c.sourceId];
-        if (sourceMetrics != null) {
-          return sum + (sourceMetrics.currentRps * 0.9).toInt();
-        }
-        return sum;
-      });
+  // 1. Sort components topologically (Source -> Sink)
+  // This ensures upstream traffic is calculated before downstream consumption
+  final sortedComponents = _topologicalSort(components, connections);
+  
+  // 2. Latency Backpressure Map (Sink -> Source)
+  // We need to know downstream latency to calculate upstream total duration
+  // Since we process Source->Sink for RPS, we'll use PREVIOUS tick's latency 
+  // for the backpressure estimation to avoid a double-pass complexity.
+  final downstreamLatencyMap = <String, double>{};
+  for (final c in components) {
+    if (previousMetrics.containsKey(c.id)) {
+      downstreamLatencyMap[c.id] = previousMetrics[c.id]!.latencyMs;
     }
+  }
+
+  // 3. Process each component in order
+  for (final component in sortedComponents) {
+    int componentRps = 0;
+    
+    // Check if it's an entry point (no incoming connections or explicit constraint)
+    final isEntryPoint = !connections.any((c) => c.targetId == component.id);
+    
+    if (isEntryPoint) {
+      // Divide total incoming RPS among entry points (e.g., Load Balancers, Users)
+      // If multiple entry points, split evenly
+      final entryPointCount = sortedComponents.where((c) => !connections.any((conn) => conn.targetId == c.id)).length;
+      componentRps = (incomingRps / (entryPointCount > 0 ? entryPointCount : 1)).ceil();
+    } else {
+      // Sum traffic from all upstream sources
+      final incomingConns = connections.where((c) => c.targetId == component.id);
+      for (final conn in incomingConns) {
+        // Try getting fresh metrics first, then fallback to previous
+        final sourceMetric = componentMetrics[conn.sourceId] ?? previousMetrics[conn.sourceId];
+        
+        if (sourceMetric != null) {
+          // Traffic flow logic:
+          // If source is 100% healthy, it sends 100% of its traffic.
+          // If source is failing/throttled, it sends less? No, typically it sends the traffic 
+          // but the traffic might be error responses. 
+          // For simulation simplicity: Throughput is preserved unless explicitly dropped.
+          
+          // Distribution strategy:
+          // If source splits to multiple targets, how do we split?
+          // Default: Round Robin / Even Split
+          final siblings = connections.where((c) => c.sourceId == conn.sourceId).length;
+          final flow = (sourceMetric.currentRps / (siblings > 0 ? siblings : 1)).ceil();
+          
+          componentRps += flow;
+        }
+      }
+    }
+
+    // Get max downstream latency for backpressure
+    double maxDownstreamLatency = 0.0;
+    final outgoingConns = connections.where((c) => c.sourceId == component.id);
+    for (final conn in outgoingConns) {
+      final lat = downstreamLatencyMap[conn.targetId] ?? 0.0;
+      if (lat > maxDownstreamLatency) maxDownstreamLatency = lat;
+    }
+
+    final prevMetric = previousMetrics[component.id];
 
     final metrics = _calculateComponentMetrics(
         component, 
@@ -159,6 +211,9 @@ SimulationResult runSimulationTick(SimulationData data) {
         random,
         connections,
         components,
+        activeChaosEvents,
+        prevMetric,
+        maxDownstreamLatency, // NEW: Pass downstream latency
     );
     componentMetrics[component.id] = metrics;
 
@@ -166,17 +221,124 @@ SimulationResult runSimulationTick(SimulationData data) {
     failures.addAll(componentFailures);
   }
 
-  // Calculate connection traffic
+  // 4. Calculate connection traffic flow for visualization
   for (final connection in connections) {
     final sourceMetrics = componentMetrics[connection.sourceId];
     if (sourceMetrics != null) {
       final sourceComponent = components.firstWhere((c) => c.id == connection.sourceId);
-      final flow = sourceMetrics.currentRps / (sourceComponent.totalCapacity + 1);
-      connectionTraffic[connection.id] = flow.clamp(0.0, 1.0);
+      // Flow capacity = Traffic / (Capacity + small_buffer)
+      // Visualizing how "full" the pipe is relative to source's ability to handle it?
+      // Or relative to a fixed "Pipe Capacity"? 
+      // Let's use Source Load as proxy for Pipe fullness for now.
+      
+      final traffic = sourceMetrics.currentRps;
+      // Normalize traffic for visualization (e.g., 0 to 1000 RPS maps to 0.0 to 1.0)
+      // But keeping it relative to something meaningful...
+      // Let's use a log scale or capped linear scale for visuals
+      final flow = (traffic / 2000.0).clamp(0.0, 1.0); // 2000 RPS = "Full Pipe" visually
+      
+      connectionTraffic[connection.id] = flow;
     }
   }
 
   return (componentMetrics, connectionTraffic, failures);
+}
+
+/// Sort components so dependencies are processed after sources
+List<SystemComponent> _topologicalSort(List<SystemComponent> components, List<Connection> connections) {
+  final result = <SystemComponent>[];
+  final visited = <String>{};
+  final processing = <String>{};
+
+  void visit(String nodeId) {
+    if (visited.contains(nodeId)) return;
+    if (processing.contains(nodeId)) {
+      // Cycle detected - treat as visited to break loop
+      return; 
+    }
+    
+    processing.add(nodeId);
+    
+    // Visit dependencies (downstream)
+    // Actually for metrics flow (Traffic), we want Source -> Target.
+    // So we want to process Source BEFORE Target.
+    // Topological sort usually gives: if A -> B, A comes before B.
+    // We visit children first? No.
+    // Standard Algo:
+    // Visit(N):
+    //   processing.add(N)
+    //   for each M in children(N): Visit(M)
+    //   processing.remove(N)
+    //   visited.add(N)
+    //   result.prepend(N) -> giving Reverse Topological
+    
+    // BUT we want Traffic Flow Order: Sources First.
+    // That means if A -> B, A processed first.
+    // That is Topological Sort.
+    
+    // Find all nodes that are TARGETS of this node (Children)
+    final children = connections.where((c) => c.sourceId == nodeId).map((c) => c.targetId);
+    for (final childId in children) {
+       // Wait, standard DFS topo sort puts leaves at start of list (Reverse Post-Order).
+       // We need Reverse(Reverse Post-Order) i.e. Sources first.
+    }
+    // Let's implement Khan's Algorithm (BFS based) which is easier for "Levels"
+  }
+  
+  // Khan's Algorithm
+  final inDegree = <String, int>{};
+  final graph = <String, List<String>>{};
+  
+  for (final c in components) {
+    inDegree[c.id] = 0;
+    graph[c.id] = [];
+  }
+  
+  for (final conn in connections) {
+    if (graph.containsKey(conn.sourceId)) {
+      graph[conn.sourceId]!.add(conn.targetId);
+    }
+    // Increment In-Degree of Target
+    if (inDegree.containsKey(conn.targetId)) {
+      inDegree[conn.targetId] = inDegree[conn.targetId]! + 1;
+    }
+  }
+  
+  final queue = <String>[];
+  // Add all sources (inDegree 0)
+  inDegree.forEach((id, degree) {
+    if (degree == 0) queue.add(id);
+  });
+  
+  while (queue.isNotEmpty) {
+    final u = queue.removeAt(0);
+    final component = components.firstWhere((c) => c.id == u, orElse: () => SystemComponent(id: 'dummy', type: ComponentType.client, position: const Offset(0,0), size: const Size(0,0), config: const ComponentConfig()));
+    if (component.id != 'dummy') {
+      result.add(component);
+    }
+    
+    if (graph.containsKey(u)) {
+      for (final v in graph[u]!) {
+        inDegree[v] = inDegree[v]! - 1;
+        if (inDegree[v] == 0) {
+          queue.add(v);
+        }
+      }
+    }
+  }
+  
+  // If result size < components size, we have cycles.
+  // Add remaining components freely (cycle breakers)
+  if (result.length < components.length) {
+    final processedIds = result.map((c) => c.id).toSet();
+    for (final c in components) {
+      if (!processedIds.contains(c.id)) {
+        result.add(c);
+      }
+    }
+  }
+  
+  return result;
 }
 
 ComponentMetrics _calculateComponentMetrics(
@@ -186,10 +348,25 @@ ComponentMetrics _calculateComponentMetrics(
   Random random,
   List<Connection> connections,
   List<SystemComponent> allComponents,
+  List<ChaosEvent> activeChaosEvents,
+  ComponentMetrics? prevMetrics,
+  double downstreamLatencyMs, // NEW
 ) {
   final baseLatency = _getBaseLatency(component.type);
   var effectiveInstances = component.config.instances;
+
+  // Use previous metrics or default to component's current (which might be stale if optimization is on)
+  // or better, default to 0/empty if actually first run.
+  final lastMetrics = prevMetrics ?? component.metrics;
   
+  // APPLY CHAOS: Component Crash
+  bool isCrashed = false;
+  for (final event in activeChaosEvents) {
+    if (event.type == ChaosType.componentCrash) {
+      if (random.nextDouble() < 0.01) isCrashed = true;
+    }
+  }
+
   // Simulate autoscaling: if autoscale enabled and load > 0.7, scale up
   final capacity = component.config.capacity * component.config.instances;
   final load = capacity > 0 ? incomingRps / capacity : 1.0;
@@ -221,6 +398,16 @@ ComponentMetrics _calculateComponentMetrics(
   // Slow node simulation (5% chance a node becomes slow)
   bool isSlow = random.nextDouble() < 0.05;
   double slownessFactor = isSlow ? (2.0 + random.nextDouble() * 8.0) : 1.0;
+
+  // APPLY CHAOS: Latency & DB Slowdown
+  for (final event in activeChaosEvents) {
+    if (event.type == ChaosType.networkLatency) {
+      // Add global latency
+      slownessFactor += (event.parameters['latencyMs'] ?? 300) / 50.0; // Rough conversion
+    } else if (event.type == ChaosType.databaseSlowdown && component.type == ComponentType.database) {
+      slownessFactor *= (event.parameters['multiplier'] ?? 8.0);
+    }
+  }
 
   // Latency calculation with slowness factor
   double latencyMultiplier;
@@ -255,20 +442,50 @@ ComponentMetrics _calculateComponentMetrics(
     }
   }
 
-  final avgLatency = (baseLatency * latencyMultiplier * slownessFactor) + crossRegionPenalty;
+  // Inertia factor (0.1 = very slow/heavy, 1.0 = instant)
+  // Low alpha makes the system feel "heavy" and realistic
+  const alpha = 0.15; 
+  
+  // Calculate Target Latency
+  // = (Base Processing + Load Penalty) * SlownessFactor + CrossRegion + Downstream Dependencies
+  
+  // Add downstream latency (Backpressure)
+  // If this component calls others synchronously, their latency adds to ours.
+  // For queues/pubsub, it's async, so downstream latency matters less (only for write ack)
+  double downstreamPenalty = downstreamLatencyMs;
+  if (component.type == ComponentType.queue || component.type == ComponentType.pubsub) {
+    downstreamPenalty *= 0.1; // Async mostly
+  }
+  
+  final rawLatency = (baseLatency * latencyMultiplier * slownessFactor) + crossRegionPenalty + downstreamPenalty;
+  
+  // Smooth latency: moves slowly towards rawLatency using LAST metrics
+  final avgLatency = (rawLatency * alpha) + (lastMetrics.latencyMs * (1 - alpha));
+  
   final p95Latency = avgLatency * (1.5 + random.nextDouble() * 0.5);
 
   // CPU and memory
-  final cpuUsage = (effectiveLoad * 0.85 + random.nextDouble() * 0.15).clamp(0.0, 1.0);
-  final memoryUsage = (effectiveLoad * 0.75 + random.nextDouble() * 0.25).clamp(0.0, 1.0);
+  final targetCpu = (effectiveLoad * 0.85 + random.nextDouble() * 0.15).clamp(0.0, 1.0);
+  final cpuUsage = (targetCpu * alpha) + (lastMetrics.cpuUsage * (1 - alpha));
+  
+  final targetMemory = (effectiveLoad * 0.75 + random.nextDouble() * 0.25).clamp(0.0, 1.0);
+  final memoryUsage = (targetMemory * alpha) + (lastMetrics.memoryUsage * (1 - alpha));
 
-  // Error rate
-  double errorRate = 0.0;
-  if (effectiveLoad > 0.95) {
-    errorRate = ((effectiveLoad - 0.95) / 0.05) * 0.5;
+  // Error rate - more aggressive when capacity exceeded
+  double targetErrorRate = 0.0;
+  if (isCrashed) {
+    targetErrorRate = 1.0; // 100% failure rate
+  } else if (effectiveLoad > 1.0) {
+    // HARD overflow: immediate significant errors
+    targetErrorRate = 0.1 + ((effectiveLoad - 1.0) * 0.8).clamp(0.0, 0.9);
+  } else if (effectiveLoad > 0.95) {
+    targetErrorRate = ((effectiveLoad - 0.95) / 0.05) * 0.5;
   } else if (effectiveLoad > 0.85) {
-    errorRate = ((effectiveLoad - 0.85) / 0.1) * 0.05;
+    targetErrorRate = ((effectiveLoad - 0.85) / 0.1) * 0.05;
   }
+  // Error rate spikes instantly but recovers slowly
+  final errorAlpha = (isCrashed || targetErrorRate > lastMetrics.errorRate) ? 0.5 : 0.1;
+  double errorRate = (targetErrorRate * errorAlpha) + (lastMetrics.errorRate * (1 - errorAlpha));
   errorRate = errorRate.clamp(0.0, 1.0);
 
   // Cache hit rate and Resilience Metrics
@@ -292,7 +509,10 @@ ComponentMetrics _calculateComponentMetrics(
   if (component.type == ComponentType.queue ||
       component.type == ComponentType.pubsub ||
       component.type == ComponentType.stream) {
-    queueDepth = (incomingRps * effectiveLoad * 0.1).clamp(0.0, 10000.0);
+    // Accumulate queue: Previous + (In - Out)
+    // Simple model: Queue builds if load > capacity
+    final targetQueue = (incomingRps * effectiveLoad * 0.1).clamp(0.0, 10000.0);
+    queueDepth = (targetQueue * alpha) + (lastMetrics.queueDepth * (1 - alpha));
   }
 
   // Connection pool metrics (for databases and services)
@@ -304,7 +524,8 @@ ComponentMetrics _calculateComponentMetrics(
       component.type == ComponentType.appServer ||
       component.type == ComponentType.customService) {
     // Connection pool utilization tracks with load
-    connectionPoolUtilization = effectiveLoad.clamp(0.0, 1.0);
+    final targetUtil = effectiveLoad.clamp(0.0, 1.0);
+    connectionPoolUtilization = (targetUtil * alpha) + (lastMetrics.connectionPoolUtilization * (1 - alpha));
     activeConnections = (maxConnections * connectionPoolUtilization).toInt();
   }
 
@@ -332,6 +553,7 @@ ComponentMetrics _calculateComponentMetrics(
     coldStartingInstances: coldStartingInstances,
     isSlow: isSlow,
     slownessFactor: slownessFactor,
+    isCrashed: isCrashed,
   );
 }
 
@@ -375,6 +597,41 @@ List<FailureEvent> _checkFailures(
   Problem problem,
 ) {
   final failures = <FailureEvent>[];
+
+  // CHAOS: Crashed Component
+  if (metrics.isCrashed) {
+    failures.add(FailureEvent(
+      timestamp: DateTime.now(),
+      componentId: component.id,
+      type: FailureType.componentCrash,
+      message: '${component.type.displayName} has crashed due to chaos event',
+      recommendation: 'Wait for automated recovery or restart component',
+      severity: 1.0,
+      userVisible: true,
+    ));
+    // If crashed, return early or continue? 
+    // Usually a crash masks other errors, so we can return early or keep adding.
+    // Let's clear others? No, keep it simple.
+    return failures; 
+  }
+
+  // 0. Traffic Overflow - Explicit check when incoming traffic exceeds capacity
+  final totalCapacity = component.config.capacity * component.config.instances;
+  if (metrics.currentRps > totalCapacity && totalCapacity > 0) {
+    final overflowPct = ((metrics.currentRps - totalCapacity) / totalCapacity * 100).toInt();
+    failures.add(FailureEvent(
+      timestamp: DateTime.now(),
+      componentId: component.id,
+      type: FailureType.trafficOverflow,
+      message: '${component.type.displayName} receiving ${metrics.currentRps} RPS but capacity is ${totalCapacity} RPS (+${overflowPct}% overflow)',
+      recommendation: component.config.autoScale 
+          ? 'Autoscaling in progress - consider higher capacity per instance or more max instances'
+          : 'Enable autoscaling OR increase instances/capacity to handle ${metrics.currentRps} RPS',
+      severity: (overflowPct / 100).clamp(0.7, 0.95),
+      userVisible: true,
+      fixType: component.config.autoScale ? FixType.increaseReplicas : FixType.enableAutoscaling,
+    ));
+  }
 
   //1. Overload (CPU > 95%)
   if (metrics.cpuUsage > 0.95) {

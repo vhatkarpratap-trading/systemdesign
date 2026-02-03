@@ -173,6 +173,7 @@ enum FixType {
 enum FailureType {
   // Capacity & Performance
   overload('Overload', 'Component exceeded capacity'),
+  trafficOverflow('Traffic Overflow', 'Incoming traffic exceeds component capacity'),
   spof('SPOF', 'Single point of failure detected'),
   latencyBreach('Latency Breach', 'SLA violated'),
   dataLoss('Data Loss Risk', 'No replication configured'),
@@ -207,7 +208,8 @@ enum FailureType {
   badDeployment('Bad Deployment', 'Recent deploy introduced errors'),
   schemaMigration('Schema Migration Issue', 'Database schema incompatibility'),
   configDrift('Configuration Drift', 'Inconsistent config across instances'),
-  cacheStampede('Cache Stampede', 'Mass cache miss causing DB overload');
+  cacheStampede('Cache Stampede', 'Mass cache miss causing DB overload'),
+  componentCrash('Component Crash', 'Process terminated unexpectedly');
 
   final String displayName;
   final String description;

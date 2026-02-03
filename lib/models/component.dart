@@ -558,6 +558,9 @@ class ComponentMetrics {
   // NEW: Performance indicators
   final bool isSlow; // Is this node performing significantly slower?
   final double slownessFactor; // 1.0 = normal, 10.0 = 10x slower
+  
+  // NEW: Chaos state
+  final bool isCrashed;
 
   const ComponentMetrics({
     this.currentRps = 0,
@@ -581,6 +584,7 @@ class ComponentMetrics {
     this.coldStartingInstances = 0,
     this.isSlow = false,
     this.slownessFactor = 1.0,
+    this.isCrashed = false,
   });
 
   ComponentMetrics copyWith({
@@ -605,6 +609,7 @@ class ComponentMetrics {
     int? coldStartingInstances,
     bool? isSlow,
     double? slownessFactor,
+    bool? isCrashed,
   }) {
     return ComponentMetrics(
       currentRps: currentRps ?? this.currentRps,
@@ -628,6 +633,7 @@ class ComponentMetrics {
       coldStartingInstances: coldStartingInstances ?? this.coldStartingInstances,
       isSlow: isSlow ?? this.isSlow,
       slownessFactor: slownessFactor ?? this.slownessFactor,
+      isCrashed: isCrashed ?? this.isCrashed,
     );
   }
 

@@ -106,26 +106,37 @@ class ComponentNode extends ConsumerWidget {
                                 component.type == ComponentType.arrow || 
                                 component.type == ComponentType.line))
             ? null
-            : LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  isSelected ? AppTheme.surfaceLight : AppTheme.surfaceLight.withValues(alpha: 0.9),
-                  isSelected ? AppTheme.surface : AppTheme.surface.withValues(alpha: 0.7),
-                ],
-              ),
+            : (hasError || isSlow || isOverloaded)
+                ? RadialGradient(
+                    colors: [
+                      (hasError ? AppTheme.error : isOverloaded ? Colors.orange : Colors.amber)
+                          .withValues(alpha: 0.25),
+                      GetStatusColor(hasError, isOverloaded, isSlow).withValues(alpha: 0.05),
+                    ],
+                    radius: 0.8,
+                  )
+                : LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      isSelected ? AppTheme.surfaceLight : AppTheme.surfaceLight.withValues(alpha: 0.9),
+                      isSelected ? AppTheme.surface : AppTheme.surface.withValues(alpha: 0.7),
+                    ],
+                  ),
         boxShadow: (isSelected || isActive || hasError || isSlow || (!isSketchy && component.type != ComponentType.text)) 
             ? [
                 BoxShadow(
                   color: hasError 
                       ? Colors.red.withValues(alpha: 0.4)
                       : isSlow
-                          ? Colors.yellow.withValues(alpha: 0.3)
-                          : (isSelected || isActive) 
-                              ? color.withValues(alpha: isSelected ? 0.3 : 0.15)
-                              : Colors.black.withValues(alpha: 0.3),
-                  blurRadius: hasError || isSlow ? 16 : (isSelected ? 12 : 4),
-                  spreadRadius: hasError || isSlow ? 2 : (isSelected ? 1 : 0),
+                          ? Colors.amber.withValues(alpha: 0.3)
+                          : isOverloaded
+                              ? Colors.orange.withValues(alpha: 0.3)
+                              : (isSelected || isActive) 
+                                  ? color.withValues(alpha: isSelected ? 0.3 : 0.15)
+                                  : Colors.black.withValues(alpha: 0.3),
+                  blurRadius: hasError || isSlow || isOverloaded ? 16 : (isSelected ? 12 : 4),
+                  spreadRadius: hasError || isSlow || isOverloaded ? 4 : (isSelected ? 1 : 0),
                   offset: (hasError || isSlow || isSelected) ? Offset.zero : const Offset(0, 2),
                 ),
               ] 
@@ -135,33 +146,33 @@ class ComponentNode extends ConsumerWidget {
           color: hasError
               ? Colors.red.withValues(alpha: 0.7)
               : isSlow
-                  ? Colors.yellow.withValues(alpha: 0.6)
-                  : isSelected
-                      ? AppTheme.primary
-                      : (isSketchy && (component.type == ComponentType.rectangle || 
-                                     component.type == ComponentType.circle || 
-                                     component.type == ComponentType.diamond ||
-                                     component.type == ComponentType.arrow || 
-                                     component.type == ComponentType.line))
-                          ? AppTheme.border.withValues(alpha: 0.4)
-                          : (isConnecting
-                              ? AppTheme.secondary.withValues(alpha: 0.5)
-                              : Colors.transparent),
-          width: hasError || isSlow ? 3 : (isSelected ? 2.5 : 1),
+                  ? Colors.amber.withValues(alpha: 0.6)
+                  : isOverloaded 
+                      ? Colors.orange.withValues(alpha: 0.6)
+                      : isSelected
+                          ? AppTheme.primary
+                          : (isSketchy && (component.type == ComponentType.rectangle || 
+                                         component.type == ComponentType.circle || 
+                                         component.type == ComponentType.diamond ||
+                                         component.type == ComponentType.arrow || 
+                                         component.type == ComponentType.line))
+                              ? AppTheme.border.withValues(alpha: 0.4)
+                              : (isConnecting
+                                  ? AppTheme.secondary.withValues(alpha: 0.5)
+                                  : Colors.transparent),
+          width: hasError || isSlow || isOverloaded ? 3 : (isSelected ? 2.5 : 1),
         ),
       ),
       child: isSketchy 
           ? _buildSketchyContent()
-          : _buildStandardContent(status, color, isActive),
+          : _buildStandardContent(status, color, isActive, metrics, hasError, isSlow, isOverloaded),
     );
     
-    // Add pulsing animation for errors
-    if (hasError) {
-      child = PulsingWrapper(child: child, color: Colors.red);
-    }
+    // Unified Failure Animation Wrapper
+    // If any issue is present, we wrap in ShakingWrapper (which handles jiggle)
+    // Pulsing is handled by the AnimatedContainer shadow/gradient updates or we can keep it separate
     
-    // Add shaking animation for overload
-    if (isOverloaded) {
+    if (hasError || isOverloaded || isSlow) {
       child = ShakingWrapper(child: child);
     }
     
@@ -192,7 +203,15 @@ class ComponentNode extends ConsumerWidget {
     );
   }
 
-  Widget _buildStandardContent(ComponentStatus status, Color color, bool isActive) {
+  Widget _buildStandardContent(
+    ComponentStatus status, 
+    Color color, 
+    bool isActive,
+    ComponentMetrics metrics,
+    bool hasError,
+    bool isSlow,
+    bool isOverloaded
+  ) {
       final config = component.config;
       
       return Stack(
@@ -319,6 +338,26 @@ class ComponentNode extends ConsumerWidget {
                   ),
                 ),
 
+              // Capacity / Traffic Indicator
+              if (isActive)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Builder(
+                    builder: (context) {
+                      final totalCapacity = config.capacity * config.instances;
+                      final isOverflow = metrics.currentRps > totalCapacity;
+                      return Text(
+                        '${metrics.currentRps} / ${totalCapacity} RPS',
+                        style: TextStyle(
+                          fontSize: 6,
+                          fontWeight: FontWeight.bold,
+                          color: isOverflow ? Colors.red : AppTheme.textSecondary.withValues(alpha: 0.7),
+                        ),
+                      );
+                    }
+                  ),
+                ),
+
               // Schema View (Optional)
               if (component.type == ComponentType.database && config.showSchema && config.dbSchema != null) ...[
                 const SizedBox(height: 6),
@@ -346,8 +385,146 @@ class ComponentNode extends ConsumerWidget {
           
           // Strategy Overlays (Badges)
           _buildStrategyBadges(config),
+
+          // Load Bar (New "Human" Feature)
+          if (isActive)
+            Positioned(
+              bottom: 4,
+              left: 4,
+              right: 4,
+              child: _buildLoadBar(metrics.cpuUsage),
+            ),
+
+          // Status Emoji (New "Human" Feature)
+          if (hasError || isSlow || isOverloaded)
+            Positioned(
+              top: -8,
+              left: -8,
+              child: _buildStatusEmoji(hasError, isSlow, isOverloaded),
+            ),
+            
+          // Pressure Label (Explicit "Capacity Used" indicator)
+          if (isActive && (metrics.cpuUsage > 0.5 || metrics.queueDepth > 10 || metrics.connectionPoolUtilization > 0.5))
+             Positioned(
+               bottom: 12,
+               right: 4,
+               child: _buildPressureLabel(metrics),
+             ),
         ],
       );
+  }
+
+  Widget _buildPressureLabel(ComponentMetrics metrics) {
+    // Determine the dominant pressure factor
+    double pressure = metrics.cpuUsage;
+    String label = 'LOAD';
+    
+    if (metrics.queueDepth > 50) {
+      // Normalize queue depth for display (e.g. 100 items = 100% vis)
+      pressure = (metrics.queueDepth / 200).clamp(0.0, 1.0);
+      label = 'QUEUE';
+    } else if (metrics.connectionPoolUtilization > pressure) {
+      pressure = metrics.connectionPoolUtilization;
+      label = 'CONN';
+    }
+    
+    final percentage = (pressure * 100).toInt();
+    final color = pressure > 0.9 ? AppTheme.error : (pressure > 0.7 ? AppTheme.warning : AppTheme.textSecondary);
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration: BoxDecoration(
+        color: AppTheme.surface.withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.5), width: 0.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 2,
+          )
+        ]
+      ),
+      child: Text(
+        '$label: $percentage%',
+        style: TextStyle(
+          fontSize: 6, 
+          fontWeight: FontWeight.w900,
+          color: color,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadBar(double load) {
+    // Green -> Yellow -> Red gradient based on load
+    final color = load > 0.9 
+        ? AppTheme.error 
+        : load > 0.7 
+            ? AppTheme.warning 
+            : AppTheme.success;
+            
+    // Enhanced Load Bar: Taller and with Glow
+    return Container(
+      height: 6, // Taller
+      clipBehavior: Clip.hardEdge,
+      decoration: BoxDecoration(
+        color: AppTheme.background.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(3),
+        border: Border.all(color: AppTheme.border.withValues(alpha: 0.3), width: 0.5),
+      ),
+      // Smoothly animate the width of the load bar
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0, end: load.clamp(0.0, 1.0)),
+        duration: const Duration(milliseconds: 200), // Smooth 200ms transition
+        curve: Curves.easeOutCubic,
+        builder: (context, value, child) {
+          return FractionallySizedBox(
+            alignment: Alignment.centerLeft,
+            widthFactor: value,
+            child: Container(
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(3),
+                boxShadow: load > 0.7 ? [
+                   BoxShadow(color: color.withValues(alpha: 0.6), blurRadius: 6, spreadRadius: 1),
+                ] : null,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildStatusEmoji(bool hasError, bool isSlow, bool isOverloaded) {
+    IconData? icon;
+    Color color = Colors.transparent;
+    
+    if (hasError) {
+      icon = Icons.error_outline;
+      color = AppTheme.error;
+    } else if (isOverloaded) {
+      icon = Icons.local_fire_department;
+      color = Colors.orange;
+    } else if (isSlow) {
+      icon = Icons.hourglass_bottom;
+      color = Colors.amber;
+    }
+    
+    if (icon == null) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        shape: BoxShape.circle,
+        border: Border.all(color: color, width: 1.5),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 4, offset: const Offset(0, 2)),
+        ],
+      ),
+      child: Icon(icon, size: 14, color: color),
+    );
   }
 
   Widget _buildStrategyBadges(ComponentConfig config) {
@@ -529,6 +706,13 @@ class ComponentNode extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Color GetStatusColor(bool hasError, bool isOverloaded, bool isSlow) {
+    if (hasError) return AppTheme.error;
+    if (isOverloaded) return Colors.orange;
+    if (isSlow) return Colors.amber;
+    return AppTheme.surface;
   }
 }
 

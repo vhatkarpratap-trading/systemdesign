@@ -202,7 +202,11 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
             
             // Escape key handling
             if (key == LogicalKeyboardKey.escape) {
-              if (activeTool != CanvasTool.select) {
+              // Close settings sidebar first if open
+              if (_showSettingsSidebar) {
+                _closeSidebar();
+                return KeyEventResult.handled;
+              } else if (activeTool != CanvasTool.select) {
                 // Revert tool to Select
                 ref.read(canvasToolProvider.notifier).state = CanvasTool.select;
               } else if (canvasState.selectedComponentId != null) {
@@ -349,6 +353,7 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                           behavior: HitTestBehavior.translucent,
                           onTap: () {
                             if (isHandMode) return;
+                            // Reset selection on background tap
                             ref.read(canvasProvider.notifier).selectComponent(null);
                             setState(() {
                               _editingComponentId = null;
@@ -356,6 +361,18 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                               _selectedComponentForSidebar = null;
                             });
                             _focusNode.requestFocus();
+                          },
+                          onTapUp: (details) {
+                             if (activeTool == CanvasTool.text) {
+                                final canvasPos = _getCanvasPosition(details.globalPosition);
+                                ref.read(canvasProvider.notifier).addComponent(
+                                  ComponentType.text,
+                                  canvasPos,
+                                );
+                                // Optional: Switch back to select tool after placing text?
+                                // ref.read(canvasToolProvider.notifier).state = CanvasTool.select;
+                                return;
+                             }
                           },
                           onDoubleTapDown: (details) {
                             if (isSelectionMode) {
@@ -781,6 +798,11 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
         }
       }
       return;
+    }
+
+    // Close settings sidebar if clicking anywhere on canvas
+    if (_showSettingsSidebar && _selectedComponentForSidebar?.id != component.id) {
+      _closeSidebar();
     }
 
     // Toggle selection

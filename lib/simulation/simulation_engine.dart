@@ -89,6 +89,13 @@ class SimulationEngine {
     _ref.read(simulationProvider.notifier).resume();
   }
 
+  /// Stop and full reset of simulation state
+  void reset() {
+    stop();
+    _ref.read(simulationProvider.notifier).reset();
+    _ref.read(simulationMetricsProvider.notifier).state = {};
+  }
+
   /// Stop the simulation
   void stop() {
     _simulationTimer?.cancel();
@@ -142,6 +149,7 @@ class SimulationEngine {
     try {
       final canvasState = _ref.read(canvasProvider);
       final problem = _ref.read(currentProblemProvider);
+      final previousMetrics = _ref.read(simulationMetricsProvider);
       
       // Prepare data for isolate
       final data = SimulationData(
@@ -150,6 +158,8 @@ class SimulationEngine {
         problem: problem,
         currentGlobalMetrics: simState.globalMetrics,
         tickCount: simState.tickCount,
+        activeChaosEvents: simState.activeChaosEvents.where((e) => e.isActive).toList(),
+        previousMetrics: previousMetrics,
       );
 
       // Run simulation in background
@@ -172,9 +182,16 @@ class SimulationEngine {
 
       simNotifier.updateMetrics(result.globalMetrics);
 
-      // Auto-complete after 30 seconds (300 ticks at 10 ticks/sec)
-      if (simState.tickCount >= 300 || result.isCompleted) {
+      // Auto-complete after 60 minutes (36000 ticks) - effectively infinite for user session
+      // This solves the issue where users feel they need to restart because the sim ended.
+      if (simState.tickCount >= 36000 || result.isCompleted) {
         complete();
+      }
+
+      // Check for topology changes for debug/feedback
+      if (canvasState.components.length != _lastComponentCount) {
+        debugPrint('Topology Change Detected: ${canvasState.components.length} components. Simulating with new topology.');
+        _lastComponentCount = canvasState.components.length;
       }
     } catch (e) {
       debugPrint('Simulation error: $e');
@@ -182,6 +199,9 @@ class SimulationEngine {
       _isProcessingTick = false;
     }
   }
+
+  // Track component count to detect valid hot-reloading
+  int _lastComponentCount = 0;
 
   /// Calculate final score (Now static for Isolate support)
   static Score _calculateScoreIsolate(_ScoreData data) {

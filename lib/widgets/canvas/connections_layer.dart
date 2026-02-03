@@ -318,7 +318,7 @@ class _ConnectionsPainter extends CustomPainter {
       }
     }
 
-    // 4. Draw Traffic Packets
+    // 4. Draw Traffic Packets (Enhanced Flow Visualization)
     if (traffic > 0) {
       _drawPackets(canvas, path, lineColor, traffic);
     }
@@ -369,8 +369,6 @@ class _ConnectionsPainter extends CustomPainter {
      final pathMetrics = path.computeMetrics().toList();
     if (pathMetrics.isEmpty) return;
     
-    // Check if we need to account for multiple segments in rounded path
-    // Just finding the longest metric usually works for the main route
     final pathMetric = pathMetrics.fold<PathMetric>(
         pathMetrics.first, 
         (prev, curr) => curr.length > prev.length ? curr : prev
@@ -382,15 +380,23 @@ class _ConnectionsPainter extends CustomPainter {
       ..color = color
       ..style = PaintingStyle.fill;
 
-    final packetCount = traffic > 0.5 ? 3 : 2;
+    // Enhanced Data Flow: 
+    // More packets = Higher Traffic
+    // 0.1 load = 2 packets
+    // 1.0 load = 15 packets (Busy Highway)
+    final basePackets = (traffic * 20).ceil();
+    final packetCount = math.max(2, basePackets);
     
     for (int i = 0; i < packetCount; i++) {
+      // Staggered movement
       final offset = (animationValue + i / packetCount) % 1.0;
       final distance = offset * pathLength;
       final tangent = pathMetric.getTangentForOffset(distance);
       
       if (tangent != null) {
-        canvas.drawCircle(tangent.position, 3.0, packetPaint);
+        // Size varies slightly for organic look
+        final size = 3.0 + (i % 2); 
+        canvas.drawCircle(tangent.position, size, packetPaint);
       }
     }
   }

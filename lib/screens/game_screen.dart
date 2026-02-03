@@ -60,7 +60,9 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     
     // Auto-load a complex design for testing simulation and click-to-fix
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(canvasProvider.notifier).loadSolution(ref.read(currentProblemProvider));
+      // ref.read(canvasProvider.notifier).loadSolution(ref.read(currentProblemProvider));
+      // Initialize with empty or saved progress instead
+      ref.read(canvasProvider.notifier).initializeWithProblem(ref.read(currentProblemProvider).id);
     });
   }
 
@@ -275,7 +277,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                     onStop: () => ref.read(simulationEngineProvider).stop(),
                     onReset: () {
                       setState(() => _showResultsOverlay = false);
-                      ref.read(simulationEngineProvider).stop();
+                      ref.read(simulationEngineProvider).reset();
                     },
                     onViewResults: () => setState(() => _showResultsOverlay = true),
                   ),
