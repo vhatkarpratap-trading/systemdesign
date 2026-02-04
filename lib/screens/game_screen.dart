@@ -286,6 +286,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                     onReset: () {
                       setState(() => _showResultsOverlay = false);
                       ref.read(simulationEngineProvider).reset();
+                      ref.read(canvasProvider.notifier).clearCanvas();
                     },
                     onViewResults: () => setState(() => _showResultsOverlay = true),
                   ),

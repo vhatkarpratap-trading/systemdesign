@@ -368,7 +368,7 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                   
                   return Listener(
                     onPointerSignal: (pointerSignal) {
-                      if (pointerSignal is PointerScrollEvent && !isSimulating) {
+                      if (pointerSignal is PointerScrollEvent) {
                         final isControl = HardwareKeyboard.instance.isControlPressed || 
                                          HardwareKeyboard.instance.isMetaPressed;
                         
@@ -492,9 +492,7 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                                           canvasState: canvasState,
                                           isSimulating: isSimulating,
                                           onTap: (connection) {
-                                            if (!isSimulating) {
-                                              _showConnectionOptions(connection);
-                                            }
+                                            _showConnectionOptions(connection);
                                           },
                                         ),
                                       ),
@@ -537,14 +535,14 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                                       final isHovered = _hoveredComponentId == component.id;
                                       final isArrowActive = activeTool == CanvasTool.arrow;
                                       final isValidTarget = (isConnecting && canvasState.connectingFromId != component.id) || 
-                                                          (isArrowActive && isHovered && !isSimulating);
+                                                          (isArrowActive && isHovered);
                                       
                                       return Positioned(
                                         left: component.position.dx,
                                         top: component.position.dy,
                                         child: MouseRegion(
                                           onEnter: (_) {
-                                            if (!isSimulating && activeTool == CanvasTool.arrow) {
+                                            if (activeTool == CanvasTool.arrow) {
                                               setState(() => _hoveredComponentId = component.id);
                                             }
                                           },
@@ -586,7 +584,7 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                                               _onComponentTap(component, isConnecting);
                                               _focusNode.requestFocus();
                                             },
-                                            onDoubleTap: isSimulating ? null : () {
+                                            onDoubleTap: () {
                                               debugPrint('Flutter DoubleTap: ${component.id}');
                                               // Fallback if manual fails or Flutter starts working
                                               if (activeTool == CanvasTool.arrow) return;
@@ -607,7 +605,7 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                                                 _onDragConnectUpdate(details.globalPosition);
                                                 return;
                                               }
-                                              if (!isSimulating && isSelectionMode) {
+                                              if (isSelectionMode) {
                                                 _moveComponent(component, details.delta);
                                               }
                                             },
@@ -654,7 +652,7 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
 
                                     // Issue Markers - only if enabled and user visible
                                     ...(canvasState.showErrors 
-                                        ? simState.failures.where((f) => f.userVisible).map((failure) {
+                                        ? simState.visibleFailures.where((f) => f.userVisible).map((failure) {
                                             final component = canvasState.getComponent(failure.componentId);
                                             if (component == null) return const SizedBox.shrink();
                                             return IssueMarker(

@@ -18,17 +18,28 @@ class IssueMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDesignTime = failure.type == FailureType.spof ||
+        failure.type == FailureType.dataLoss ||
+        failure.type == FailureType.costOverrun;
+    final severityColor = isDesignTime
+        ? AppTheme.warning
+        : failure.severity > 0.8
+            ? AppTheme.error
+            : failure.severity > 0.5
+                ? AppTheme.warning
+                : Colors.amber;
+
     return Positioned(
       left: position.dx - 12,
       top: position.dy - 60, // Position above the component
       child: Tooltip(
-        message: failure.message,
+        message: '${failure.message}\n${failure.recommendation}',
         child: Column(
           children: [
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: AppTheme.error.withOpacity(0.9),
+                color: severityColor.withOpacity(0.9),
                 borderRadius: BorderRadius.circular(4),
                 boxShadow: [
                   BoxShadow(
@@ -39,7 +50,7 @@ class IssueMarker extends StatelessWidget {
                 ],
               ),
               child: Text(
-                failure.type.toString().split('.').last.toUpperCase(),
+                failure.type.displayName.toUpperCase(),
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 10,
@@ -56,8 +67,8 @@ class IssueMarker extends StatelessWidget {
             Container(
               width: 24,
               height: 24,
-              decoration: const BoxDecoration(
-                color: AppTheme.error,
+              decoration: BoxDecoration(
+                color: severityColor,
                 shape: BoxShape.circle,
               ),
               child: const Icon(

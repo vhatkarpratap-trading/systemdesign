@@ -15,6 +15,7 @@ class SimulationEngine {
   final Ref _ref;
   Timer? _simulationTimer;
   bool _isProcessingTick = false;
+  double _tickDurationSeconds = 0.1;
 
   SimulationEngine(this._ref);
 
@@ -57,6 +58,7 @@ class SimulationEngine {
 
     // Base interval is 100ms. Higher speed = shorter interval.
     final intervalMs = (100 / speed).round(); 
+    _tickDurationSeconds = intervalMs / 1000.0;
     
     _simulationTimer = Timer.periodic(
       Duration(milliseconds: intervalMs),
@@ -161,6 +163,7 @@ class SimulationEngine {
         activeChaosEvents: simState.activeChaosEvents.where((e) => e.isActive).toList(),
         previousMetrics: previousMetrics,
         trafficLevel: canvasState.trafficLevel,
+        tickDurationSeconds: _tickDurationSeconds,
       );
 
       // Run simulation in background

@@ -46,8 +46,6 @@ class _ConnectionsLayerState extends State<ConnectionsLayer>
   Widget build(BuildContext context) {
     return GestureDetector(
       onTapUp: (details) {
-        if (widget.isSimulating) return;
-        
         final tapPos = details.localPosition;
         
         // Find tapped connection

@@ -192,7 +192,7 @@ class ResultsScreen extends ConsumerWidget {
                     child: OutlinedButton.icon(
                       onPressed: () {
                         // Reset and try again
-                        ref.read(canvasProvider.notifier).resetForProblem();
+                        ref.read(canvasProvider.notifier).clearCanvas();
                         ref.read(simulationProvider.notifier).reset();
                         ref.read(scoreProvider.notifier).state = null;
                         if (onClose != null) {
@@ -305,7 +305,7 @@ class ResultsScreen extends ConsumerWidget {
                   children: [
                     OutlinedButton.icon(
                       onPressed: () {
-                         ref.read(canvasProvider.notifier).resetForProblem();
+                         ref.read(canvasProvider.notifier).clearCanvas();
                          ref.read(simulationProvider.notifier).reset();
                          Navigator.pop(context);
                       },

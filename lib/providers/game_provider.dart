@@ -89,7 +89,10 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
     if (loadedState != null) {
       state = loadedState;
     } else {
-      state = const CanvasState();
+      final loadedSample = await _loadDesignFromAsset('assets/solutions/complex_sample_design.json');
+      if (!loadedSample) {
+        state = const CanvasState();
+      }
     }
   }
 
@@ -610,6 +613,14 @@ String addComponentTemplate(SystemComponent template, Offset position) {
     _save();
   }
 
+  /// Clear the canvas entirely (Manual Reset)
+  void clearCanvas() {
+    _currentDesignId = null;
+    _currentDesignName = null;
+    state = const CanvasState();
+    _save();
+  }
+
   /// Load the optimal solution for the problem
   void loadSolution(Problem problem) {
     _currentProblemId = problem.id; // Ensure we save solution if they modify it?
@@ -617,7 +628,7 @@ String addComponentTemplate(SystemComponent template, Offset position) {
     // Logic: Loading solution REPLACES current canvas
     
     if (problem.id == 'url_shortener') {
-      _loadUrlShortenerSolution().then((_) => _save());
+      _loadDesignFromAsset('assets/solutions/url_shortener_solution.json').then((_) => _save());
     } else {
       _save();
     }
@@ -875,9 +886,9 @@ String addComponentTemplate(SystemComponent template, Offset position) {
     _save();
   }
 
-  Future<void> _loadUrlShortenerSolution() async {
+  Future<bool> _loadDesignFromAsset(String assetPath) async {
     try {
-      final jsonString = await rootBundle.loadString('assets/solutions/url_shortener_solution.json');
+      final jsonString = await rootBundle.loadString(assetPath);
       final data = jsonDecode(jsonString) as Map<String, dynamic>;
 
       final components = (data['components'] as List)
@@ -888,12 +899,30 @@ String addComponentTemplate(SystemComponent template, Offset position) {
           .map((c) => Connection.fromJson(c))
           .toList();
 
+      Offset? panOffset;
+      double? scale;
+      final viewState = data['viewState'] as Map<String, dynamic>?;
+      if (viewState != null) {
+        final panJson = viewState['panOffset'] as Map<String, dynamic>?;
+        if (panJson != null) {
+          panOffset = Offset(
+            (panJson['x'] as num?)?.toDouble() ?? 0.0,
+            (panJson['y'] as num?)?.toDouble() ?? 0.0,
+          );
+        }
+        scale = (viewState['scale'] as num?)?.toDouble();
+      }
+
       state = state.copyWith(
         components: components,
         connections: connections,
+        panOffset: panOffset ?? state.panOffset,
+        scale: scale ?? state.scale,
       );
+      return true;
     } catch (e, stack) {
-      debugPrint('Error loading solution: $e\n$stack');
+      debugPrint('Error loading design from asset ($assetPath): $e\n$stack');
+      return false;
     }
   }
 
@@ -917,6 +946,7 @@ class SimulationState {
   final SimulationStatus status;
   final GlobalMetrics globalMetrics;
   final List<FailureEvent> failures;
+  final List<FailureEvent> visibleFailures; // Failures shown on components after persistence delay
   final int tickCount;
   final double simulationSpeed;
   final List<ChaosEvent> activeChaosEvents;
@@ -927,6 +957,7 @@ class SimulationState {
     this.status = SimulationStatus.idle,
     this.globalMetrics = const GlobalMetrics(),
     this.failures = const [],
+    this.visibleFailures = const [],
     this.tickCount = 0,
     this.simulationSpeed = 1.0,
     this.activeChaosEvents = const [],
@@ -938,6 +969,7 @@ class SimulationState {
     SimulationStatus? status,
     GlobalMetrics? globalMetrics,
     List<FailureEvent>? failures,
+    List<FailureEvent>? visibleFailures,
     int? tickCount,
     double? simulationSpeed,
     List<ChaosEvent>? activeChaosEvents,
@@ -948,6 +980,7 @@ class SimulationState {
       status: status ?? this.status,
       globalMetrics: globalMetrics ?? this.globalMetrics,
       failures: failures ?? this.failures,
+      visibleFailures: visibleFailures ?? this.visibleFailures,
       tickCount: tickCount ?? this.tickCount,
       simulationSpeed: simulationSpeed ?? this.simulationSpeed,
       activeChaosEvents: activeChaosEvents ?? this.activeChaosEvents,
@@ -964,11 +997,15 @@ class SimulationState {
 
 class SimulationNotifier extends StateNotifier<SimulationState> {
   SimulationNotifier() : super(const SimulationState());
+  static const Duration _failureVisibleAfter = Duration(seconds: 5);
+  final Map<String, DateTime> _failureFirstSeen = {};
 
   void start() {
+    _failureFirstSeen.clear();
     state = state.copyWith(
       status: SimulationStatus.running,
       failures: [],
+      visibleFailures: [],
       tickCount: 0,
       lastConnectionTraffic: {},
     );
@@ -1012,14 +1049,36 @@ class SimulationNotifier extends StateNotifier<SimulationState> {
   }
 
   void setFailures(List<FailureEvent> failures) {
-    state = state.copyWith(failures: failures);
+    final now = DateTime.now();
+    final currentKeys = <String>{};
+
+    for (final failure in failures) {
+      final key = '${failure.componentId}|${failure.type.name}';
+      currentKeys.add(key);
+      _failureFirstSeen.putIfAbsent(key, () => now);
+    }
+
+    _failureFirstSeen.removeWhere((key, _) => !currentKeys.contains(key));
+
+    final visible = failures.where((failure) {
+      final key = '${failure.componentId}|${failure.type.name}';
+      final firstSeen = _failureFirstSeen[key] ?? now;
+      return now.difference(firstSeen) >= _failureVisibleAfter;
+    }).toList();
+
+    state = state.copyWith(
+      failures: failures,
+      visibleFailures: visible,
+    );
     // Note: We no longer stop the simulation on failure
   }
 
   /// Optimistically clear failures for a component (used when a fix is applied)
   void clearFailuresForComponent(String componentId) {
+    _failureFirstSeen.removeWhere((key, _) => key.startsWith('$componentId|'));
     state = state.copyWith(
       failures: state.failures.where((f) => f.componentId != componentId).toList(),
+      visibleFailures: state.visibleFailures.where((f) => f.componentId != componentId).toList(),
     );
   }
 
@@ -1042,6 +1101,7 @@ class SimulationNotifier extends StateNotifier<SimulationState> {
   }
 
   void reset() {
+    _failureFirstSeen.clear();
     state = const SimulationState();
   }
 

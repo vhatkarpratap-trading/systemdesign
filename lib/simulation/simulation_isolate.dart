@@ -17,6 +17,7 @@ class SimulationData {
   final List<ChaosEvent> activeChaosEvents;
   final Map<String, ComponentMetrics> previousMetrics;
   final double trafficLevel; // User-controlled 0.0-1.0 (0-100%)
+  final double tickDurationSeconds; // Simulated time per tick
 
   SimulationData({
     required this.components,
@@ -27,6 +28,7 @@ class SimulationData {
     this.activeChaosEvents = const [],
     this.previousMetrics = const {},
     this.trafficLevel = 1.0, // Default 100% traffic
+    this.tickDurationSeconds = _defaultSimWindowSeconds,
   });
 }
 
@@ -45,6 +47,172 @@ class SimulationResult {
     required this.globalMetrics,
     required this.isCompleted,
   });
+}
+
+// --- Event-driven simulation helpers ---
+const double _defaultSimWindowSeconds = 1.0;
+const int _minSampleEvents = 120;
+const int _maxSampleEvents = 2000;
+
+enum _EventType { arrival, completion }
+
+class _Token {
+  final double weight; // How many real requests this token represents
+  final double arrivedAt; // Arrival time at current component (seconds)
+  final String? callerId; // Upstream component that sent this token
+  final int retryCount;
+
+  const _Token({
+    required this.weight,
+    required this.arrivedAt,
+    this.callerId,
+    this.retryCount = 0,
+  });
+
+  _Token copyWith({
+    double? arrivedAt,
+    String? callerId,
+    int? retryCount,
+  }) {
+    return _Token(
+      weight: weight,
+      arrivedAt: arrivedAt ?? this.arrivedAt,
+      callerId: callerId ?? this.callerId,
+      retryCount: retryCount ?? this.retryCount,
+    );
+  }
+}
+
+class _Event {
+  final double time; // seconds
+  final _EventType type;
+  final String componentId;
+  final _Token token;
+  final String? connectionId;
+
+  const _Event({
+    required this.time,
+    required this.type,
+    required this.componentId,
+    required this.token,
+    this.connectionId,
+  });
+}
+
+class _AutoscaleState {
+  final int effectiveInstances;
+  final bool isScaling;
+  final int targetInstances;
+  final int readyInstances;
+  final int coldStartingInstances;
+
+  const _AutoscaleState({
+    required this.effectiveInstances,
+    required this.isScaling,
+    required this.targetInstances,
+    required this.readyInstances,
+    required this.coldStartingInstances,
+  });
+}
+
+class _SimComponentState {
+  final SystemComponent component;
+  final ComponentMetrics? prevMetrics;
+  final int servers;
+  final int capacityPerInstance;
+  final double baseLatencyMs;
+  final bool isCrashed;
+  final bool isSlow;
+  final double slownessFactor;
+  final bool circuitOpen;
+  final int? rateLimitTokens;
+  final int maxQueueTokens;
+  final _AutoscaleState autoscale;
+
+  int arrivals = 0;
+  int processed = 0;
+  int errors = 0;
+  int inService = 0;
+  bool isThrottled = false;
+
+  double totalLatencyMs = 0.0;
+  final List<double> latencySamples = [];
+  final List<_Token> queue = [];
+
+  _SimComponentState({
+    required this.component,
+    required this.prevMetrics,
+    required this.servers,
+    required this.capacityPerInstance,
+    required this.baseLatencyMs,
+    required this.isCrashed,
+    required this.isSlow,
+    required this.slownessFactor,
+    required this.circuitOpen,
+    required this.rateLimitTokens,
+    required this.maxQueueTokens,
+    required this.autoscale,
+  });
+
+  double get utilization {
+    if (servers <= 0) return 1.0;
+    final inFlight = queue.length + inService;
+    return inFlight / servers;
+  }
+}
+
+class _MinHeap {
+  final List<_Event> _items = [];
+
+  bool get isEmpty => _items.isEmpty;
+  bool get isNotEmpty => _items.isNotEmpty;
+
+  void add(_Event value) {
+    _items.add(value);
+    _bubbleUp(_items.length - 1);
+  }
+
+  _Event pop() {
+    final first = _items.first;
+    final last = _items.removeLast();
+    if (_items.isNotEmpty) {
+      _items[0] = last;
+      _bubbleDown(0);
+    }
+    return first;
+  }
+
+  void _bubbleUp(int index) {
+    while (index > 0) {
+      final parent = (index - 1) >> 1;
+      if (_items[index].time >= _items[parent].time) break;
+      final tmp = _items[parent];
+      _items[parent] = _items[index];
+      _items[index] = tmp;
+      index = parent;
+    }
+  }
+
+  void _bubbleDown(int index) {
+    final length = _items.length;
+    while (true) {
+      final left = (index << 1) + 1;
+      final right = left + 1;
+      int smallest = index;
+
+      if (left < length && _items[left].time < _items[smallest].time) {
+        smallest = left;
+      }
+      if (right < length && _items[right].time < _items[smallest].time) {
+        smallest = right;
+      }
+      if (smallest == index) break;
+      final tmp = _items[index];
+      _items[index] = _items[smallest];
+      _items[smallest] = tmp;
+      index = smallest;
+    }
+  }
 }
 
 /// Run a single simulation tick in an isolate
@@ -69,9 +237,22 @@ SimulationResult runSimulationTick(SimulationData data) {
   // CRITICAL: Apply user's traffic level control (0-100% slider)
   final currentRps = (targetRps * multiplier * chaosMultiplier * data.trafficLevel * (0.95 + random.nextDouble() * 0.1)).toInt();
 
+  final simWindowSeconds = data.tickDurationSeconds > 0
+      ? data.tickDurationSeconds
+      : _defaultSimWindowSeconds;
+
   // Process traffic
   final (componentMetrics, connectionTraffic, failures) =
-      _processTraffic(components, connections, currentRps, problem, random, data.activeChaosEvents, data.previousMetrics);
+      _processTraffic(
+        components,
+        connections,
+        currentRps,
+        problem,
+        random,
+        data.activeChaosEvents,
+        data.previousMetrics,
+        simWindowSeconds,
+      );
 
   // Check for consistency issues (replication lag, stale reads, etc.)
   final consistencyIssues = _checkConsistencyIssues(
@@ -135,7 +316,109 @@ SimulationResult runSimulationTick(SimulationData data) {
   Random random,
   List<ChaosEvent> activeChaosEvents,
   Map<String, ComponentMetrics> previousMetrics,
+  double simWindowSeconds,
 ) {
+  int chooseSampleCount(double totalRequests) {
+    if (totalRequests <= 0) return 0;
+    if (totalRequests < 40) return totalRequests.round().clamp(5, 40);
+    final desired = (totalRequests * 0.002).round(); // ~0.2% sampling
+    return desired.clamp(_minSampleEvents, _maxSampleEvents);
+  }
+
+  double randomNormal() {
+    // Box-Muller transform
+    final u1 = random.nextDouble().clamp(1e-8, 1.0);
+    final u2 = random.nextDouble();
+    return sqrt(-2.0 * log(u1)) * cos(2 * pi * u2);
+  }
+
+  double sampleLogNormal(double mean, double sigma) {
+    if (mean <= 0) return 0.0;
+    final variance = sigma * sigma;
+    final mu = log(mean) - 0.5 * variance;
+    final z = randomNormal();
+    return exp(mu + sigma * z);
+  }
+
+  double percentile(List<double> values, double p) {
+    if (values.isEmpty) return 0.0;
+    final sorted = List<double>.from(values)..sort();
+    final index = (sorted.length * p).clamp(0.0, (sorted.length - 1).toDouble());
+    return sorted[index.floor()];
+  }
+
+  double smooth(double next, double prev, double alpha) {
+    return (next * alpha) + (prev * (1 - alpha));
+  }
+
+  _AutoscaleState computeAutoscaleState(SystemComponent component, double estimatedRps) {
+    var effectiveInstances = component.config.instances;
+    var targetInstances = effectiveInstances;
+    var readyInstances = effectiveInstances;
+    var coldStartingInstances = 0;
+    var isScaling = false;
+
+    final baseCapacity = component.config.capacity * component.config.instances;
+    final load = baseCapacity > 0 ? (estimatedRps / baseCapacity) : 1.0;
+
+    if (component.config.autoScale && load > 0.7) {
+      targetInstances = (effectiveInstances * 1.5).ceil().clamp(
+        component.config.minInstances,
+        component.config.maxInstances,
+      );
+      if (targetInstances > effectiveInstances) {
+        isScaling = true;
+        coldStartingInstances = targetInstances - effectiveInstances;
+        // Cold instances are half capacity initially
+        effectiveInstances = readyInstances + (coldStartingInstances * 0.5).ceil();
+      }
+    }
+
+    return _AutoscaleState(
+      effectiveInstances: effectiveInstances,
+      isScaling: isScaling,
+      targetInstances: targetInstances,
+      readyInstances: readyInstances,
+      coldStartingInstances: coldStartingInstances,
+    );
+  }
+
+  double sampleServiceTimeMs(_SimComponentState state) {
+    var mean = max(state.baseLatencyMs, 1.0);
+    final prevCpu = state.prevMetrics?.cpuUsage ?? 0.0;
+    final contention = 1.0 + (prevCpu * 0.6);
+    final pressure = state.utilization;
+    final pressureFactor = pressure > 0.7 ? 1.0 + (pressure - 0.7) * 2.0 : 1.0;
+    mean *= contention * pressureFactor * state.slownessFactor;
+
+    // Chaos: DB slowdown
+    for (final event in activeChaosEvents) {
+      if (event.type == ChaosType.databaseSlowdown &&
+          state.component.type == ComponentType.database) {
+        mean *= (event.parameters['multiplier'] ?? 6.0);
+      }
+    }
+
+    final sigma = 0.35 + (prevCpu * 0.4);
+    return sampleLogNormal(mean, sigma).clamp(0.5, 60000.0);
+  }
+
+  double sampleNetworkLatencyMs(SystemComponent source, SystemComponent target) {
+    final sourceRegion = source.config.regions.isNotEmpty ? source.config.regions.first : 'us-east-1';
+    final targetRegion = target.config.regions.isNotEmpty ? target.config.regions.first : 'us-east-1';
+    final sameRegion = sourceRegion == targetRegion;
+    var base = sameRegion ? 2.0 + random.nextDouble() * 4.0 : 40.0 + random.nextDouble() * 90.0;
+
+    for (final event in activeChaosEvents) {
+      if (event.type == ChaosType.networkLatency) {
+        base += (event.parameters['latencyMs'] ?? 300).toDouble();
+      }
+    }
+
+    final jitter = base * (0.1 + random.nextDouble() * 0.3);
+    return base + jitter;
+  }
+
   final componentMetrics = <String, ComponentMetrics>{};
   final connectionTraffic = <String, double>{};
   final failures = <FailureEvent>[];
@@ -144,117 +427,393 @@ SimulationResult runSimulationTick(SimulationData data) {
     return (componentMetrics, connectionTraffic, failures);
   }
 
-  // 1. Sort components topologically (Source -> Sink)
-  // This ensures upstream traffic is calculated before downstream consumption
-  final sortedComponents = _topologicalSort(components, connections);
-  
-  // 2. Latency Backpressure Map (Sink -> Source)
-  // We need to know downstream latency to calculate upstream total duration
-  // Since we process Source->Sink for RPS, we'll use PREVIOUS tick's latency 
-  // for the backpressure estimation to avoid a double-pass complexity.
-  final downstreamLatencyMap = <String, double>{};
+  // Build connection maps
+  final outgoing = <String, List<Connection>>{};
+  final incoming = <String, List<Connection>>{};
   for (final c in components) {
-    if (previousMetrics.containsKey(c.id)) {
-      downstreamLatencyMap[c.id] = previousMetrics[c.id]!.latencyMs;
-    }
+    outgoing[c.id] = [];
+    incoming[c.id] = [];
+  }
+  for (final conn in connections) {
+    outgoing[conn.sourceId]?.add(conn);
+    incoming[conn.targetId]?.add(conn);
   }
 
-  // 3. Process each component in order
-  for (final component in sortedComponents) {
-    int componentRps = 0;
-    
-    // Check if it's an entry point (no incoming connections or explicit constraint)
-    final isEntryPoint = !connections.any((c) => c.targetId == component.id);
-    
-    if (isEntryPoint) {
-      // Divide total incoming RPS among entry points (e.g., Load Balancers, Users)
-      // If multiple entry points, split evenly
-      final entryPointCount = sortedComponents.where((c) => !connections.any((conn) => conn.targetId == c.id)).length;
-      componentRps = (incomingRps / (entryPointCount > 0 ? entryPointCount : 1)).ceil();
-    } else {
-      // Sum traffic from all upstream sources
-      final incomingConns = connections.where((c) => c.targetId == component.id);
-      for (final conn in incomingConns) {
-        // Try getting fresh metrics first, then fallback to previous
-        final sourceMetric = componentMetrics[conn.sourceId] ?? previousMetrics[conn.sourceId];
-        
-        if (sourceMetric != null) {
-          // Traffic flow logic:
-          // If source is 100% healthy, it sends 100% of its traffic.
-          // If source is failing/throttled, it sends less? No, typically it sends the traffic 
-          // but the traffic might be error responses. 
-          // For simulation simplicity: Throughput is preserved unless explicitly dropped.
-          
-          // Distribution strategy:
-          // If source splits to multiple targets, how do we split?
-          // SMART SPLIT: Reroute traffic away from crashed components to healthy siblings
-          final siblings = connections.where((c) => c.sourceId == conn.sourceId);
-          
-          // Determine which siblings are currently crashed via chaos
-          final healthySiblings = siblings.where((s) {
-            return !activeChaosEvents.any((e) => 
-               e.type == ChaosType.componentCrash && e.parameters['componentId'] == s.targetId);
-          }).toList();
+  final entryPoints = components.where((c) => (incoming[c.id] ?? []).isEmpty).toList();
+  final effectiveEntryPoints = entryPoints.isEmpty ? components : entryPoints;
+  final entryCount = max(1, effectiveEntryPoints.length);
 
-          // If all are crashed, traffic still flows (to be dropped at target)
-          // Otherwise, only healthy ones take the load
-          final shareCount = healthySiblings.isEmpty ? siblings.length : healthySiblings.length;
-          final isHealthy = !activeChaosEvents.any((e) => 
-              e.type == ChaosType.componentCrash && e.parameters['componentId'] == component.id);
-          
-          if (isHealthy || healthySiblings.isEmpty) {
-            final flow = (sourceMetric.currentRps / (shareCount > 0 ? shareCount : 1)).ceil();
-            componentRps += flow;
-          }
+  final totalRequests = max(0, incomingRps) * simWindowSeconds;
+  final sampleCount = chooseSampleCount(totalRequests);
+  final tokenWeight = sampleCount > 0 ? totalRequests / sampleCount : 0.0;
+
+  // Initialize component states
+  final states = <String, _SimComponentState>{};
+  for (final component in components) {
+    final prev = previousMetrics[component.id];
+    final estimatedRps = entryPoints.contains(component)
+        ? (incomingRps / entryCount)
+        : (prev?.currentRps ?? 0);
+
+    final autoscale = computeAutoscaleState(component, estimatedRps.toDouble());
+    final effectiveInstances = max(1, autoscale.effectiveInstances);
+
+    bool isCrashed = false;
+    for (final event in activeChaosEvents) {
+      if (event.type == ChaosType.componentCrash) {
+        final targetId = event.parameters['componentId'];
+        if (targetId == null || targetId == component.id) {
+          isCrashed = random.nextDouble() < 0.1;
         }
       }
     }
 
-    // Get max downstream latency for backpressure
-    double maxDownstreamLatency = 0.0;
-    final outgoingConns = connections.where((c) => c.sourceId == component.id);
-    for (final conn in outgoingConns) {
-      final lat = downstreamLatencyMap[conn.targetId] ?? 0.0;
-      if (lat > maxDownstreamLatency) maxDownstreamLatency = lat;
-    }
+    final isSlow = random.nextDouble() < 0.02;
+    final slownessFactor = isSlow ? (1.5 + random.nextDouble() * 3.5) : 1.0;
+    final circuitOpen = component.config.circuitBreaker &&
+        (prev?.errorRate ?? 0.0) > 0.25;
 
-    final prevMetric = previousMetrics[component.id];
+    final capacityPerInstance = component.config.capacity;
+    final baseLatencyMs = max(1.0, _getBaseLatency(component.type));
+    final concurrencyPerInstance = max(1, ((capacityPerInstance * baseLatencyMs) / 1000).round());
+    final servers = effectiveInstances * concurrencyPerInstance;
+    final rateLimitRps = component.config.rateLimitRps ??
+        (capacityPerInstance * effectiveInstances);
+    final rateLimitTokens = tokenWeight > 0
+        ? (rateLimitRps * simWindowSeconds / tokenWeight).floor()
+        : null;
 
-    final metrics = _calculateComponentMetrics(
-        component, 
-        componentRps, 
-        problem, 
-        random,
-        connections,
-        components,
-        activeChaosEvents,
-        prevMetric,
-        maxDownstreamLatency, // NEW: Pass downstream latency
+    final maxQueueTokens = tokenWeight > 0
+        ? max(
+            10,
+            max(
+              servers * 4,
+              (capacityPerInstance *
+                      effectiveInstances *
+                      2 *
+                      simWindowSeconds /
+                      tokenWeight)
+                  .round(),
+            ),
+          )
+        : 10;
+
+    states[component.id] = _SimComponentState(
+      component: component,
+      prevMetrics: prev,
+      servers: servers,
+      capacityPerInstance: capacityPerInstance,
+      baseLatencyMs: baseLatencyMs,
+      isCrashed: isCrashed,
+      isSlow: isSlow,
+      slownessFactor: slownessFactor,
+      circuitOpen: circuitOpen,
+      rateLimitTokens: component.config.rateLimiting ? rateLimitTokens : null,
+      maxQueueTokens: maxQueueTokens,
+      autoscale: autoscale,
     );
-    componentMetrics[component.id] = metrics;
-
-    final componentFailures = _checkFailures(component, metrics, problem, components, connections);
-    failures.addAll(componentFailures);
   }
 
-  // 4. Calculate connection traffic flow for visualization
-  for (final connection in connections) {
-    final sourceMetrics = componentMetrics[connection.sourceId];
-    if (sourceMetrics != null) {
-      final sourceComponent = components.firstWhere((c) => c.id == connection.sourceId);
-      // Flow capacity = Traffic / (Capacity + small_buffer)
-      // Visualizing how "full" the pipe is relative to source's ability to handle it?
-      // Or relative to a fixed "Pipe Capacity"? 
-      // Let's use Source Load as proxy for Pipe fullness for now.
-      
-      final traffic = sourceMetrics.currentRps;
-      // Normalize traffic for visualization (e.g., 0 to 1000 RPS maps to 0.0 to 1.0)
-      // But keeping it relative to something meaningful...
-      // Let's use a log scale or capped linear scale for visuals
-      final flow = (traffic / 2000.0).clamp(0.0, 1.0); // 2000 RPS = "Full Pipe" visually
-      
-      connectionTraffic[connection.id] = flow;
+  // Event-driven simulation
+  final events = _MinHeap();
+  for (int i = 0; i < sampleCount; i++) {
+    final entry = effectiveEntryPoints[random.nextInt(entryCount)];
+    final time = random.nextDouble() * simWindowSeconds;
+    events.add(_Event(
+      time: time,
+      type: _EventType.arrival,
+      componentId: entry.id,
+      token: _Token(weight: tokenWeight, arrivedAt: time),
+    ));
+  }
+
+  final connectionTrafficRps = <String, double>{};
+
+  void scheduleArrival({
+    required double time,
+    required String componentId,
+    required _Token token,
+    String? connectionId,
+  }) {
+    if (time > simWindowSeconds) return;
+    events.add(_Event(
+      time: time,
+      type: _EventType.arrival,
+      componentId: componentId,
+      token: token.copyWith(arrivedAt: time),
+      connectionId: connectionId,
+    ));
+  }
+
+  void startService(_SimComponentState state, double time, _Token token) {
+    state.inService += 1;
+    final serviceMs = sampleServiceTimeMs(state);
+    events.add(_Event(
+      time: time + (serviceMs / 1000.0),
+      type: _EventType.completion,
+      componentId: state.component.id,
+      token: token,
+    ));
+  }
+
+  void maybeRetry({
+    required _Token token,
+    required String targetComponentId,
+    required double time,
+  }) {
+    if (token.callerId == null) return;
+    if (token.retryCount >= 3) return;
+    final caller = states[token.callerId!]?.component;
+    if (caller == null || !caller.config.retries) return;
+    final backoffMs = 50.0 * pow(2, token.retryCount).toDouble();
+    final jitterMs = backoffMs * (0.2 + random.nextDouble() * 0.4);
+    scheduleArrival(
+      time: time + ((backoffMs + jitterMs) / 1000.0),
+      componentId: targetComponentId,
+      token: token.copyWith(retryCount: token.retryCount + 1),
+    );
+  }
+
+  while (events.isNotEmpty) {
+    final event = events.pop();
+    if (event.time > simWindowSeconds) break;
+    final state = states[event.componentId];
+    if (state == null) continue;
+
+    if (event.type == _EventType.arrival) {
+      state.arrivals += 1;
+
+      // Circuit breaker / crash handling
+      if (state.circuitOpen || state.isCrashed) {
+        state.errors += 1;
+        maybeRetry(
+          token: event.token,
+          targetComponentId: state.component.id,
+          time: event.time,
+        );
+        continue;
+      }
+
+      // Rate limiting
+      if (state.rateLimitTokens != null && state.arrivals > state.rateLimitTokens!) {
+        state.isThrottled = true;
+        state.errors += 1;
+        continue;
+      }
+
+      // Queue capacity / backpressure
+      if (state.queue.length + state.inService >= state.maxQueueTokens) {
+        state.errors += 1;
+        continue;
+      }
+
+      if (state.inService < state.servers) {
+        startService(state, event.time, event.token);
+      } else {
+        state.queue.add(event.token);
+      }
+    } else {
+      // Completion
+      if (state.inService > 0) state.inService -= 1;
+      state.processed += 1;
+      final latencyMs = (event.time - event.token.arrivedAt) * 1000.0;
+      state.totalLatencyMs += latencyMs;
+
+      if (state.latencySamples.length < 200) {
+        state.latencySamples.add(latencyMs);
+      } else if (random.nextDouble() < 0.1) {
+        final idx = random.nextInt(state.latencySamples.length);
+        state.latencySamples[idx] = latencyMs;
+      }
+
+      // Start next queued request
+      if (state.queue.isNotEmpty) {
+        final nextToken = state.queue.removeAt(0);
+        startService(state, event.time, nextToken);
+      }
+
+      // Simulate component-level failure probability (pressure + timeouts)
+      final pressure = state.utilization;
+      final overloadProb = pressure > 1.1 ? (pressure - 1.0) * 0.25 : 0.0;
+      final timeoutProb = latencyMs > 3000 ? 0.4 : (latencyMs > 1500 ? 0.1 : 0.0);
+      var errorProb = (overloadProb + timeoutProb).clamp(0.0, 0.9);
+      if (pressure < 0.8 && latencyMs < 1200) {
+        errorProb = 0.0;
+      }
+      final isError = random.nextDouble() < errorProb;
+      if (isError) {
+        state.errors += 1;
+        maybeRetry(
+          token: event.token,
+          targetComponentId: state.component.id,
+          time: event.time,
+        );
+        continue;
+      }
+
+      // Route to downstream components
+      final outgoingConns = outgoing[state.component.id] ?? [];
+      if (outgoingConns.isEmpty) continue;
+
+      List<Connection> targets = outgoingConns;
+      final isFanout = state.component.type == ComponentType.pubsub ||
+          state.component.type == ComponentType.stream;
+
+      if (!isFanout && targets.length > 1) {
+        // Choose least pressured target (simple load balancing)
+        targets = targets.toList()
+          ..sort((a, b) {
+            final aUtil = states[a.targetId]?.utilization ?? 0.0;
+            final bUtil = states[b.targetId]?.utilization ?? 0.0;
+            return aUtil.compareTo(bUtil);
+          });
+        targets = [targets.first];
+      }
+
+      final fanoutCap = isFanout ? min(5, targets.length) : targets.length;
+      for (int i = 0; i < fanoutCap; i++) {
+        final conn = targets[i];
+        final targetState = states[conn.targetId];
+        if (targetState == null) continue;
+
+        // Backpressure on synchronous calls
+        double extraDelayMs = 0.0;
+        if (conn.type == ConnectionType.request || conn.type == ConnectionType.response) {
+          final pressure = targetState.utilization;
+          if (pressure > 1.3) {
+            extraDelayMs += (pressure - 1.0) * 80.0;
+            final dropProb = ((pressure - 2.2) * 0.25).clamp(0.0, 0.7);
+            if (random.nextDouble() < dropProb) {
+              state.errors += 1;
+              maybeRetry(
+                token: event.token,
+                targetComponentId: conn.targetId,
+                time: event.time,
+              );
+              continue;
+            }
+          }
+        }
+
+        final networkMs = sampleNetworkLatencyMs(state.component, targetState.component);
+        final arrivalTime = event.time + ((networkMs + extraDelayMs) / 1000.0);
+
+        connectionTrafficRps[conn.id] =
+            (connectionTrafficRps[conn.id] ?? 0.0) + event.token.weight;
+
+        scheduleArrival(
+          time: arrivalTime,
+          componentId: conn.targetId,
+          connectionId: conn.id,
+          token: event.token.copyWith(callerId: state.component.id),
+        );
+      }
     }
+  }
+
+  // Build metrics
+  for (final component in components) {
+    final state = states[component.id]!;
+    final prev = state.prevMetrics;
+    final arrivalRps = tokenWeight > 0
+        ? (state.arrivals * tokenWeight / simWindowSeconds)
+        : 0.0;
+
+    final capacity = component.config.capacity * state.autoscale.effectiveInstances;
+    final effectiveLoad = capacity > 0 ? (arrivalRps / capacity) : 1.0;
+
+    final avgLatency = state.latencySamples.isNotEmpty
+        ? (state.totalLatencyMs / state.latencySamples.length)
+        : (prev?.latencyMs ?? 0.0);
+    final p95Latency = state.latencySamples.isNotEmpty
+        ? percentile(state.latencySamples, 0.95)
+        : (prev?.p95LatencyMs ?? avgLatency);
+
+    final jitter = state.latencySamples.isNotEmpty
+        ? (p95Latency - avgLatency).abs()
+        : (prev?.jitter ?? 0.0);
+
+    final rawErrorRate =
+        state.arrivals > 0 ? (state.errors / state.arrivals) : 0.0;
+    final errorRate = smooth(
+      rawErrorRate,
+      prev?.errorRate ?? 0.0,
+      rawErrorRate > (prev?.errorRate ?? 0.0) ? 0.5 : 0.2,
+    );
+
+    final targetCpu = (effectiveLoad * 0.85 + random.nextDouble() * 0.15)
+        .clamp(0.0, 1.0);
+    final prevCpu = prev?.cpuUsage ?? 0.0;
+    final cpuAlpha = targetCpu > prevCpu ? 0.15 : 0.35;
+    final cpuUsage = smooth(targetCpu, prevCpu, cpuAlpha);
+
+    final targetMemory =
+        (effectiveLoad * 0.75 + random.nextDouble() * 0.25)
+            .clamp(0.0, 1.0);
+    final prevMemory = prev?.memoryUsage ?? 0.0;
+    final memAlpha = targetMemory > prevMemory ? 0.15 : 0.35;
+    final memoryUsage = smooth(targetMemory, prevMemory, memAlpha);
+
+    double cacheHitRate = 0.0;
+    double evictionRate = 0.0;
+    if (component.type == ComponentType.cache) {
+      cacheHitRate = (0.9 - effectiveLoad * 0.3).clamp(0.0, 1.0);
+      if (memoryUsage > 0.8) {
+        evictionRate = (memoryUsage - 0.8) * 5000;
+      }
+    }
+
+    double queueDepth = (state.queue.length + state.inService) * tokenWeight;
+    queueDepth = smooth(queueDepth, prev?.queueDepth ?? 0.0, 0.2);
+
+    double connectionPoolUtilization = 0.0;
+    int activeConnections = 0;
+    final maxConnections = state.autoscale.effectiveInstances * 100;
+    if (component.type == ComponentType.database ||
+        component.type == ComponentType.appServer ||
+        component.type == ComponentType.customService) {
+      connectionPoolUtilization = smooth(
+        effectiveLoad.clamp(0.0, 1.0),
+        prev?.connectionPoolUtilization ?? 0.0,
+        0.2,
+      );
+      activeConnections = (maxConnections * connectionPoolUtilization).toInt();
+    }
+
+    final metrics = ComponentMetrics(
+      cpuUsage: cpuUsage,
+      memoryUsage: memoryUsage,
+      currentRps: arrivalRps.round(),
+      latencyMs: avgLatency,
+      p95LatencyMs: p95Latency,
+      errorRate: errorRate,
+      queueDepth: queueDepth,
+      cacheHitRate: cacheHitRate,
+      jitter: jitter,
+      connectionPoolUtilization: connectionPoolUtilization,
+      evictionRate: evictionRate,
+      isThrottled: state.isThrottled,
+      isCircuitOpen: state.circuitOpen,
+      activeConnections: activeConnections,
+      maxConnections: maxConnections,
+      isScaling: state.autoscale.isScaling,
+      targetInstances: state.autoscale.targetInstances,
+      readyInstances: state.autoscale.readyInstances,
+      coldStartingInstances: state.autoscale.coldStartingInstances,
+      isSlow: state.isSlow,
+      slownessFactor: state.slownessFactor,
+      isCrashed: state.isCrashed,
+    );
+
+    componentMetrics[component.id] = metrics;
+    failures.addAll(_checkFailures(component, metrics, problem, components, connections));
+  }
+
+  // Connection traffic visualization
+  for (final connection in connections) {
+    final flowRps = (connectionTrafficRps[connection.id] ?? 0.0) / simWindowSeconds;
+    final flow = (flowRps / 2000.0).clamp(0.0, 1.0);
+    connectionTraffic[connection.id] = flow;
   }
 
   return (componentMetrics, connectionTraffic, failures);
@@ -743,6 +1302,21 @@ List<FailureEvent> _checkFailures(
     ));
   }
 
+  // 3b. Upstream Timeout (Runtime error - severe tail latency)
+  if (metrics.currentRps > 0 &&
+      metrics.p95LatencyMs > (problem.constraints.maxLatencyMs * 2)) {
+    failures.add(FailureEvent(
+      timestamp: DateTime.now(),
+      componentId: component.id,
+      type: FailureType.upstreamTimeout,
+      message: 'Upstream timeouts likely: P95 ${metrics.p95LatencyMs.toStringAsFixed(0)}ms',
+      recommendation: 'Add timeouts, fallbacks, or increase capacity to reduce tail latency',
+      severity: 0.8,
+      userVisible: true,
+      fixType: component.config.autoScale ? FixType.increaseReplicas : FixType.enableAutoscaling,
+    ));
+  }
+
   // 4. Data Loss Risk
   if (component.type == ComponentType.database && !component.config.replication) {
     // HOLISTIC CHECK: Only show if no sibling redundancy
@@ -774,6 +1348,18 @@ List<FailureEvent> _checkFailures(
   if (component.type == ComponentType.queue || 
       component.type == ComponentType.pubsub ||
       component.type == ComponentType.stream) {
+    if (metrics.queueDepth > 2000 && metrics.queueDepth <= 5000) {
+      failures.add(FailureEvent(
+        timestamp: DateTime.now(),
+        componentId: component.id,
+        type: FailureType.consumerLag,
+        message: 'Consumer lag building: queue depth ${metrics.queueDepth.toStringAsFixed(0)}',
+        recommendation: 'Scale consumers or increase processing capacity',
+        severity: (metrics.queueDepth / 8000).clamp(0.4, 0.8),
+        userVisible: true,
+        fixType: component.config.autoScale ? FixType.increaseReplicas : FixType.enableAutoscaling,
+      ));
+    }
     if (metrics.queueDepth > 5000) {
       failures.add(FailureEvent(
         timestamp: DateTime.now(),
@@ -1197,4 +1783,3 @@ List<FailureEvent> _detectRetryStorms(
   
   return storms;
 }
-

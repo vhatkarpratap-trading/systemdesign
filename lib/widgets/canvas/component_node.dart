@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../models/component.dart';
 import '../../models/custom_component.dart';
+import '../../models/metrics.dart';
 import '../../providers/custom_component_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../data/excalidraw_definitions.dart';
@@ -54,17 +55,54 @@ class ComponentNode extends ConsumerWidget {
     final showErrorsFlag = ref.watch(canvasProvider.select((s) => s.showErrors));
 
 
-    final status = component.status;
     final color = component.type.color;
     final isActive = metrics.currentRps > 0;
     final isSketchy = component.type.isSketchy;
+    final failures = ref.watch(simulationProvider.select((s) => s.visibleFailures));
+    final componentFailures = failures.where((f) => f.componentId == component.id).toList();
+    final primaryFailure = _pickPrimaryFailure(componentFailures);
+    final componentsList = ref.watch(canvasProvider.select((s) => s.components));
+    final componentNameById = <String, String>{
+      for (final c in componentsList) c.id: c.customName ?? c.type.displayName,
+    };
+    String? cascadeUpstream;
+    if (primaryFailure != null && primaryFailure.type == FailureType.cascadingFailure) {
+      final upstreamIds = primaryFailure.affectedComponents
+          .where((id) => id != component.id)
+          .toList();
+      if (upstreamIds.isNotEmpty) {
+        cascadeUpstream = upstreamIds
+            .map((id) => componentNameById[id] ?? 'Upstream')
+            .join(', ');
+      }
+    }
+
+    final effectiveInstances = math.max(
+      1,
+      metrics.readyInstances + (metrics.coldStartingInstances * 0.5).round(),
+    );
+    final capacity = component.config.capacity * effectiveInstances;
+    final loadRatio = capacity > 0 ? metrics.currentRps / capacity : 0.0;
+    final loadThresholds = _loadThresholds(component.type);
+    final glowByLoad = loadRatio >= 0.8;
+    final isDesignTimeFailure =
+        primaryFailure != null && _isDesignTimeFailure(primaryFailure.type);
+    final hasRuntimeFailure =
+        primaryFailure != null && !isDesignTimeFailure && primaryFailure.severity > 0.6;
     
     // Determine visual failure states
-    final hasError = metrics.errorRate > 0.1;
-    final isOverloaded = metrics.cpuUsage > 0.9;
-    final isScaling = metrics.isScaling;
-    final isSlow = metrics.isSlow;
     final connectionExhaustion = metrics.connectionPoolUtilization > 0.9;
+    final hasError = metrics.errorRate > 0.05 ||
+        metrics.isCircuitOpen ||
+        metrics.isThrottled ||
+        hasRuntimeFailure;
+    final isOverloaded = loadRatio > loadThresholds.overload ||
+        connectionExhaustion ||
+        (primaryFailure != null && _isOverloadFailure(primaryFailure.type));
+    final isScaling = metrics.isScaling;
+    final isSlow = metrics.isSlow ||
+        metrics.p95LatencyMs > 1500 ||
+        (primaryFailure != null && _isLatencyFailure(primaryFailure.type));
 
     // Text components are transparent and just text
 
@@ -105,22 +143,31 @@ class ComponentNode extends ConsumerWidget {
                       isSelected ? AppTheme.surface : AppTheme.surface.withValues(alpha: 0.7),
                     ],
                   ),
-        boxShadow: (isSelected || isActive || hasError || isSlow || (!isSketchy && component.type != ComponentType.text)) 
+        boxShadow: (isSelected ||
+                    hasError ||
+                    isSlow ||
+                    isOverloaded ||
+                    glowByLoad ||
+                    (!isSketchy && component.type != ComponentType.text))
             ? [
                 BoxShadow(
                   color: hasError
                       ? Colors.red.withValues(alpha: 0.4)
                       : isSlow
                           ? Colors.amber.withValues(alpha: 0.3)
-                          : isOverloaded
+                          : (isOverloaded || glowByLoad)
                               ? Colors.orange.withValues(alpha: 0.3)
-                              : (isSelected || isActive) 
+                              : (isSelected)
                                   ? color.withValues(alpha: isSelected ? 0.3 : 0.15)
-                                  : (isCyberpunk 
+                                  : (isCyberpunk
                                       ? color.withValues(alpha: 0.2) // Cyberpunk glow
-                                      : Colors.black.withValues(alpha: 0.3)),
-                  blurRadius: hasError || isSlow || isOverloaded ? 16 : (isSelected ? 12 : (isCyberpunk ? 8 : 4)),
-                  spreadRadius: hasError || isSlow || isOverloaded ? 4 : (isSelected ? 1 : 0),
+                                      : Colors.black.withValues(alpha: 0.2)),
+                  blurRadius: hasError || isSlow || isOverloaded || glowByLoad
+                      ? 16
+                      : (isSelected ? 12 : (isCyberpunk ? 8 : 3)),
+                  spreadRadius: hasError || isSlow || isOverloaded || glowByLoad
+                      ? 4
+                      : (isSelected ? 1 : 0),
                   offset: (hasError || isSlow || isSelected) ? Offset.zero : const Offset(0, 2),
                 ),
               ] 
@@ -149,7 +196,7 @@ class ComponentNode extends ConsumerWidget {
       ),
       child: isSketchy 
           ? _buildSketchyContent()
-          : _buildStandardContent(status, color, isActive, metrics, hasError, isSlow, isOverloaded, isCyberpunk, showErrorsFlag, context, ref),
+          : _buildStandardContent(color, isActive, metrics, hasError, isSlow, isOverloaded, isCyberpunk, showErrorsFlag, context, ref, componentFailures, primaryFailure, loadRatio, loadThresholds, cascadeUpstream),
     );
     
     // Shaking animation - always show when errors exist
@@ -167,7 +214,6 @@ class ComponentNode extends ConsumerWidget {
   // ... (keep _buildTextContent)
 
   Widget _buildStandardContent(
-    ComponentStatus status, 
     Color color, 
     bool isActive,
     ComponentMetrics metrics,
@@ -178,8 +224,20 @@ class ComponentNode extends ConsumerWidget {
     bool showErrorsFlag, // Flag to show/hide error indicators
     BuildContext context,
     WidgetRef ref,
+    List<FailureEvent> componentFailures,
+    FailureEvent? primaryFailure,
+    double loadRatio,
+    _LoadThresholds loadThresholds,
+    String? cascadeUpstream,
   ) {
       final config = component.config;
+      final whyTooltip = _buildWhyTooltip(
+        metrics: metrics,
+        primaryFailure: primaryFailure,
+        loadRatio: loadRatio,
+        thresholds: loadThresholds,
+        cascadeUpstream: cascadeUpstream,
+      );
       
       // Determine if we show detailed or standard internal architecture
       final showDetailed = config.displayMode == ComponentDisplayMode.detailed;
@@ -197,7 +255,7 @@ class ComponentNode extends ConsumerWidget {
           if (showInternals)
             _buildInternalArchitecture(config, color, isActive, isCyberpunk)
           else
-            _buildSimpleIcon(color, isActive, status),
+            _buildSimpleIcon(color, isActive),
           
           // Strategy badges - only if showErrors is enabled
           if (showErrorsFlag)
@@ -209,29 +267,32 @@ class ComponentNode extends ConsumerWidget {
               bottom: 4,
               left: 4,
               right: 4,
-              child: _buildLoadBar(metrics.cpuUsage),
+              child: _buildLoadBar(loadRatio, loadThresholds),
             ).animate().scale(duration: 300.ms, curve: Curves.easeOutBack).fadeIn(duration: 200.ms),
 
 
           // Status emoji/icon - only if showErrors is enabled
-          if (showErrorsFlag && (hasError || isSlow || isOverloaded))
+          if (showErrorsFlag && (hasError || isSlow || isOverloaded || componentFailures.isNotEmpty))
             Positioned(
               top: -12,
               right: -12, // Moved to top-right
-              child: _buildStatusEmoji(hasError, isSlow, isOverloaded),
+              child: Tooltip(
+                message: whyTooltip,
+                child: _buildStatusEmoji(hasError, isSlow, isOverloaded, primaryFailure),
+              ),
             ),
             
           // ... (keep pressure label)
-          if (isActive && (metrics.cpuUsage > 0.5 || metrics.queueDepth > 10 || metrics.connectionPoolUtilization > 0.5))
+          if (isActive && (loadRatio > loadThresholds.warning || metrics.queueDepth > 100 || metrics.connectionPoolUtilization > 0.6 || componentFailures.isNotEmpty))
              Positioned(
                bottom: -24, // Moved outside bottom
-               child: _buildPressureLabel(metrics),
+               child: _buildPressureLabel(metrics, primaryFailure, loadRatio, loadThresholds, cascadeUpstream),
              ),
         ],
       );
   }
 
-  Widget _buildSimpleIcon(Color color, bool isActive, ComponentStatus status) {
+  Widget _buildSimpleIcon(Color color, bool isActive) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -739,54 +800,120 @@ class ComponentNode extends ConsumerWidget {
     );
   }
 
-  Widget _buildPressureLabel(ComponentMetrics metrics) {
-    // Determine the dominant pressure factor
-    double pressure = metrics.cpuUsage;
+  Widget _buildPressureLabel(
+    ComponentMetrics metrics,
+    FailureEvent? primaryFailure,
+    double loadRatio,
+    _LoadThresholds thresholds,
+    String? cascadeUpstream,
+  ) {
     String label = 'LOAD';
-    
-    if (metrics.queueDepth > 50) {
-      // Normalize queue depth for display (e.g. 100 items = 100% vis)
-      pressure = (metrics.queueDepth / 200).clamp(0.0, 1.0);
+    String value = '${(loadRatio * 100).round()}%';
+    double severity = 0.0;
+
+    if (primaryFailure != null) {
+      severity = primaryFailure.severity;
+      switch (primaryFailure.type) {
+        case FailureType.overload:
+        case FailureType.trafficOverflow:
+          label = 'LOAD';
+          value = '${(loadRatio * 100).round()}%';
+          break;
+        case FailureType.queueOverflow:
+        case FailureType.consumerLag:
+          label = 'QUEUE';
+          value = _formatCompact(metrics.queueDepth);
+          break;
+        case FailureType.latencyBreach:
+        case FailureType.upstreamTimeout:
+        case FailureType.slowNode:
+          label = 'P95';
+          value = '${metrics.p95LatencyMs.round()}ms';
+          break;
+        case FailureType.connectionExhaustion:
+          label = 'CONN';
+          value = '${(metrics.connectionPoolUtilization * 100).round()}%';
+          break;
+        case FailureType.cascadingFailure:
+          label = 'CASCADE';
+          value = cascadeUpstream != null && cascadeUpstream.isNotEmpty
+              ? 'from ${_shortName(cascadeUpstream)}'
+              : 'upstream';
+          break;
+        case FailureType.retryStorm:
+          label = 'RETRY';
+          value = 'storm';
+          break;
+        case FailureType.circuitBreakerOpen:
+          label = 'CB';
+          value = 'open';
+          break;
+        default:
+          label = 'LOAD';
+          value = '${(loadRatio * 100).round()}%';
+          break;
+      }
+    } else if (metrics.queueDepth > 100) {
       label = 'QUEUE';
-    } else if (metrics.connectionPoolUtilization > pressure) {
-      pressure = metrics.connectionPoolUtilization;
+      value = _formatCompact(metrics.queueDepth);
+    } else if (metrics.connectionPoolUtilization > 0.6) {
       label = 'CONN';
+      value = '${(metrics.connectionPoolUtilization * 100).round()}%';
+    } else if (metrics.p95LatencyMs > 1200) {
+      label = 'P95';
+      value = '${metrics.p95LatencyMs.round()}ms';
     }
-    
-    final percentage = (pressure * 100).toInt();
-    final color = pressure > 0.9 ? AppTheme.error : (pressure > 0.7 ? AppTheme.warning : AppTheme.textSecondary);
-    
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-      decoration: BoxDecoration(
-        color: AppTheme.surface.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withValues(alpha: 0.5), width: 0.5),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
-            blurRadius: 2,
-          )
-        ]
-      ),
-      child: Text(
-        '$label: $percentage%',
-        style: TextStyle(
-          fontSize: 6, 
-          fontWeight: FontWeight.w900,
-          color: color,
+
+    final color = severity > 0.8
+        ? AppTheme.error
+        : severity > 0.5
+            ? AppTheme.warning
+            : (loadRatio > thresholds.warning ? AppTheme.warning : AppTheme.textSecondary);
+
+    final tooltip = _buildWhyTooltip(
+      metrics: metrics,
+      primaryFailure: primaryFailure,
+      loadRatio: loadRatio,
+      thresholds: thresholds,
+      cascadeUpstream: cascadeUpstream,
+    );
+
+    return Tooltip(
+      message: tooltip,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+        decoration: BoxDecoration(
+          color: AppTheme.surface.withValues(alpha: 0.9),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: color.withValues(alpha: 0.5), width: 0.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 2,
+            )
+          ]
+        ),
+        child: Text(
+          '$label: $value',
+          style: TextStyle(
+            fontSize: 6, 
+            fontWeight: FontWeight.w900,
+            color: color,
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildLoadBar(double load) {
+  Widget _buildLoadBar(double loadRatio, _LoadThresholds thresholds) {
     // Green -> Yellow -> Red gradient based on load
-    final color = load > 0.9 
-        ? AppTheme.error 
-        : load > 0.7 
-            ? AppTheme.warning 
-            : AppTheme.success;
+    final color = loadRatio > thresholds.overload
+        ? AppTheme.error
+        : loadRatio > thresholds.critical
+            ? AppTheme.error
+            : loadRatio > thresholds.warning
+                ? AppTheme.warning
+                : AppTheme.success;
             
     // Enhanced Load Bar: Taller and with Glow
     return Container(
@@ -799,7 +926,7 @@ class ComponentNode extends ConsumerWidget {
       ),
       // Smoothly animate the width of the load bar
       child: TweenAnimationBuilder<double>(
-        tween: Tween<double>(begin: 0, end: load.clamp(0.0, 1.0)),
+        tween: Tween<double>(begin: 0, end: loadRatio.clamp(0.0, 1.0)),
         duration: const Duration(milliseconds: 200), // Smooth 200ms transition
         curve: Curves.easeOutCubic,
         builder: (context, value, child) {
@@ -810,7 +937,7 @@ class ComponentNode extends ConsumerWidget {
               decoration: BoxDecoration(
                 color: color,
                 borderRadius: BorderRadius.circular(3),
-                boxShadow: load > 0.7 ? [
+                boxShadow: loadRatio > 0.7 ? [
                    BoxShadow(color: color.withValues(alpha: 0.6), blurRadius: 6, spreadRadius: 1),
                 ] : null,
               ),
@@ -821,11 +948,17 @@ class ComponentNode extends ConsumerWidget {
     );
   }
 
-  Widget _buildStatusEmoji(bool hasError, bool isSlow, bool isOverloaded) {
+  Widget _buildStatusEmoji(bool hasError, bool isSlow, bool isOverloaded, FailureEvent? primaryFailure) {
     IconData? icon;
     Color color = Colors.transparent;
     
-    if (hasError) {
+    if (primaryFailure != null && primaryFailure.type == FailureType.cascadingFailure) {
+      icon = Icons.call_split;
+      color = AppTheme.warning;
+    } else if (primaryFailure != null && primaryFailure.type == FailureType.retryStorm) {
+      icon = Icons.refresh;
+      color = Colors.orange;
+    } else if (hasError) {
       icon = Icons.error_outline;
       color = AppTheme.error;
     } else if (isOverloaded) {
@@ -1039,6 +1172,158 @@ class ComponentNode extends ConsumerWidget {
     if (isSlow) return Colors.amber;
     return AppTheme.surface;
   }
+
+  _LoadThresholds _loadThresholds(ComponentType type) {
+    return switch (type) {
+      ComponentType.database => const _LoadThresholds(
+          warning: 0.65,
+          critical: 0.8,
+          overload: 1.0,
+        ),
+      ComponentType.cache => const _LoadThresholds(
+          warning: 0.75,
+          critical: 0.9,
+          overload: 1.15,
+        ),
+      ComponentType.queue ||
+      ComponentType.pubsub ||
+      ComponentType.stream => const _LoadThresholds(
+          warning: 0.7,
+          critical: 0.85,
+          overload: 1.0,
+        ),
+      ComponentType.serverless => const _LoadThresholds(
+          warning: 0.8,
+          critical: 0.9,
+          overload: 1.2,
+        ),
+      _ => const _LoadThresholds(
+          warning: 0.7,
+          critical: 0.85,
+          overload: 1.1,
+        ),
+    };
+  }
+
+  String _buildWhyTooltip({
+    required ComponentMetrics metrics,
+    required FailureEvent? primaryFailure,
+    required double loadRatio,
+    required _LoadThresholds thresholds,
+    required String? cascadeUpstream,
+  }) {
+    const queueLagThreshold = 2000.0;
+    const queueOverflowThreshold = 5000.0;
+    const slowLatencyThresholdMs = 1500.0;
+    const connWarn = 0.6;
+    const connCritical = 0.9;
+
+    String detail = '';
+    if (primaryFailure != null) {
+      switch (primaryFailure.type) {
+        case FailureType.overload:
+        case FailureType.trafficOverflow:
+          detail =
+              'Load ${(loadRatio * 100).round()}% (warn > ${(thresholds.warning * 100).round()}%, overload > ${(thresholds.overload * 100).round()}%)';
+          break;
+        case FailureType.queueOverflow:
+        case FailureType.consumerLag:
+          detail =
+              'Queue ${metrics.queueDepth.round()} (lag > ${queueLagThreshold.round()}, overflow > ${queueOverflowThreshold.round()})';
+          break;
+        case FailureType.latencyBreach:
+        case FailureType.upstreamTimeout:
+        case FailureType.slowNode:
+          detail =
+              'P95 ${metrics.p95LatencyMs.round()}ms (slow > ${slowLatencyThresholdMs.round()}ms)';
+          break;
+        case FailureType.connectionExhaustion:
+          detail =
+              'Conn ${(metrics.connectionPoolUtilization * 100).round()}% (warn > ${(connWarn * 100).round()}%, critical > ${(connCritical * 100).round()}%)';
+          break;
+        case FailureType.cascadingFailure:
+          detail = cascadeUpstream != null && cascadeUpstream.isNotEmpty
+              ? 'Upstream: $cascadeUpstream (severity > 0.6)'
+              : 'Upstream dependency failure (severity > 0.6)';
+          break;
+        case FailureType.retryStorm:
+          detail = 'Retry amplification (error rate > 20%)';
+          break;
+        case FailureType.circuitBreakerOpen:
+          detail = 'Circuit opened after repeated failures';
+          break;
+        default:
+          detail = primaryFailure.message;
+      }
+      return '${primaryFailure.type.displayName}: ${primaryFailure.message}\n$detail';
+    }
+
+    if (metrics.queueDepth > 100) {
+      detail =
+          'Queue ${metrics.queueDepth.round()} (lag > ${queueLagThreshold.round()}, overflow > ${queueOverflowThreshold.round()})';
+    } else if (metrics.connectionPoolUtilization > connWarn) {
+      detail =
+          'Conn ${(metrics.connectionPoolUtilization * 100).round()}% (warn > ${(connWarn * 100).round()}%)';
+    } else if (metrics.p95LatencyMs > slowLatencyThresholdMs) {
+      detail =
+          'P95 ${metrics.p95LatencyMs.round()}ms (slow > ${slowLatencyThresholdMs.round()}ms)';
+    } else {
+      detail =
+          'Load ${(loadRatio * 100).round()}% (warn > ${(thresholds.warning * 100).round()}%)';
+    }
+
+    return detail;
+  }
+
+  String _shortName(String value) {
+    if (value.length <= 12) return value;
+    return '${value.substring(0, 10)}...';
+  }
+
+  FailureEvent? _pickPrimaryFailure(List<FailureEvent> failures) {
+    if (failures.isEmpty) return null;
+    final ordered = List<FailureEvent>.from(failures)
+      ..sort((a, b) => b.severity.compareTo(a.severity));
+    return ordered.first;
+  }
+
+  bool _isOverloadFailure(FailureType type) {
+    return type == FailureType.overload ||
+        type == FailureType.trafficOverflow ||
+        type == FailureType.queueOverflow ||
+        type == FailureType.consumerLag ||
+        type == FailureType.connectionExhaustion;
+  }
+
+  bool _isLatencyFailure(FailureType type) {
+    return type == FailureType.latencyBreach ||
+        type == FailureType.upstreamTimeout ||
+        type == FailureType.slowNode;
+  }
+
+  bool _isDesignTimeFailure(FailureType type) {
+    return type == FailureType.spof ||
+        type == FailureType.dataLoss ||
+        type == FailureType.costOverrun;
+  }
+
+  String _formatCompact(double value) {
+    if (value >= 1000000) return '${(value / 1000000).toStringAsFixed(1)}M';
+    if (value >= 1000) return '${(value / 1000).toStringAsFixed(1)}K';
+    return value.round().toString();
+  }
+}
+
+class _LoadThresholds {
+  final double warning;
+  final double critical;
+  final double overload;
+
+  const _LoadThresholds({
+    required this.warning,
+    required this.critical,
+    required this.overload,
+  });
 }
 
 
