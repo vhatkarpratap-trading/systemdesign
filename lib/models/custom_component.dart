@@ -231,7 +231,7 @@ class CustomComponentDefinition {
   });
 
   /// Get the icon from the code point
-  IconData get icon => IconData(iconCodePoint, fontFamily: 'MaterialIcons');
+  IconData get icon => CustomComponentIcons.resolve(iconCodePoint);
 
   /// Get the color from hex string
   Color get color {
@@ -340,5 +340,31 @@ class CustomComponentDefinition {
     return CustomComponentDefinition.fromJson(
       jsonDecode(jsonString) as Map<String, dynamic>,
     );
+  }
+}
+
+/// Mapping for allowed custom component icons (const IconData only)
+class CustomComponentIcons {
+  static const IconData fallback = Icons.extension;
+
+  static final Map<int, IconData> byCodePoint = {
+    Icons.extension.codePoint: Icons.extension,
+    Icons.data_object.codePoint: Icons.data_object,
+    Icons.storage.codePoint: Icons.storage,
+    Icons.settings.codePoint: Icons.settings,
+    Icons.network_check.codePoint: Icons.network_check,
+    Icons.cloud.codePoint: Icons.cloud,
+    Icons.bolt.codePoint: Icons.bolt,
+    Icons.security.codePoint: Icons.security,
+    Icons.layers.codePoint: Icons.layers,
+    Icons.cached.codePoint: Icons.cached,
+    Icons.dns.codePoint: Icons.dns,
+    Icons.hub_outlined.codePoint: Icons.hub_outlined,
+    Icons.api.codePoint: Icons.api,
+    Icons.memory.codePoint: Icons.memory,
+  };
+
+  static IconData resolve(int codePoint) {
+    return byCodePoint[codePoint] ?? fallback;
   }
 }
