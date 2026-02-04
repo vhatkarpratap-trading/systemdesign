@@ -30568,7 +30568,7 @@ q=A.bG(a.i(0,"activeProblemId"))
 p=A.e8(a.i(0,"isCyberpunkMode"))
 o=A.fR(a.i(0,"trafficLevel"))
 if(o==null)o=m
-if(o==null)o=1
+if(o==null)o=0.4
 n=A.e8(a.i(0,"showErrors"))
 return new A.du(j,k,m,m,s,r,q,p===!0,o,n!==!1)},
 du:function du(a,b,c,d,e,f,g,h,i,j){var _=this
@@ -32146,7 +32146,7 @@ e=new A.f(A.cu(q.i(f,"x")),A.cu(q.i(f,"y")))}else e=B.f
 q=A.fR(g.i(0,"scale"))
 d=q==null?c:q
 if(d==null)d=1}else{e=B.ZU
-d=1}return new A.du(r,o,c,c,e,d,c,!1,1,!0)},
+d=1}return new A.du(r,o,c,c,e,d,c,!1,0.4,!0)},
 b7y(a){var s
 if(a==null)return B.bk
 s=a.toLowerCase()
@@ -104350,7 +104350,7 @@ s=6
 break
 case 3:s=2
 break
-case 6:n.sb4(new A.du(A.b([new A.cb(B.by.i3(),B.dV,B.ZA,B.eY,A.abw(B.dV),B.hY,!1,null,null,!1,!1)],t.Jc),B.v9,null,null,B.f,1,null,!1,1,!0))
+case 6:n.sb4(new A.du(A.b([new A.cb(B.by.i3(),B.dV,B.ZA,B.eY,A.abw(B.dV),B.hY,!1,null,null,!1,!1)],t.Jc),B.v9,null,null,B.f,1,null,!1,0.4,!0))
 case 1:return A.y(q,r)
 case 2:return A.x(o.at(-1),r)}})
 return A.z($async$FA,r)},
@@ -108115,7 +108115,7 @@ c=c.h("e7<di.0,j?>")
 s=t.T
 r=e.cr(new A.e7(d,new A.aMO(),c),s)
 q=e.cr(new A.e7(d,new A.aMQ(),c),s)
-p=new A.du(b,a,r,q,B.f,1,f,!1,1,!0)
+p=new A.du(b,a,r,q,B.f,1,f,!1,0.4,!0)
 o=e.cr($.fU(),t._Y)
 n=e.cr($.eb(),t.rD)
 m=o===B.hI||o===B.fk||o===B.hJ||o===B.c2||o===B.hK||o===B.en
@@ -113876,7 +113876,7 @@ B.dS=new A.ry(3,"experimentalWebParagraph")
 B.Vp=s([],t.Jc)
 B.v9=s([],t.tv)
 B.f=new A.f(0,0)
-B.jl=new A.du(B.Vp,B.v9,null,null,B.f,1,null,!1,1,!0)
+B.jl=new A.du(B.Vp,B.v9,null,null,B.f,1,null,!1,0.4,!0)
 B.br=new A.eP(0,"select")
 B.fj=new A.eP(1,"hand")
 B.hI=new A.eP(2,"rectangle")
