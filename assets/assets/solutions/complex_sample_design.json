@@ -7,36 +7,36 @@
     {
       "id": "users",
       "type": "client",
-      "position": {"x": 4600.0, "y": 4600.0},
+      "position": {"x": 4800.0, "y": 4700.0},
       "size": {"w": 80.0, "h": 64.0},
-      "config": {"capacity": 50000}
+      "config": {"capacity": 20000}
     },
     {
       "id": "dns",
       "type": "dns",
-      "position": {"x": 4800.0, "y": 4600.0},
+      "position": {"x": 5000.0, "y": 4700.0},
       "size": {"w": 80.0, "h": 64.0},
-      "config": {"capacity": 1000000}
+      "config": {"capacity": 500000}
     },
     {
       "id": "cdn",
       "type": "cdn",
-      "position": {"x": 5000.0, "y": 4600.0},
+      "position": {"x": 5200.0, "y": 4700.0},
       "size": {"w": 80.0, "h": 64.0},
       "config": {
-        "capacity": 500000,
-        "regions": ["us-east-1", "eu-west-1", "ap-south-1"],
+        "capacity": 200000,
+        "regions": ["us-east-1"],
         "costPerHour": 0.05
       }
     },
     {
       "id": "lb",
       "type": "loadBalancer",
-      "position": {"x": 5000.0, "y": 4800.0},
+      "position": {"x": 5200.0, "y": 4900.0},
       "size": {"w": 80.0, "h": 64.0},
       "config": {
-        "capacity": 150000,
-        "instances": 2,
+        "capacity": 80000,
+        "instances": 1,
         "algorithm": "round_robin",
         "costPerHour": 0.10
       }
@@ -44,212 +44,51 @@
     {
       "id": "api",
       "type": "apiGateway",
-      "position": {"x": 5000.0, "y": 5000.0},
+      "position": {"x": 5200.0, "y": 5100.0},
+      "size": {"w": 80.0, "h": 64.0},
+      "config": {
+        "capacity": 40000,
+        "instances": 1,
+        "cacheTtlSeconds": 60,
+        "rateLimiting": true,
+        "rateLimitRps": 2000,
+        "costPerHour": 0.15
+      }
+    },
+    {
+      "id": "app",
+      "type": "appServer",
+      "position": {"x": 5200.0, "y": 5300.0},
+      "size": {"w": 80.0, "h": 64.0},
+      "config": {
+        "capacity": 1500,
+        "instances": 1,
+        "autoScale": false,
+        "costPerHour": 0.20
+      }
+    },
+    {
+      "id": "cache",
+      "type": "cache",
+      "position": {"x": 5000.0, "y": 5500.0},
       "size": {"w": 80.0, "h": 64.0},
       "config": {
         "capacity": 80000,
-        "instances": 3,
-        "cacheTtlSeconds": 60,
-        "rateLimiting": true,
-        "rateLimitRps": 8000,
-        "costPerHour": 0.15
-      }
-    },
-    {
-      "id": "app-1",
-      "type": "appServer",
-      "position": {"x": 4700.0, "y": 5200.0},
-      "size": {"w": 80.0, "h": 64.0},
-      "config": {
-        "capacity": 2000,
-        "instances": 3,
-        "autoScale": true,
-        "minInstances": 3,
-        "maxInstances": 20,
-        "circuitBreaker": true,
-        "costPerHour": 0.20
-      }
-    },
-    {
-      "id": "app-2",
-      "type": "appServer",
-      "position": {"x": 5000.0, "y": 5200.0},
-      "size": {"w": 80.0, "h": 64.0},
-      "config": {
-        "capacity": 2000,
-        "instances": 3,
-        "autoScale": true,
-        "minInstances": 3,
-        "maxInstances": 20,
-        "circuitBreaker": true,
-        "costPerHour": 0.20
-      }
-    },
-    {
-      "id": "app-3",
-      "type": "appServer",
-      "position": {"x": 5300.0, "y": 5200.0},
-      "size": {"w": 80.0, "h": 64.0},
-      "config": {
-        "capacity": 2000,
-        "instances": 3,
-        "autoScale": true,
-        "minInstances": 3,
-        "maxInstances": 20,
-        "circuitBreaker": true,
-        "costPerHour": 0.20
-      }
-    },
-    {
-      "id": "redis-hot",
-      "type": "cache",
-      "position": {"x": 4600.0, "y": 5400.0},
-      "size": {"w": 80.0, "h": 64.0},
-      "config": {
-        "capacity": 200000,
-        "instances": 2,
-        "cacheTtlSeconds": 3600,
+        "instances": 1,
+        "cacheTtlSeconds": 300,
         "costPerHour": 0.08
       }
     },
     {
-      "id": "redis-feed",
-      "type": "cache",
-      "position": {"x": 4900.0, "y": 5400.0},
-      "size": {"w": 80.0, "h": 64.0},
-      "config": {
-        "capacity": 200000,
-        "instances": 2,
-        "cacheTtlSeconds": 600,
-        "costPerHour": 0.08
-      }
-    },
-    {
-      "id": "user-db",
+      "id": "db",
       "type": "database",
-      "position": {"x": 5200.0, "y": 5400.0},
+      "position": {"x": 5400.0, "y": 5500.0},
       "size": {"w": 80.0, "h": 64.0},
       "config": {
-        "capacity": 8000,
-        "instances": 2,
-        "replication": true,
-        "replicationFactor": 2,
-        "sharding": true,
-        "partitionCount": 4,
+        "capacity": 4000,
+        "instances": 1,
+        "replication": false,
         "costPerHour": 0.25
-      }
-    },
-    {
-      "id": "content-db",
-      "type": "database",
-      "position": {"x": 5500.0, "y": 5400.0},
-      "size": {"w": 80.0, "h": 64.0},
-      "config": {
-        "capacity": 8000,
-        "instances": 2,
-        "replication": true,
-        "replicationFactor": 2,
-        "sharding": true,
-        "partitionCount": 4,
-        "costPerHour": 0.25
-      }
-    },
-    {
-      "id": "upload-queue",
-      "type": "queue",
-      "position": {"x": 4400.0, "y": 5600.0},
-      "size": {"w": 80.0, "h": 64.0},
-      "config": {
-        "capacity": 200000,
-        "dlq": true,
-        "costPerHour": 0.04
-      }
-    },
-    {
-      "id": "transcoder-1",
-      "type": "worker",
-      "position": {"x": 4400.0, "y": 5800.0},
-      "size": {"w": 80.0, "h": 64.0},
-      "config": {
-        "capacity": 800,
-        "instances": 4,
-        "autoScale": true,
-        "costPerHour": 0.15
-      }
-    },
-    {
-      "id": "transcoder-2",
-      "type": "worker",
-      "position": {"x": 4600.0, "y": 5800.0},
-      "size": {"w": 80.0, "h": 64.0},
-      "config": {
-        "capacity": 800,
-        "instances": 4,
-        "autoScale": true,
-        "costPerHour": 0.15
-      }
-    },
-    {
-      "id": "video-store",
-      "type": "objectStore",
-      "position": {"x": 4900.0, "y": 6000.0},
-      "size": {"w": 80.0, "h": 64.0},
-      "config": {
-        "capacity": 1500000,
-        "regions": ["us-east-1", "eu-west-1"],
-        "costPerHour": 0.02
-      }
-    },
-    {
-      "id": "thumb-store",
-      "type": "objectStore",
-      "position": {"x": 5200.0, "y": 6000.0},
-      "size": {"w": 80.0, "h": 64.0},
-      "config": {
-        "capacity": 1500000,
-        "regions": ["us-east-1", "eu-west-1"],
-        "costPerHour": 0.02
-      }
-    },
-    {
-      "id": "pubsub",
-      "type": "pubsub",
-      "position": {"x": 5600.0, "y": 5600.0},
-      "size": {"w": 80.0, "h": 64.0},
-      "config": {
-        "capacity": 500000,
-        "costPerHour": 0.05
-      }
-    },
-    {
-      "id": "analytics-stream",
-      "type": "stream",
-      "position": {"x": 5800.0, "y": 5800.0},
-      "size": {"w": 80.0, "h": 64.0},
-      "config": {
-        "capacity": 200000,
-        "costPerHour": 0.08
-      }
-    },
-    {
-      "id": "reco-service",
-      "type": "customService",
-      "position": {"x": 6000.0, "y": 5400.0},
-      "size": {"w": 80.0, "h": 64.0},
-      "config": {
-        "capacity": 6000,
-        "instances": 2,
-        "costPerHour": 0.10
-      }
-    },
-    {
-      "id": "thumb-fn",
-      "type": "serverless",
-      "position": {"x": 5400.0, "y": 5800.0},
-      "size": {"w": 80.0, "h": 64.0},
-      "config": {
-        "capacity": 20000,
-        "costPerHour": 0.0001
       }
     }
   ],
@@ -258,33 +97,8 @@
     {"id": "c2", "sourceId": "dns", "targetId": "cdn", "type": "request", "direction": "unidirectional"},
     {"id": "c3", "sourceId": "cdn", "targetId": "lb", "type": "request", "direction": "unidirectional"},
     {"id": "c4", "sourceId": "lb", "targetId": "api", "type": "request", "direction": "unidirectional"},
-    {"id": "c5", "sourceId": "api", "targetId": "app-1", "type": "request", "direction": "unidirectional"},
-    {"id": "c6", "sourceId": "api", "targetId": "app-2", "type": "request", "direction": "unidirectional"},
-    {"id": "c7", "sourceId": "api", "targetId": "app-3", "type": "request", "direction": "unidirectional"},
-
-    {"id": "c8", "sourceId": "app-1", "targetId": "redis-hot", "type": "request", "direction": "unidirectional"},
-    {"id": "c9", "sourceId": "app-2", "targetId": "redis-hot", "type": "request", "direction": "unidirectional"},
-    {"id": "c10", "sourceId": "app-3", "targetId": "redis-feed", "type": "request", "direction": "unidirectional"},
-
-    {"id": "c11", "sourceId": "app-1", "targetId": "user-db", "type": "request", "direction": "unidirectional"},
-    {"id": "c12", "sourceId": "app-2", "targetId": "content-db", "type": "request", "direction": "unidirectional"},
-    {"id": "c13", "sourceId": "app-3", "targetId": "content-db", "type": "request", "direction": "unidirectional"},
-
-    {"id": "c14", "sourceId": "app-1", "targetId": "upload-queue", "type": "async", "direction": "unidirectional"},
-    {"id": "c15", "sourceId": "upload-queue", "targetId": "transcoder-1", "type": "async", "direction": "unidirectional"},
-    {"id": "c16", "sourceId": "upload-queue", "targetId": "transcoder-2", "type": "async", "direction": "unidirectional"},
-
-    {"id": "c17", "sourceId": "transcoder-1", "targetId": "video-store", "type": "request", "direction": "unidirectional"},
-    {"id": "c18", "sourceId": "transcoder-2", "targetId": "thumb-store", "type": "request", "direction": "unidirectional"},
-
-    {"id": "c19", "sourceId": "app-2", "targetId": "pubsub", "type": "async", "direction": "unidirectional"},
-    {"id": "c20", "sourceId": "pubsub", "targetId": "reco-service", "type": "async", "direction": "unidirectional"},
-
-    {"id": "c21", "sourceId": "app-3", "targetId": "analytics-stream", "type": "async", "direction": "unidirectional"},
-    {"id": "c22", "sourceId": "analytics-stream", "targetId": "reco-service", "type": "async", "direction": "unidirectional"},
-
-    {"id": "c23", "sourceId": "reco-service", "targetId": "redis-feed", "type": "request", "direction": "unidirectional"},
-    {"id": "c24", "sourceId": "app-2", "targetId": "thumb-fn", "type": "async", "direction": "unidirectional"},
-    {"id": "c25", "sourceId": "thumb-fn", "targetId": "thumb-store", "type": "request", "direction": "unidirectional"}
+    {"id": "c5", "sourceId": "api", "targetId": "app", "type": "request", "direction": "unidirectional"},
+    {"id": "c6", "sourceId": "app", "targetId": "cache", "type": "request", "direction": "unidirectional"},
+    {"id": "c7", "sourceId": "app", "targetId": "db", "type": "request", "direction": "unidirectional"}
   ]
 }
