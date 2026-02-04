@@ -107819,7 +107819,7 @@ case 3:q.sb6(p)
 s=4
 break
 case 5:s=6
-return A.v(q.xV("assets/solutions/complex_sample_design.json"),$async$A2)
+return A.v(q.xV(a==="youtube"?"assets/solutions/youtube_sample_design.json":"assets/solutions/complex_sample_design.json"),$async$A2)
 case 6:if(!c)q.sb6(B.jD)
 case 4:return A.z(null,r)}})
 return A.A($async$A2,r)},

@@ -1,0 +1,147 @@
+{
+  "viewState": {
+    "panOffset": {"x": -4800, "y": -4700},
+    "scale": 1.0
+  },
+  "components": [
+    {
+      "id": "users",
+      "type": "client",
+      "position": {"x": 4700.0, "y": 4700.0},
+      "size": {"w": 80.0, "h": 64.0},
+      "config": {"capacity": 50000}
+    },
+    {
+      "id": "dns",
+      "type": "dns",
+      "position": {"x": 4900.0, "y": 4700.0},
+      "size": {"w": 80.0, "h": 64.0},
+      "config": {"capacity": 1000000, "costPerHour": 0.01}
+    },
+    {
+      "id": "cdn",
+      "type": "cdn",
+      "position": {"x": 5100.0, "y": 4700.0},
+      "size": {"w": 80.0, "h": 64.0},
+      "config": {
+        "capacity": 500000,
+        "regions": ["us-east-1", "eu-west-1", "ap-south-1"],
+        "costPerHour": 0.05
+      }
+    },
+    {
+      "id": "lb",
+      "type": "loadBalancer",
+      "position": {"x": 5100.0, "y": 4900.0},
+      "size": {"w": 80.0, "h": 64.0},
+      "config": {
+        "capacity": 150000,
+        "instances": 2,
+        "algorithm": "round_robin",
+        "costPerHour": 0.10
+      }
+    },
+    {
+      "id": "api",
+      "type": "apiGateway",
+      "position": {"x": 5100.0, "y": 5100.0},
+      "size": {"w": 80.0, "h": 64.0},
+      "config": {
+        "capacity": 80000,
+        "instances": 2,
+        "cacheTtlSeconds": 60,
+        "rateLimiting": true,
+        "rateLimitRps": 20000,
+        "costPerHour": 0.15
+      }
+    },
+    {
+      "id": "app",
+      "type": "appServer",
+      "position": {"x": 5100.0, "y": 5300.0},
+      "size": {"w": 80.0, "h": 64.0},
+      "config": {
+        "capacity": 1500,
+        "instances": 3,
+        "autoScale": true,
+        "minInstances": 3,
+        "maxInstances": 20,
+        "circuitBreaker": true,
+        "costPerHour": 0.20
+      }
+    },
+    {
+      "id": "cache",
+      "type": "cache",
+      "position": {"x": 4900.0, "y": 5500.0},
+      "size": {"w": 80.0, "h": 64.0},
+      "config": {
+        "capacity": 120000,
+        "instances": 2,
+        "cacheTtlSeconds": 3600,
+        "costPerHour": 0.08
+      }
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "position": {"x": 5300.0, "y": 5500.0},
+      "size": {"w": 80.0, "h": 64.0},
+      "config": {
+        "capacity": 8000,
+        "instances": 2,
+        "replication": true,
+        "replicationFactor": 2,
+        "sharding": true,
+        "partitionCount": 4,
+        "costPerHour": 0.25
+      }
+    },
+    {
+      "id": "queue",
+      "type": "queue",
+      "position": {"x": 4900.0, "y": 5700.0},
+      "size": {"w": 80.0, "h": 64.0},
+      "config": {
+        "capacity": 150000,
+        "dlq": true,
+        "costPerHour": 0.04
+      }
+    },
+    {
+      "id": "worker",
+      "type": "worker",
+      "position": {"x": 4900.0, "y": 5900.0},
+      "size": {"w": 80.0, "h": 64.0},
+      "config": {
+        "capacity": 800,
+        "instances": 4,
+        "autoScale": true,
+        "costPerHour": 0.15
+      }
+    },
+    {
+      "id": "object-store",
+      "type": "objectStore",
+      "position": {"x": 5300.0, "y": 5900.0},
+      "size": {"w": 80.0, "h": 64.0},
+      "config": {
+        "capacity": 1500000,
+        "regions": ["us-east-1", "eu-west-1"],
+        "costPerHour": 0.02
+      }
+    }
+  ],
+  "connections": [
+    {"id": "c1", "sourceId": "users", "targetId": "dns", "type": "request", "direction": "unidirectional"},
+    {"id": "c2", "sourceId": "dns", "targetId": "cdn", "type": "request", "direction": "unidirectional"},
+    {"id": "c3", "sourceId": "cdn", "targetId": "lb", "type": "request", "direction": "unidirectional"},
+    {"id": "c4", "sourceId": "lb", "targetId": "api", "type": "request", "direction": "unidirectional"},
+    {"id": "c5", "sourceId": "api", "targetId": "app", "type": "request", "direction": "unidirectional"},
+    {"id": "c6", "sourceId": "app", "targetId": "cache", "type": "request", "direction": "unidirectional"},
+    {"id": "c7", "sourceId": "cache", "targetId": "db", "type": "request", "direction": "unidirectional"},
+    {"id": "c8", "sourceId": "app", "targetId": "queue", "type": "async", "direction": "unidirectional"},
+    {"id": "c9", "sourceId": "queue", "targetId": "worker", "type": "async", "direction": "unidirectional"},
+    {"id": "c10", "sourceId": "worker", "targetId": "object-store", "type": "request", "direction": "unidirectional"}
+  ]
+}
