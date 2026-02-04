@@ -12,6 +12,9 @@ class CanvasState {
   final Offset panOffset;
   final double scale;
   final String? activeProblemId;
+  final bool isCyberpunkMode;
+  final double trafficLevel; // 0.0 to 1.0 (representing 0% to 100% traffic)
+  final bool showErrors; // Toggle to show/hide error indicators
 
   const CanvasState({
     this.components = const [],
@@ -21,6 +24,9 @@ class CanvasState {
     this.panOffset = Offset.zero,
     this.scale = 1.0,
     this.activeProblemId,
+    this.isCyberpunkMode = false,
+    this.trafficLevel = 1.0, // Default 100% traffic
+    this.showErrors = true, // Default: show errors
   });
 
   CanvasState copyWith({
@@ -33,6 +39,9 @@ class CanvasState {
     String? activeProblemId,
     bool clearSelection = false,
     bool clearConnecting = false,
+    bool? isCyberpunkMode,
+    double? trafficLevel,
+    bool? showErrors,
   }) {
     return CanvasState(
       components: components ?? this.components,
@@ -44,6 +53,9 @@ class CanvasState {
       panOffset: panOffset ?? this.panOffset,
       scale: scale ?? this.scale,
       activeProblemId: activeProblemId ?? this.activeProblemId,
+      isCyberpunkMode: isCyberpunkMode ?? this.isCyberpunkMode,
+      trafficLevel: trafficLevel ?? this.trafficLevel,
+      showErrors: showErrors ?? this.showErrors,
     );
   }
 
@@ -54,6 +66,11 @@ class CanvasState {
     } catch (_) {
       return null;
     }
+  }
+  
+  // Computed property for Bill Shock
+  double get totalCostPerHour {
+    return components.fold(0.0, (sum, c) => sum + (c.config.costPerHour * c.config.instances));
   }
 
   /// Get connections for a component
@@ -76,6 +93,9 @@ class CanvasState {
     'panOffset': {'dx': panOffset.dx, 'dy': panOffset.dy},
     'scale': scale,
     'activeProblemId': activeProblemId,
+    'isCyberpunkMode': isCyberpunkMode,
+    'trafficLevel': trafficLevel,
+        'showErrors': showErrors,
   };
 
   factory CanvasState.fromJson(Map<String, dynamic> json) {
@@ -95,6 +115,9 @@ class CanvasState {
           : Offset.zero,
       scale: (json['scale'] as num?)?.toDouble() ?? 1.0,
       activeProblemId: json['activeProblemId'] as String?,
+      isCyberpunkMode: json['isCyberpunkMode'] as bool? ?? false,
+      trafficLevel: (json['trafficLevel'] as num?)?.toDouble() ?? 1.0,
+      showErrors: json['showErrors'] as bool? ?? true,
     );
   }
 }

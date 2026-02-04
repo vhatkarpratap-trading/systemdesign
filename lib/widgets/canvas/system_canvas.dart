@@ -13,6 +13,12 @@ import '../../providers/game_provider.dart';
 import '../../theme/app_theme.dart';
 import 'component_node.dart';
 import 'connections_layer.dart';
+import 'traffic_layer.dart'; // Added
+import '../../models/traffic_particle.dart'; // Added
+import '../../providers/traffic_provider.dart'; // Added
+import 'package:uuid/uuid.dart';
+import '../../models/chaos_event.dart';
+import '../../models/custom_component.dart';
 import 'issue_marker.dart';
 
 /// Interactive canvas for building system architecture
@@ -273,7 +279,7 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: DragTarget<ComponentType>(
+                child: DragTarget<Object>(
                 onWillAcceptWithDetails: (details) => true,
                 onMove: (details) {
                   final canvasPos = _getCanvasPosition(details.offset);
@@ -286,10 +292,75 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                 },
                 onAcceptWithDetails: (details) {
                   final canvasPos = _getCanvasPosition(details.offset);
-                  ref.read(canvasProvider.notifier).addComponent(
-                    details.data,
-                    Offset(canvasPos.dx.clamp(50, 9900), canvasPos.dy.clamp(50, 9900)),
-                  );
+                  final data = details.data;
+                  
+                  if (data is ComponentType) {
+                    ref.read(canvasProvider.notifier).addComponent(
+                      data,
+                      Offset(canvasPos.dx.clamp(50, 9900), canvasPos.dy.clamp(50, 9900)),
+                    );
+                  } else if (data is ChaosType) {
+                    // Find target component
+                    final canvasState = ref.read(canvasProvider);
+                    String? targetId;
+                    for (final comp in canvasState.components) {
+                      final rect = Rect.fromLTWH(comp.position.dx, comp.position.dy, comp.size.width, comp.size.height);
+                      if (rect.contains(canvasPos)) {
+                        targetId = comp.id;
+                        break;
+                      }
+                    }
+                    
+                    // Create Chaos Event
+                    final event = ChaosEvent(
+                      id: const Uuid().v4(),
+                      type: data,
+                      startTime: DateTime.now(),
+                      duration: const Duration(seconds: 30), // Default 30s disaster
+                      parameters: {
+                         'targetId': targetId, // Null means global or random?
+                         'severity': 1.0, 
+                      },
+                    );
+
+                    // Add to simulation
+                    ref.read(simulationProvider.notifier).addChaosEvent(event);
+                    
+                    // Visual feedback
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('${data.emoji} ${data.label} unleashed!'),
+                        duration: const Duration(seconds: 2),
+                        backgroundColor: AppTheme.secondary,
+                      ),
+                    );
+                  } else if (data is CustomComponentDefinition) {
+                    // Expand custom component to internal nodes + connections
+                    final dropPos = Offset(canvasPos.dx.clamp(50, 9900), canvasPos.dy.clamp(50, 9900));
+                    final createdIds = ref.read(canvasProvider.notifier).addCustomComponent(data, dropPos);
+                    
+                    // Visual feedback
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('${data.name} deployed with ${createdIds.length} components!'),
+                        duration: const Duration(seconds: 2),
+                        backgroundColor: data.color,
+                      ),
+                    );
+                  } else if (data is SystemComponent) {
+                    // Add template component
+                    final dropPos = Offset(canvasPos.dx.clamp(50, 9900), canvasPos.dy.clamp(50, 9900));
+                    ref.read(canvasProvider.notifier).addComponentTemplate(data, dropPos);
+                    
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('${data.customName ?? data.type.displayName} deployed!'),
+                        duration: const Duration(seconds: 2),
+                        backgroundColor: AppTheme.success,
+                      ),
+                    );
+                  }
+                  
                   setState(() => _dragPreviewPosition = null);
                 },
                 builder: (context, candidateData, rejectedData) {
@@ -333,8 +404,8 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                       minScale: 0.1,
                       maxScale: 5.0,
                       constrained: false,
-                      panEnabled: !isSimulating,
-                      scaleEnabled: !isSimulating,
+                      panEnabled: true, // Allow panning during simulation
+                      scaleEnabled: true, // Allow zoom during simulation
                       trackpadScrollCausesScale: false,
                       boundaryMargin: const EdgeInsets.all(5000),
                       onInteractionStart: (_) {
@@ -396,12 +467,20 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                           child: Stack(
                             clipBehavior: Clip.none,
                             children: [
-                                    // Grid
-                                    RepaintBoundary(
-                                      child: CustomPaint(
-                                        size: const Size(10000, 10000),
-                                        painter: _GridPainter(
-                                          color: AppTheme.border.withValues(alpha: 0.3),
+                                    // Background & Grid
+                                    Positioned.fill(
+                                      child: Container(
+                                        color: canvasState.isCyberpunkMode ? AppTheme.cyberpunkBackground : AppTheme.background,
+                                        child: RepaintBoundary(
+                                          child: CustomPaint(
+                                            size: const Size(10000, 10000),
+                                            painter: _GridPainter(
+                                              color: canvasState.isCyberpunkMode 
+                                                ? AppTheme.neonCyan.withValues(alpha: 0.15) 
+                                                : AppTheme.border.withValues(alpha: 0.3),
+                                              isCyberpunk: canvasState.isCyberpunkMode,
+                                            ),
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -419,6 +498,28 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                                           },
                                         ),
                                       ),
+                                    ),
+
+                                    // Traffic Particles (NEW)
+                                    Consumer(
+                                      builder: (context, ref, child) {
+                                        final particles = ref.watch(trafficProvider);
+                                        if (particles.isEmpty) return const SizedBox.shrink();
+                                        
+                                        return Positioned.fill(
+                                          child: IgnorePointer(
+                                            child: RepaintBoundary(
+                                              child: CustomPaint(
+                                                painter: TrafficLayer(
+                                                  particles: particles,
+                                                  connections: canvasState.connections,
+                                                  components: canvasState.components,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      },
                                     ),
 
                                     // Elastic cable
@@ -551,15 +652,17 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                                       );
                                     }),
 
-                                    // Issue Markers
-                                    ...simState.failures.map((failure) {
-                                      final component = canvasState.getComponent(failure.componentId);
-                                      if (component == null) return const SizedBox.shrink();
-                                      return IssueMarker(
-                                        failure: failure,
-                                        position: component.position,
-                                      );
-                                    }),
+                                    // Issue Markers - only if enabled and user visible
+                                    ...(canvasState.showErrors 
+                                        ? simState.failures.where((f) => f.userVisible).map((failure) {
+                                            final component = canvasState.getComponent(failure.componentId);
+                                            if (component == null) return const SizedBox.shrink();
+                                            return IssueMarker(
+                                              failure: failure,
+                                              position: component.position,
+                                            );
+                                          })
+                                        : []),
 
                                     // Drop preview
                                     if (isDragging && _dragPreviewPosition != null)
@@ -576,7 +679,11 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                                               border: Border.all(color: AppTheme.primary.withValues(alpha: 0.5)),
                                             ),
                                             child: Icon(
-                                              candidateData.first?.icon ?? Icons.add,
+                                              (candidateData.first is ComponentType) 
+                                                  ? (candidateData.first as ComponentType).icon 
+                                                  : (candidateData.first is ChaosType)
+                                                      ? (candidateData.first as ChaosType).icon
+                                                      : Icons.add,
                                               color: AppTheme.primary.withValues(alpha: 0.7),
                                               size: 24,
                                             ),
@@ -594,6 +701,7 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
             ),
           ),
           ),
+          
           
           // 2. Settings Sidebar Layer (Overlay)
           AnimatedPositioned(
@@ -632,7 +740,77 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
             ),
           ),
 
-          // 3. Empty state
+          // 3. Cyberpunk & Cost Controls (Top Right Overlay)
+          Positioned(
+            top: 16,
+            right: 16,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // Cost Ticker
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: canvasState.isCyberpunkMode 
+                        ? AppTheme.cyberpunkSurface.withValues(alpha: 0.9)
+                        : AppTheme.surface.withValues(alpha: 0.9),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: canvasState.isCyberpunkMode ? AppTheme.neonMagenta : AppTheme.border,
+                      width: canvasState.isCyberpunkMode ? 1.5 : 1,
+                    ),
+                    boxShadow: canvasState.isCyberpunkMode 
+                        ? [BoxShadow(color: AppTheme.neonMagenta.withValues(alpha: 0.4), blurRadius: 8)]
+                        : [],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.attach_money, size: 16, color: canvasState.isCyberpunkMode ? AppTheme.neonMagenta : AppTheme.success),
+                      const SizedBox(width: 4),
+                      Text(
+                        '\$${canvasState.totalCostPerHour.toStringAsFixed(2)}/hr',
+                        style: GoogleFonts.firaCode(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // Cyberpunk Toggle
+                GestureDetector(
+                  onTap: () {
+                      ref.read(canvasProvider.notifier).toggleCyberpunkMode();
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: canvasState.isCyberpunkMode 
+                          ? AppTheme.cyberpunkSurface.withValues(alpha: 0.9)
+                          : AppTheme.surface.withValues(alpha: 0.9),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: canvasState.isCyberpunkMode ? AppTheme.neonCyan : AppTheme.border,
+                      ),
+                      boxShadow: canvasState.isCyberpunkMode 
+                          ? [BoxShadow(color: AppTheme.neonCyan.withValues(alpha: 0.4), blurRadius: 8)]
+                          : [],
+                    ),
+                    child: Icon(
+                      Icons.nightlight_round,
+                      size: 20,
+                      color: canvasState.isCyberpunkMode ? AppTheme.neonCyan : AppTheme.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // 4. Empty state
           if (canvasState.components.isEmpty)
             Center(
               child: Column(
@@ -1165,14 +1343,23 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
 
 class _GridPainter extends CustomPainter {
   final Color color;
+  final bool isCyberpunk;
 
-  _GridPainter({required this.color});
+  _GridPainter({
+    required this.color,
+    this.isCyberpunk = false,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = color
-      ..strokeWidth = 1.0;
+      ..color = isCyberpunk ? color.withValues(alpha: 0.3) : color
+      ..strokeWidth = isCyberpunk ? 0.8 : 1.0;
+      
+    if (isCyberpunk) {
+      // Add a glow effect to the grid
+      paint.maskFilter = const MaskFilter.blur(BlurStyle.solid, 4);
+    }
 
     const gridSize = 100.0;
     
@@ -1587,6 +1774,12 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
 
   late int? _quorumWrite;
   late String _region;
+  
+  // Detailed Visualization
+  late ComponentDisplayMode _displayMode;
+  late List<ShardConfig> _shardConfigs;
+  late List<PartitionConfig> _partitionConfigs;
+  late ReplicationType _replicationType;
 
   @override
   void initState() {
@@ -1615,6 +1808,11 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
 
     _quorumWrite = config.quorumWrite;
     _region = config.regions.isNotEmpty ? config.regions.first : 'us-east-1';
+    
+    _displayMode = config.displayMode;
+    _shardConfigs = List.from(config.shardConfigs);
+    _partitionConfigs = List.from(config.partitionConfigs);
+    _replicationType = config.replicationType;
   }
 
   @override
@@ -1682,6 +1880,125 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
               },
               onChanged: (val) { if(val != null) { setState(() => _region = val); _updateConfig(); } },
             ),
+            const SizedBox(height: 12),
+
+            _buildSectionHeader('ARCHITECTURE VISUALIZATION'),
+            _DropdownRow(
+              label: 'Display Mode',
+              value: _displayMode.name,
+              options: const {
+                'collapsed': 'Collapsed (Icon)',
+                'expanded': 'Expanded (Basic)',
+                'detailed': 'Detailed (Shards/Partitions)',
+              },
+              onChanged: (val) {
+                 if(val != null) {
+                   setState(() {
+                     _displayMode = ComponentDisplayMode.values.firstWhere((e) => e.name == val);
+                   });
+                   _updateConfig();
+                 }
+              },
+            ),
+            if (_displayMode == ComponentDisplayMode.detailed) ...[
+               const SizedBox(height: 12),
+               const Text('Shards', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.bold)),
+               ..._shardConfigs.map((shard) => Row(
+                 children: [
+                   Expanded(
+                     child: Column(
+                       crossAxisAlignment: CrossAxisAlignment.start,
+                       children: [
+                         Text(shard.name, style: const TextStyle(color: Colors.white, fontSize: 12)),
+                         Text(shard.keyRange, style: const TextStyle(color: Colors.grey, fontSize: 10)),
+                       ],
+                     ),
+                   ),
+                   IconButton(
+                     icon: const Icon(Icons.delete, color: Colors.red, size: 16),
+                     onPressed: () {
+                        setState(() {
+                          _shardConfigs.remove(shard);
+                        });
+                        _updateConfig();
+                     },
+                   ),
+                 ],
+               )),
+               Align(
+                 alignment: Alignment.centerLeft,
+                 child: TextButton.icon(
+                   icon: const Icon(Icons.add, size: 16),
+                   label: const Text('Add Shard'),
+                   onPressed: () {
+                     setState(() {
+                       _shardConfigs.add(ShardConfig(
+                         id: const Uuid().v4(),
+                         name: 'Shard ${_shardConfigs.length + 1}',
+                         keyRange: 'Range ${_shardConfigs.length + 1}',
+                       ));
+                     });
+                     _updateConfig();
+                   },
+                 ),
+               ),
+               
+               const Divider(height: 16),
+               
+               const Text('Partitions (Primary)', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.bold)),
+               ..._partitionConfigs.map((p) => Row(
+                 children: [
+                    Expanded(child: Text('${p.tableName} (${p.partitions.length})', style: const TextStyle(color: Colors.white, fontSize: 12))),
+                    IconButton(
+                     icon: const Icon(Icons.delete, color: Colors.red, size: 16),
+                     onPressed: () {
+                        setState(() {
+                          _partitionConfigs.remove(p);
+                        });
+                        _updateConfig();
+                     },
+                   ),
+                 ],
+               )),
+               Align(
+                 alignment: Alignment.centerLeft,
+                 child: TextButton.icon(
+                   icon: const Icon(Icons.add, size: 16),
+                   label: const Text('Add Partitioned Table'),
+                   onPressed: () {
+                     setState(() {
+                       _partitionConfigs.add(PartitionConfig(
+                         tableName: 'table_${_partitionConfigs.length + 1}',
+                         partitionKey: 'id',
+                         partitions: ['p1', 'p2', 'p3'],
+                       ));
+                     });
+                     _updateConfig();
+                   },
+                 ),
+               ),
+
+               const SizedBox(height: 8),
+               _DropdownRow(
+                  label: 'Replication Type',
+                  value: _replicationType.name,
+                  options: const {
+                    'none': 'None',
+                    'synchronous': 'Synchronous',
+                    'asynchronous': 'Asynchronous',
+                    'streaming': 'Streaming',
+                  },
+                  onChanged: (val) {
+                    if(val != null) {
+                      setState(() {
+                        _replicationType = ReplicationType.values.firstWhere((e) => e.name == val);
+                      });
+                      _updateConfig();
+                    }
+                  },
+                ),
+            ],
+
             const SizedBox(height: 12),
 
             _buildSectionHeader('SCALING & DISTRIBUTION'),
@@ -1895,6 +2212,10 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
         quorumRead: _quorumRead,
         quorumWrite: _quorumWrite,
         regions: [_region],
+        displayMode: _displayMode,
+        shardConfigs: _shardConfigs,
+        partitionConfigs: _partitionConfigs,
+        replicationType: _replicationType,
       ),
     );
   }

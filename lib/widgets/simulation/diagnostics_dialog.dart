@@ -168,8 +168,8 @@ class _IssueCard extends ConsumerWidget {
                     failure.componentId,
                   );
                   
-                  // Reset simulation to verify fix
-                  ref.read(simulationProvider.notifier).reset();
+                  // Reset simulation to verify fix - REMOVED for continuity
+                  // ref.read(simulationProvider.notifier).reset();
                   
                   // Close dialog
                   Navigator.of(context).pop();

@@ -16,6 +16,7 @@ class SimulationData {
   final int tickCount;
   final List<ChaosEvent> activeChaosEvents;
   final Map<String, ComponentMetrics> previousMetrics;
+  final double trafficLevel; // User-controlled 0.0-1.0 (0-100%)
 
   SimulationData({
     required this.components,
@@ -25,6 +26,7 @@ class SimulationData {
     required this.tickCount,
     this.activeChaosEvents = const [],
     this.previousMetrics = const {},
+    this.trafficLevel = 1.0, // Default 100% traffic
   });
 }
 
@@ -64,8 +66,8 @@ SimulationResult runSimulationTick(SimulationData data) {
     }
   }
 
-  // Add some jitter to simulated traffic
-  final currentRps = (targetRps * multiplier * chaosMultiplier * (0.95 + random.nextDouble() * 0.1)).toInt();
+  // CRITICAL: Apply user's traffic level control (0-100% slider)
+  final currentRps = (targetRps * multiplier * chaosMultiplier * data.trafficLevel * (0.95 + random.nextDouble() * 0.1)).toInt();
 
   // Process traffic
   final (componentMetrics, connectionTraffic, failures) =
@@ -119,7 +121,7 @@ SimulationResult runSimulationTick(SimulationData data) {
     connectionTraffic: connectionTraffic,
     failures: allFailures,
     globalMetrics: globalMetrics,
-    isCompleted: data.tickCount >= 300,
+    isCompleted: false, // Run indefinitely - user controls when to stop
   );
 }
 
@@ -185,11 +187,25 @@ SimulationResult runSimulationTick(SimulationData data) {
           
           // Distribution strategy:
           // If source splits to multiple targets, how do we split?
-          // Default: Round Robin / Even Split
-          final siblings = connections.where((c) => c.sourceId == conn.sourceId).length;
-          final flow = (sourceMetric.currentRps / (siblings > 0 ? siblings : 1)).ceil();
+          // SMART SPLIT: Reroute traffic away from crashed components to healthy siblings
+          final siblings = connections.where((c) => c.sourceId == conn.sourceId);
           
-          componentRps += flow;
+          // Determine which siblings are currently crashed via chaos
+          final healthySiblings = siblings.where((s) {
+            return !activeChaosEvents.any((e) => 
+               e.type == ChaosType.componentCrash && e.parameters['componentId'] == s.targetId);
+          }).toList();
+
+          // If all are crashed, traffic still flows (to be dropped at target)
+          // Otherwise, only healthy ones take the load
+          final shareCount = healthySiblings.isEmpty ? siblings.length : healthySiblings.length;
+          final isHealthy = !activeChaosEvents.any((e) => 
+              e.type == ChaosType.componentCrash && e.parameters['componentId'] == component.id);
+          
+          if (isHealthy || healthySiblings.isEmpty) {
+            final flow = (sourceMetric.currentRps / (shareCount > 0 ? shareCount : 1)).ceil();
+            componentRps += flow;
+          }
         }
       }
     }
@@ -217,7 +233,7 @@ SimulationResult runSimulationTick(SimulationData data) {
     );
     componentMetrics[component.id] = metrics;
 
-    final componentFailures = _checkFailures(component, metrics, problem);
+    final componentFailures = _checkFailures(component, metrics, problem, components, connections);
     failures.addAll(componentFailures);
   }
 
@@ -582,6 +598,11 @@ double _getBaseLatency(ComponentType type) {
     ComponentType.text || 
     ComponentType.sharding ||
     ComponentType.hashing ||
+    ComponentType.shardNode ||
+    ComponentType.partitionNode ||
+    ComponentType.replicaNode ||
+    ComponentType.inputNode ||
+    ComponentType.outputNode ||
     ComponentType.rectangle || 
     ComponentType.circle || 
     ComponentType.diamond ||
@@ -595,6 +616,8 @@ List<FailureEvent> _checkFailures(
   SystemComponent component,
   ComponentMetrics metrics,
   Problem problem,
+  List<SystemComponent> allComponents,
+  List<Connection> allConnections,
 ) {
   final failures = <FailureEvent>[];
 
@@ -633,38 +656,81 @@ List<FailureEvent> _checkFailures(
     ));
   }
 
-  //1. Overload (CPU > 95%)
-  if (metrics.cpuUsage > 0.95) {
+  // 1. Overload - Only when incoming RPS exceeds effective capacity
+  // Check actual capacity considering all scaling techniques
+  final baseCapacity = component.config.capacity * component.config.instances;
+  var effectiveCapacity = baseCapacity.toDouble();
+  
+  // Apply sharding multiplier (N shards = N× write capacity)
+  if (component.config.sharding && component.config.partitionCount > 1) {
+    effectiveCapacity *= component.config.partitionCount;
+  }
+  
+  // Apply replication read scaling (Leader + followers boost read capacity)
+  if (component.config.replication && component.config.replicationFactor > 1) {
+    if (component.type == ComponentType.database || component.type == ComponentType.cache) {
+      final readCapacity = effectiveCapacity * component.config.replicationFactor;
+      // Assume 80% reads, 20% writes
+      effectiveCapacity = (readCapacity * 0.8) + (effectiveCapacity * 0.2);
+    }
+  }
+  
+  // Only error if significantly over capacity (110% threshold to avoid flapping)
+  if (metrics.currentRps > effectiveCapacity * 1.1 && effectiveCapacity > 0) {
+    final overloadPct = ((metrics.currentRps / effectiveCapacity - 1.0) * 100).toInt();
     failures.add(FailureEvent(
       timestamp: DateTime.now(),
       componentId: component.id,
       type: FailureType.overload,
-      message: '${component.type.displayName} is overloaded (${(metrics.cpuUsage * 100).toStringAsFixed(0)}% CPU)',
-      recommendation: 'Add more instances or enable autoscaling',
-      severity: 0.9,
+      message: '${component.type.displayName} overloaded: ${metrics.currentRps} RPS exceeds ${effectiveCapacity.toInt()} RPS (+$overloadPct%)',
+      recommendation: component.config.autoScale
+          ? 'Autoscaling active - manually add instances via Increase Replicas if needed'
+          : 'Enable autoscaling or manually add more instances',
+      severity: ((metrics.currentRps / effectiveCapacity - 1.0) / 2.0).clamp(0.5, 0.95),
       userVisible: true,
       fixType: component.config.autoScale ? FixType.increaseReplicas : FixType.enableAutoscaling,
     ));
   }
 
-  // 2. Single Point of Failure
-  if (component.config.instances == 1 && _isCriticalPath(component.type)) {
+  // 2. Single Point of Failure (Design-time warning - shows even without traffic)
+  // SMARTER CHECK: Only show if component is actually receiving traffic AND there's no sibling redundancy
+  if (component.config.instances == 1 && _isCriticalPath(component.type) && metrics.currentRps > 0) {
     if (!component.config.autoScale) {
-      failures.add(FailureEvent(
-        timestamp: DateTime.now(),
-        componentId: component.id,
-        type: FailureType.spof,
-        message: '${component.type.displayName} is a single point of failure',
-        recommendation: 'Increase instance count or enable autoscaling',
-        severity: 0.8,
-        userVisible: true,
-        fixType: FixType.increaseReplicas,
-      ));
+      // Look for sibling components that provide redundancy
+      // A sibling is a component of the same type that shares AT LEAST ONE common source
+      final mySources = allConnections.where((c) => c.targetId == component.id).map((c) => c.sourceId).toSet();
+      
+      bool hasSiblingRedundancy = false;
+      if (mySources.isNotEmpty) {
+        final similarComponents = allComponents.where((c) => c.id != component.id && c.type == component.type);
+        
+        for (final other in similarComponents) {
+          final otherSources = allConnections.where((c) => c.targetId == other.id).map((c) => c.sourceId).toSet();
+          // If they share a source, they are redundant paths from that source
+          if (mySources.intersection(otherSources).isNotEmpty) {
+            hasSiblingRedundancy = true;
+            break;
+          }
+        }
+      }
+
+      if (!hasSiblingRedundancy) {
+        failures.add(FailureEvent(
+          timestamp: DateTime.now(),
+          componentId: component.id,
+          type: FailureType.spof,
+          message: '${component.type.displayName} is a single point of failure',
+          recommendation: 'Increase instance count, enable autoscaling, or add a redundant ${component.type.displayName} node',
+          severity: 0.8,
+          userVisible: true,
+          fixType: FixType.increaseReplicas,
+        ));
+      }
     }
   }
 
-  // 3. Latency Breach (SLA violation)
-  if (metrics.p95LatencyMs > problem.constraints.maxLatencyMs) {
+  // 3. Latency Breach (Runtime error - only check when processing traffic)
+  if (metrics.currentRps > 0 && metrics.p95LatencyMs > problem.constraints.maxLatencyMs) {
     failures.add(FailureEvent(
       timestamp: DateTime.now(),
       componentId: component.id,
@@ -679,16 +745,29 @@ List<FailureEvent> _checkFailures(
 
   // 4. Data Loss Risk
   if (component.type == ComponentType.database && !component.config.replication) {
-    failures.add(FailureEvent(
-      timestamp: DateTime.now(),
-      componentId: component.id,
-      type: FailureType.dataLoss,
-      message: 'Database has no replication - risk of data loss',
-      recommendation: 'Enable replication with factor >= 2',
-      severity: 0.9,
-      userVisible: false,
-      fixType: FixType.enableReplication,
-    ));
+    // HOLISTIC CHECK: Only show if no sibling redundancy
+    final mySources = allConnections.where((c) => c.targetId == component.id).map((c) => c.sourceId).toSet();
+    bool hasSiblingRedundancy = false;
+    if (mySources.isNotEmpty) {
+      hasSiblingRedundancy = allComponents.any((other) => 
+        other.id != component.id && 
+        other.type == component.type &&
+        allConnections.where((c) => c.targetId == other.id).any((c) => mySources.contains(c.sourceId))
+      );
+    }
+
+    if (!hasSiblingRedundancy) {
+      failures.add(FailureEvent(
+        timestamp: DateTime.now(),
+        componentId: component.id,
+        type: FailureType.dataLoss,
+        message: 'Database has no replication - risk of data loss',
+        recommendation: 'Enable replication with factor >= 2 or add a redundant database node',
+        severity: 0.9,
+        userVisible: false,
+        fixType: FixType.enableReplication,
+      ));
+    }
   }
 
   // 5. Queue Overflow
@@ -709,8 +788,8 @@ List<FailureEvent> _checkFailures(
     }
   }
 
-  // NEW: 6. Connection Pool Exhaustion
-  if (metrics.connectionPoolUtilization > 0.9) {
+  // NEW: 6. Connection Pool Exhaustion (Runtime error - only when processing)
+  if (metrics.currentRps > 0 && metrics.connectionPoolUtilization > 0.9) {
     failures.add(FailureEvent(
       timestamp: DateTime.now(),
       componentId: component.id,
@@ -723,8 +802,8 @@ List<FailureEvent> _checkFailures(
     ));
   }
 
-  // NEW: 7. Slow Node Detection
-  if (metrics.isSlow) {
+  // NEW: 7. Slow Node Detection (Runtime error - only when processing)
+  if (metrics.currentRps > 0 && metrics.isSlow) {
     failures.add(FailureEvent(
       timestamp: DateTime.now(),
       componentId: component.id,
@@ -980,7 +1059,12 @@ List<FailureEvent> _checkCascadingFailures(
         .map((c) => c.targetId)
         .toSet();
     
+    // Track components that already have a cascading failure this tick
+    final cascadedTargetIds = <String>{};
+    
     for (final downstreamId in downstreamIds) {
+      if (cascadedTargetIds.contains(downstreamId)) continue;
+      
       try {
         final component = components.firstWhere((c) => c.id == downstreamId);
         
@@ -997,6 +1081,7 @@ List<FailureEvent> _checkCascadingFailures(
             affectedComponents: [failure.componentId],
             userVisible: false,
           ));
+          cascadedTargetIds.add(downstreamId);
         } else {
           // Failure cascades (50% probability for realism)
           if (Random().nextDouble() > 0.5) {
@@ -1011,6 +1096,7 @@ List<FailureEvent> _checkCascadingFailures(
               userVisible: true,
               fixType: FixType.addCircuitBreaker,
             ));
+            cascadedTargetIds.add(downstreamId);
           }
         }
       } catch (_) {

@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/component.dart';
+import '../../models/custom_component.dart';
 import '../../providers/game_provider.dart';
+import '../../providers/custom_component_provider.dart';
+import '../../screens/custom_component_editor_screen.dart';
 import '../../theme/app_theme.dart';
+
 
 /// Toolbox display mode
 enum ToolboxMode {
@@ -260,6 +264,13 @@ class _SidebarToolbox extends ConsumerWidget {
 
           const Divider(height: 1, color: AppTheme.border),
 
+          // My Components section
+          _MyComponentsSection(),
+
+          const Divider(height: 1, color: AppTheme.border),
+
+
+
           // Components grid (scrollable)
           Expanded(
             child: GridView.builder(
@@ -289,6 +300,167 @@ class _SidebarToolbox extends ConsumerWidget {
                 );
               },
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Section for user's custom components
+class _MyComponentsSection extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final customComponents = ref.watch(publishedCustomComponentsProvider);
+
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.folder_special, size: 14, color: Colors.amber),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text(
+                  'My Components',
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const CustomComponentEditorScreen(),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.primary, width: 1),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add, size: 12, color: AppTheme.primary),
+                      SizedBox(width: 4),
+                      Text(
+                        'Create',
+                        style: TextStyle(
+                          color: AppTheme.primary,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (customComponents.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceLight.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: const Text(
+                'No custom components yet.\nClick Create to design your own!',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+                textAlign: TextAlign.center,
+              ),
+            )
+          else
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: customComponents.map((comp) => _CustomComponentChip(
+                component: comp,
+                onTap: () {
+                  // Navigate to editor to view/edit
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => CustomComponentEditorScreen(componentId: comp.id),
+                    ),
+                  );
+                },
+              )).toList(),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Chip for displaying a custom component in the palette
+class _CustomComponentChip extends StatelessWidget {
+  final CustomComponentDefinition component;
+  final VoidCallback onTap;
+
+  const _CustomComponentChip({required this.component, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Draggable<CustomComponentDefinition>(
+      data: component,
+      feedback: Material(
+        color: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: component.color.withOpacity(0.9),
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [BoxShadow(color: component.color.withOpacity(0.5), blurRadius: 12)],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(component.icon, color: Colors.white, size: 16),
+              const SizedBox(width: 6),
+              Text(component.name, style: const TextStyle(color: Colors.white, fontSize: 12)),
+            ],
+          ),
+        ),
+      ),
+      childWhenDragging: Opacity(
+        opacity: 0.3,
+        child: _buildChip(),
+      ),
+      child: GestureDetector(
+        onTap: onTap,
+        child: _buildChip(),
+      ),
+    );
+  }
+
+  Widget _buildChip() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: component.color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: component.color.withOpacity(0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(component.icon, color: component.color, size: 14),
+          const SizedBox(width: 4),
+          Text(
+            component.name,
+            style: TextStyle(color: component.color, fontSize: 11, fontWeight: FontWeight.w500),
           ),
         ],
       ),
@@ -442,3 +614,5 @@ class ToolboxToggle extends ConsumerWidget {
     );
   }
 }
+
+

@@ -160,6 +160,7 @@ class SimulationEngine {
         tickCount: simState.tickCount,
         activeChaosEvents: simState.activeChaosEvents.where((e) => e.isActive).toList(),
         previousMetrics: previousMetrics,
+        trafficLevel: canvasState.trafficLevel,
       );
 
       // Run simulation in background

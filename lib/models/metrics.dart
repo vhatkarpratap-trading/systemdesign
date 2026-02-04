@@ -209,7 +209,13 @@ enum FailureType {
   schemaMigration('Schema Migration Issue', 'Database schema incompatibility'),
   configDrift('Configuration Drift', 'Inconsistent config across instances'),
   cacheStampede('Cache Stampede', 'Mass cache miss causing DB overload'),
-  componentCrash('Component Crash', 'Process terminated unexpectedly');
+  componentCrash('Component Crash', 'Process terminated unexpectedly'),
+  
+  // Differentiated Failures (New)
+  diskIoSaturation('Disk I/O Saturation', 'IOPS limit reached, requests queuing'),
+  upstreamTimeout('Upstream Timeout', '504 Gateway Timeout - Upstream too slow'),
+  consumerLag('Consumer Lag', 'Processing rate slower than ingestion rate'),
+  threadStarvation('Thread Starvation', 'All worker threads busy, new requests blocked');
 
   final String displayName;
   final String description;

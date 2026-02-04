@@ -32,6 +32,13 @@ enum ComponentType {
   // Techniques (New)
   sharding('Sharding', 'Partition data across servers', Icons.grid_view),
   hashing('Hashing', 'Distribute keys uniformly', Icons.tag),
+  
+  // Infrastructure Primitives
+  shardNode('Shard Node', 'Database Shard Unit', Icons.pie_chart_outline),
+  partitionNode('Partition Node', 'Table Partition Unit', Icons.table_chart_outlined),
+  replicaNode('Replica Node', 'Read Replica Unit', Icons.copy_rounded),
+  inputNode('Input Source', 'Data Entry Point', Icons.login),
+  outputNode('Output Sink', 'Data Exit Point', Icons.logout),
 
   // User Components
   customService('Service', 'Your custom microservice', Icons.extension_outlined),
@@ -139,6 +146,11 @@ enum ComponentType {
         // Techniques colors
         ComponentType.sharding => Colors.orange,
         ComponentType.hashing => Colors.purpleAccent,
+        ComponentType.shardNode => Colors.orangeAccent,
+        ComponentType.partitionNode => Colors.deepPurpleAccent,
+        ComponentType.replicaNode => Colors.greenAccent,
+        ComponentType.inputNode => Colors.cyanAccent,
+        ComponentType.outputNode => Colors.pinkAccent,
         ComponentType.client => AppTheme.textPrimary,
         ComponentType.sketchyService => const Color(0xFF881FA3),
         ComponentType.sketchyDatabase => const Color(0xFF0A11D3),
@@ -176,7 +188,12 @@ enum ComponentType {
         ComponentType.stream =>
           ComponentCategory.messaging,
         ComponentType.sharding ||
-        ComponentType.hashing =>
+        ComponentType.hashing ||
+        ComponentType.shardNode ||
+        ComponentType.partitionNode ||
+        ComponentType.replicaNode ||
+        ComponentType.inputNode ||
+        ComponentType.outputNode =>
           ComponentCategory.techniques,
         ComponentType.sketchyService ||
         ComponentType.sketchyDatabase ||
@@ -235,6 +252,114 @@ enum ComponentCategory {
   const ComponentCategory(this.displayName, this.icon);
 }
 
+/// Display mode for component visualization depth
+enum ComponentDisplayMode {
+  collapsed,  // Simple icon view
+  expanded,   // Show basic internal structure
+  detailed,   // Full PostgreSQL-style detailed view
+}
+
+/// Replication type for detailed visualization
+enum ReplicationType {
+  none,
+  synchronous,
+  asynchronous,
+  streaming,
+}
+
+/// Configuration for a single shard in sharded architecture
+class ShardConfig {
+  final String id;
+  final String name;       // "Shard 1"
+  final String keyRange;   // "User ID 1-1M"
+  final String? shardKey;  // "user_id"
+  final bool isPrimary;
+
+  const ShardConfig({
+    required this.id,
+    required this.name,
+    required this.keyRange,
+    this.shardKey,
+    this.isPrimary = true,
+  });
+
+  ShardConfig copyWith({
+    String? id,
+    String? name,
+    String? keyRange,
+    String? shardKey,
+    bool? isPrimary,
+  }) {
+    return ShardConfig(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      keyRange: keyRange ?? this.keyRange,
+      shardKey: shardKey ?? this.shardKey,
+      isPrimary: isPrimary ?? this.isPrimary,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'keyRange': keyRange,
+    'shardKey': shardKey,
+    'isPrimary': isPrimary,
+  };
+
+  factory ShardConfig.fromJson(Map<String, dynamic> json) => ShardConfig(
+    id: json['id'] as String,
+    name: json['name'] as String,
+    keyRange: json['keyRange'] as String,
+    shardKey: json['shardKey'] as String?,
+    isPrimary: json['isPrimary'] as bool? ?? true,
+  );
+}
+
+/// Configuration for table partitions
+class PartitionConfig {
+  final String tableName;     // "orders"
+  final String partitionKey;  // "date" or "id"
+  final String partitionType; // "range", "list", "hash"
+  final List<String> partitions; // ["orders_2024_q1", "orders_2024_q2", ...]
+
+  const PartitionConfig({
+    required this.tableName,
+    required this.partitionKey,
+    this.partitionType = 'range',
+    this.partitions = const [],
+  });
+
+  PartitionConfig copyWith({
+    String? tableName,
+    String? partitionKey,
+    String? partitionType,
+    List<String>? partitions,
+  }) {
+    return PartitionConfig(
+      tableName: tableName ?? this.tableName,
+      partitionKey: partitionKey ?? this.partitionKey,
+      partitionType: partitionType ?? this.partitionType,
+      partitions: partitions ?? this.partitions,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'tableName': tableName,
+    'partitionKey': partitionKey,
+    'partitionType': partitionType,
+    'partitions': partitions,
+  };
+
+  factory PartitionConfig.fromJson(Map<String, dynamic> json) => PartitionConfig(
+    tableName: json['tableName'] as String,
+    partitionKey: json['partitionKey'] as String,
+    partitionType: json['partitionType'] as String? ?? 'range',
+    partitions: (json['partitions'] as List<dynamic>?)
+        ?.map((e) => e as String).toList() ?? [],
+  );
+}
+
 /// Configuration for a specific component instance
 class ComponentConfig {
   final int capacity; // Max RPS or throughput
@@ -264,6 +389,12 @@ class ComponentConfig {
   final bool dlq;
   final int? quorumRead;
   final int? quorumWrite;
+  
+  // Enhanced architecture visualization
+  final ComponentDisplayMode displayMode;
+  final List<ShardConfig> shardConfigs;
+  final List<PartitionConfig> partitionConfigs;
+  final ReplicationType replicationType;
 
   const ComponentConfig({
     this.capacity = 10000,
@@ -291,6 +422,10 @@ class ComponentConfig {
     this.dlq = false,
     this.quorumRead,
     this.quorumWrite,
+    this.displayMode = ComponentDisplayMode.collapsed,
+    this.shardConfigs = const [],
+    this.partitionConfigs = const [],
+    this.replicationType = ReplicationType.none,
   });
 
   ComponentConfig copyWith({
@@ -319,6 +454,10 @@ class ComponentConfig {
     bool? dlq,
     int? quorumRead,
     int? quorumWrite,
+    ComponentDisplayMode? displayMode,
+    List<ShardConfig>? shardConfigs,
+    List<PartitionConfig>? partitionConfigs,
+    ReplicationType? replicationType,
   }) {
     return ComponentConfig(
       capacity: capacity ?? this.capacity,
@@ -346,6 +485,10 @@ class ComponentConfig {
       dlq: dlq ?? this.dlq,
       quorumRead: quorumRead ?? this.quorumRead,
       quorumWrite: quorumWrite ?? this.quorumWrite,
+      displayMode: displayMode ?? this.displayMode,
+      shardConfigs: shardConfigs ?? this.shardConfigs,
+      partitionConfigs: partitionConfigs ?? this.partitionConfigs,
+      replicationType: replicationType ?? this.replicationType,
     );
   }
 
@@ -424,6 +567,7 @@ class ComponentConfig {
           capacity: 5000,
           instances: 1,
           costPerHour: 0.10,
+          displayMode: ComponentDisplayMode.detailed,
         ),
       // Configs for sketchy components
       ComponentType.sketchyService || ComponentType.sketchyLogic => const ComponentConfig(
@@ -461,7 +605,12 @@ class ComponentConfig {
       ComponentType.circle || 
       ComponentType.diamond ||
       ComponentType.arrow || 
-      ComponentType.line => const ComponentConfig(
+      ComponentType.line ||
+      ComponentType.shardNode ||
+      ComponentType.partitionNode ||
+      ComponentType.replicaNode ||
+      ComponentType.inputNode ||
+      ComponentType.outputNode => const ComponentConfig(
           capacity: 1000,
           costPerHour: 0.0,
         ),
@@ -495,6 +644,20 @@ class ComponentConfig {
       dlq: json['dlq'] as bool? ?? false,
       quorumRead: json['quorumRead'] as int?,
       quorumWrite: json['quorumWrite'] as int?,
+      displayMode: ComponentDisplayMode.values.firstWhere(
+        (e) => e.name == json['displayMode'],
+        orElse: () => ComponentDisplayMode.collapsed,
+      ),
+      shardConfigs: (json['shardConfigs'] as List<dynamic>?)
+          ?.map((e) => ShardConfig.fromJson(e as Map<String, dynamic>))
+          .toList() ?? [],
+      partitionConfigs: (json['partitionConfigs'] as List<dynamic>?)
+          ?.map((e) => PartitionConfig.fromJson(e as Map<String, dynamic>))
+          .toList() ?? [],
+      replicationType: ReplicationType.values.firstWhere(
+        (e) => e.name == json['replicationType'],
+        orElse: () => ReplicationType.none,
+      ),
     );
   }
 
@@ -524,6 +687,10 @@ class ComponentConfig {
         'dlq': dlq,
         'quorumRead': quorumRead,
         'quorumWrite': quorumWrite,
+        'displayMode': displayMode.name,
+        'shardConfigs': shardConfigs.map((e) => e.toJson()).toList(),
+        'partitionConfigs': partitionConfigs.map((e) => e.toJson()).toList(),
+        'replicationType': replicationType.name,
       };
 }
 
@@ -660,8 +827,12 @@ class SystemComponent {
   final Size size;
   final ComponentConfig config;
   final ComponentMetrics metrics;
+
+  Offset get center => Offset(position.dx + size.width / 2, position.dy + size.height / 2);
+
   final bool isSelected;
   final String? customName;
+  final String? customComponentId; // Reference to parent custom component definition
   final bool flipX;
   final bool flipY;
 
@@ -674,6 +845,7 @@ class SystemComponent {
     this.metrics = const ComponentMetrics(),
     this.isSelected = false,
     this.customName,
+    this.customComponentId,
     this.flipX = false,
     this.flipY = false,
   });
@@ -700,6 +872,7 @@ class SystemComponent {
           : const Size(80, 64),
       config: ComponentConfig.fromJson(json['config'] as Map<String, dynamic>),
       customName: json['customName'] as String?,
+      customComponentId: json['customComponentId'] as String?,
       flipX: json['flipX'] as bool? ?? false,
       flipY: json['flipY'] as bool? ?? false,
     );
@@ -716,6 +889,7 @@ class SystemComponent {
     ComponentMetrics? metrics,
     bool? isSelected,
     String? customName,
+    String? customComponentId,
     bool? flipX,
     bool? flipY,
   }) {
@@ -728,6 +902,7 @@ class SystemComponent {
       metrics: metrics ?? this.metrics,
       isSelected: isSelected ?? this.isSelected,
       customName: customName ?? this.customName,
+      customComponentId: customComponentId ?? this.customComponentId,
       flipX: flipX ?? this.flipX,
       flipY: flipY ?? this.flipY,
     );
@@ -752,6 +927,7 @@ class SystemComponent {
         'size': {'w': size.width, 'h': size.height},
         'config': config.toJson(),
         'customName': customName,
+        'customComponentId': customComponentId,
         'flipX': flipX,
         'flipY': flipY,
       };

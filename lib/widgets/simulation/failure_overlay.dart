@@ -96,7 +96,7 @@ class FailureOverlay extends ConsumerWidget {
                 children: [
                   OutlinedButton(
                     onPressed: () {
-                      ref.read(simulationProvider.notifier).reset();
+                      ref.read(simulationProvider.notifier).resume();
                     },
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppTheme.textSecondary,
@@ -125,8 +125,8 @@ class FailureOverlay extends ConsumerWidget {
                           ),
                         );
                         
-                        // Reset simulation to try again
-                        ref.read(simulationProvider.notifier).reset();
+                        // Resume simulation
+                        ref.read(simulationProvider.notifier).resume();
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.primary,

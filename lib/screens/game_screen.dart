@@ -29,6 +29,7 @@ import 'login_screen.dart';
 import 'publish_screen.dart';
 import '../widgets/simulation/error_fix_dialog.dart';
 import '../widgets/simulation/chaos_controls_panel.dart';
+import '../widgets/simulation/disaster_toolkit.dart';
 import 'dart:ui';
 
 class GameScreen extends ConsumerStatefulWidget {
@@ -223,6 +224,13 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
         if (_showGuide)
            GuideOverlay(onDismiss: () => setState(() => _showGuide = false)),
+
+        // Disaster Toolkit (Chaos Mode)
+        Positioned(
+          bottom: 100,
+          left: 20,
+          child: const DisasterToolkit(),
+        ),
       ],
     );
   }

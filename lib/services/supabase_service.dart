@@ -23,16 +23,19 @@ class SupabaseService {
     }
   }
 
-  /// Google Sign-In configuration
-  /// Web: Client ID is handled via meta tag or Supabase dashboard
-  /// Android/iOS: Requires platform configuration
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    scopes: ['email', 'profile'],
-    // webClientId: 'YOUR_WEB_CLIENT_ID', // Optional: if handling client-side flow
-  );
+  /// Google Sign-In configuration - lazily initialized only on non-web platforms
+  /// Web OAuth is handled entirely through Supabase signInWithOAuth
+  GoogleSignIn? _googleSignIn;
+  GoogleSignIn get _getGoogleSignIn {
+    _googleSignIn ??= GoogleSignIn(
+      scopes: ['email', 'profile'],
+    );
+    return _googleSignIn!;
+  }
 
   /// Stream of auth state changes
   Stream<AuthState> get authStateChanges => isInitialized ? client.auth.onAuthStateChange : const Stream.empty();
+
 
   /// Current user
   User? get currentUser {
@@ -54,7 +57,7 @@ class SupabaseService {
       }
 
       // MOBILE: Native Google Sign-In flow
-      final googleUser = await _googleSignIn.signIn();
+      final googleUser = await _getGoogleSignIn.signIn();
       if (googleUser == null) return 'Login canceled';
 
       final googleAuth = await googleUser.authentication;
@@ -107,7 +110,7 @@ class SupabaseService {
   Future<void> signOut() async {
     await client.auth.signOut();
     if (!kIsWeb) {
-      await _googleSignIn.signOut();
+      await _getGoogleSignIn.signOut();
     }
   }
 

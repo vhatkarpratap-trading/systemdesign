@@ -5,11 +5,27 @@ import '../../theme/app_theme.dart';
 
 /// Floating toolbar for drawing tools (mimics Excalidraw etc.)
 class DrawingToolbar extends ConsumerWidget {
-  const DrawingToolbar({super.key});
+  final CanvasTool? activeTool;
+  final Function(CanvasTool)? onToolChanged;
+
+  const DrawingToolbar({
+    super.key,
+    this.activeTool,
+    this.onToolChanged,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final activeTool = ref.watch(canvasToolProvider);
+    final currentTool = activeTool ?? ref.watch(canvasToolProvider);
+    final isManaged = activeTool == null;
+
+    void selectTool(CanvasTool tool) {
+      if (onToolChanged != null) {
+        onToolChanged!(tool);
+      } else {
+        ref.read(canvasToolProvider.notifier).state = tool;
+      }
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -42,75 +58,75 @@ class DrawingToolbar extends ConsumerWidget {
             _ToolButton(
               icon: Icons.near_me_outlined,
               tool: CanvasTool.select,
-              isActive: activeTool == CanvasTool.select,
+              isActive: currentTool == CanvasTool.select,
               shortcut: '1',
-              onTap: () => ref.read(canvasToolProvider.notifier).state = CanvasTool.select,
+              onTap: () => selectTool(CanvasTool.select),
             ),
             _ToolButton(
               icon: Icons.pan_tool_outlined,
               tool: CanvasTool.hand,
-              isActive: activeTool == CanvasTool.hand,
+              isActive: currentTool == CanvasTool.hand,
               shortcut: 'H',
-              onTap: () => ref.read(canvasToolProvider.notifier).state = CanvasTool.hand,
+              onTap: () => selectTool(CanvasTool.hand),
             ),
             const _Divider(),
             _ToolButton(
               icon: Icons.crop_square,
               tool: CanvasTool.rectangle,
-              isActive: activeTool == CanvasTool.rectangle,
+              isActive: currentTool == CanvasTool.rectangle,
               shortcut: '2',
-              onTap: () => ref.read(canvasToolProvider.notifier).state = CanvasTool.rectangle,
+              onTap: () => selectTool(CanvasTool.rectangle),
             ),
             _ToolButton(
               icon: Icons.circle_outlined,
               tool: CanvasTool.circle,
-              isActive: activeTool == CanvasTool.circle,
+              isActive: currentTool == CanvasTool.circle,
               shortcut: '3',
-              onTap: () => ref.read(canvasToolProvider.notifier).state = CanvasTool.circle,
+              onTap: () => selectTool(CanvasTool.circle),
             ),
             _ToolButton(
               icon: Icons.change_history_rounded,
               tool: CanvasTool.diamond,
-              isActive: activeTool == CanvasTool.diamond,
+              isActive: currentTool == CanvasTool.diamond,
               shortcut: '4',
-              onTap: () => ref.read(canvasToolProvider.notifier).state = CanvasTool.diamond,
+              onTap: () => selectTool(CanvasTool.diamond),
             ),
             const _Divider(),
             _ToolButton(
               icon: Icons.arrow_forward_outlined,
               tool: CanvasTool.arrow,
-              isActive: activeTool == CanvasTool.arrow,
+              isActive: currentTool == CanvasTool.arrow,
               shortcut: '5',
-              onTap: () => ref.read(canvasToolProvider.notifier).state = CanvasTool.arrow,
+              onTap: () => selectTool(CanvasTool.arrow),
             ),
             _ToolButton(
               icon: Icons.maximize_outlined,
               tool: CanvasTool.line,
-              isActive: activeTool == CanvasTool.line,
+              isActive: currentTool == CanvasTool.line,
               shortcut: '6',
-              onTap: () => ref.read(canvasToolProvider.notifier).state = CanvasTool.line,
+              onTap: () => selectTool(CanvasTool.line),
             ),
             _ToolButton(
               icon: Icons.edit_outlined,
               tool: CanvasTool.pen,
-              isActive: activeTool == CanvasTool.pen,
+              isActive: currentTool == CanvasTool.pen,
               shortcut: '7',
-              onTap: () => ref.read(canvasToolProvider.notifier).state = CanvasTool.pen,
+              onTap: () => selectTool(CanvasTool.pen),
             ),
             _ToolButton(
               icon: Icons.text_fields_outlined,
               tool: CanvasTool.text,
-              isActive: activeTool == CanvasTool.text,
+              isActive: currentTool == CanvasTool.text,
               shortcut: 'T',
-              onTap: () => ref.read(canvasToolProvider.notifier).state = CanvasTool.text,
+              onTap: () => selectTool(CanvasTool.text),
             ),
             const _Divider(),
             _ToolButton(
               icon: Icons.auto_fix_high_outlined,
               tool: CanvasTool.eraser,
-              isActive: activeTool == CanvasTool.eraser,
+              isActive: currentTool == CanvasTool.eraser,
               shortcut: '0',
-              onTap: () => ref.read(canvasToolProvider.notifier).state = CanvasTool.eraser,
+              onTap: () => selectTool(CanvasTool.eraser),
             ),
           ],
         ),

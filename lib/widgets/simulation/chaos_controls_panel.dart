@@ -187,6 +187,102 @@ class _ChaosControlsPanelState extends ConsumerState<ChaosControlsPanel> {
                         ),
                       ),
                       
+                      const SizedBox(width: 16),
+                      
+                      // Show/Hide Errors Toggle
+                      Consumer(
+                        builder: (context, ref, _) {
+                          final canvasState = ref.watch(canvasProvider);
+                          final showErrors = canvasState.showErrors;
+                          return Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                showErrors ? Icons.error_outline : Icons.visibility_off,
+                                size: 16,
+                                color: showErrors ? AppTheme.error : AppTheme.textMuted,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                showErrors ? 'Errors' : 'Hidden',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.textMuted,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              SizedBox(
+                                height: 20,
+                                child: FittedBox(
+                                  fit: BoxFit.fill,
+                                  child: Switch(
+                                    value: showErrors,
+                                    activeColor: AppTheme.error,
+                                    onChanged: (value) {
+                                      ref.read(canvasProvider.notifier).setShowErrors(value);
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                      
+                      // Traffic Control Slider (0-100%)
+                      SizedBox(
+                        width: 180,
+                        child: Consumer(
+                          builder: (context, ref, _) {
+                            final canvasState = ref.watch(canvasProvider);
+                            final trafficPercent = (canvasState.trafficLevel * 100).toInt();
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 4),
+                                  child: Text(
+                                    "Traffic: $trafficPercent%",
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppTheme.textMuted,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(
+                                  height: 24,
+                                  child: SliderTheme(
+                                    data: SliderTheme.of(context).copyWith(
+                                      activeTrackColor: AppTheme.success,
+                                      inactiveTrackColor: AppTheme.success.withOpacity(0.2),
+                                      thumbColor: AppTheme.success,
+                                      overlayColor: AppTheme.success.withOpacity(0.1),
+                                      trackHeight: 2,
+                                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                                    ),
+                                    child: Slider(
+                                      value: canvasState.trafficLevel * 100,
+                                      min: 0,
+                                      max: 100,
+                                      divisions: 100,
+                                      label: "$trafficPercent%",
+                                      onChanged: (value) {
+                                        ref.read(canvasProvider.notifier).setTrafficLevel(value / 100.0);
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                      
+                      
                       const SizedBox(width: 12),
                       Container(
                         height: 24,

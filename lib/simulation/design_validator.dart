@@ -270,7 +270,17 @@ class DesignValidator {
     // Check: Database replication for data durability
     final databases = components.where((c) => c.type == ComponentType.database);
     for (final db in databases) {
-      if (!db.config.replication || db.config.replicationFactor < 2) {
+      // SMARTER CHECK: A DB node doesn't strictly need internal replication if it has a redundant sibling node
+      final mySources = connections.where((c) => c.targetId == db.id).map((c) => c.sourceId).toSet();
+      bool hasSiblingRedundancy = false;
+      if (mySources.isNotEmpty) {
+        hasSiblingRedundancy = databases.any((other) => 
+          other.id != db.id && 
+          connections.where((c) => c.targetId == other.id).any((c) => mySources.contains(c.sourceId))
+        );
+      }
+
+      if (!hasSiblingRedundancy && (!db.config.replication || db.config.replicationFactor < 2)) {
         suggestions.add(
           'Enable replication on ${db.customName ?? db.type.displayName} for data durability'
         );

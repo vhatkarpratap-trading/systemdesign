@@ -35,6 +35,13 @@ class AppTheme {
   static const Color pubsubColor = Color(0xFF06B6D4);
   static const Color streamColor = Color(0xFFA78BFA);
 
+  // Cyberpunk Palette
+  static const Color neonCyan = Color(0xFF00FFFF);
+  static const Color neonMagenta = Color(0xFFFF00FF);
+  static const Color neonGreen = Color(0xFF00FF00); // Terminal Green
+  static const Color cyberpunkBackground = Color(0xFF050510); // Deep Space
+  static const Color cyberpunkSurface = Color(0xFF101020);
+
   // Minimal Glass Effect
   static BoxDecoration glassDecoration({
     Color color = surface,

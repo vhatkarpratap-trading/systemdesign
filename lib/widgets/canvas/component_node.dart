@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../models/component.dart';
+import '../../models/custom_component.dart';
+import '../../providers/custom_component_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../data/excalidraw_definitions.dart';
 import 'excalidraw_painter.dart';
@@ -43,9 +46,13 @@ class ComponentNode extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // OPTIMIZATION: Watch specific metrics for this component only
-    // This prevents the entire canvas from rebuilding when one component updates
     final ephemeralMetrics = ref.watch(simulationMetricsProvider.select((map) => map[component.id]));
     final metrics = ephemeralMetrics ?? component.metrics;
+    
+    // Watch Cyberpunk Mode & Error Visibility
+    final isCyberpunk = ref.watch(canvasProvider.select((s) => s.isCyberpunkMode));
+    final showErrorsFlag = ref.watch(canvasProvider.select((s) => s.showErrors));
+
 
     final status = component.status;
     final color = component.type.color;
@@ -60,35 +67,9 @@ class ComponentNode extends ConsumerWidget {
     final connectionExhaustion = metrics.connectionPoolUtilization > 0.9;
 
     // Text components are transparent and just text
-    // Text components are transparent and just text
-    if (component.type == ComponentType.text) {
-      if (isEditing) {
-        return _InlineTextEditor(
-          initialText: component.customName ?? 'New Text',
-          onChange: onTextChange!,
-          onDone: onEditDone!,
-          maxWidth: math.max(100.0, component.size.width),
-        );
-      }
-      
-      return Container(
-          decoration: BoxDecoration(
-            border: isSelected ? Border.all(color: AppTheme.primary, width: 1.5) : null,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          child: Text(
-            component.customName?.isNotEmpty == true ? component.customName! : '',
-            style: TextStyle(
-              fontSize: 16,
-              color: AppTheme.textPrimary,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        );
-    }
 
     Widget child = AnimatedContainer(
+      // ... (keep decoration logic same)
       duration: const Duration(milliseconds: 150),
       width: component.size.width,
       height: component.size.height,
@@ -100,9 +81,10 @@ class ComponentNode extends ConsumerWidget {
                              component.type == ComponentType.line))
             ? Colors.transparent
             : null,
+        // ... (keep rest of decoration)
         gradient: (isSketchy && (component.type == ComponentType.rectangle || 
                                 component.type == ComponentType.circle || 
-                                component.type == ComponentType.diamond ||
+                                component.type == ComponentType.diamond || 
                                 component.type == ComponentType.arrow || 
                                 component.type == ComponentType.line))
             ? null
@@ -126,7 +108,7 @@ class ComponentNode extends ConsumerWidget {
         boxShadow: (isSelected || isActive || hasError || isSlow || (!isSketchy && component.type != ComponentType.text)) 
             ? [
                 BoxShadow(
-                  color: hasError 
+                  color: hasError
                       ? Colors.red.withValues(alpha: 0.4)
                       : isSlow
                           ? Colors.amber.withValues(alpha: 0.3)
@@ -134,8 +116,10 @@ class ComponentNode extends ConsumerWidget {
                               ? Colors.orange.withValues(alpha: 0.3)
                               : (isSelected || isActive) 
                                   ? color.withValues(alpha: isSelected ? 0.3 : 0.15)
-                                  : Colors.black.withValues(alpha: 0.3),
-                  blurRadius: hasError || isSlow || isOverloaded ? 16 : (isSelected ? 12 : 4),
+                                  : (isCyberpunk 
+                                      ? color.withValues(alpha: 0.2) // Cyberpunk glow
+                                      : Colors.black.withValues(alpha: 0.3)),
+                  blurRadius: hasError || isSlow || isOverloaded ? 16 : (isSelected ? 12 : (isCyberpunk ? 8 : 4)),
                   spreadRadius: hasError || isSlow || isOverloaded ? 4 : (isSelected ? 1 : 0),
                   offset: (hasError || isSlow || isSelected) ? Offset.zero : const Offset(0, 2),
                 ),
@@ -147,7 +131,7 @@ class ComponentNode extends ConsumerWidget {
               ? Colors.red.withValues(alpha: 0.7)
               : isSlow
                   ? Colors.amber.withValues(alpha: 0.6)
-                  : isOverloaded 
+                  : isOverloaded
                       ? Colors.orange.withValues(alpha: 0.6)
                       : isSelected
                           ? AppTheme.primary
@@ -159,24 +143,20 @@ class ComponentNode extends ConsumerWidget {
                               ? AppTheme.border.withValues(alpha: 0.4)
                               : (isConnecting
                                   ? AppTheme.secondary.withValues(alpha: 0.5)
-                                  : Colors.transparent),
+                                  : (isCyberpunk ? color.withValues(alpha: 0.5) : Colors.transparent)),
           width: hasError || isSlow || isOverloaded ? 3 : (isSelected ? 2.5 : 1),
         ),
       ),
       child: isSketchy 
           ? _buildSketchyContent()
-          : _buildStandardContent(status, color, isActive, metrics, hasError, isSlow, isOverloaded),
+          : _buildStandardContent(status, color, isActive, metrics, hasError, isSlow, isOverloaded, isCyberpunk, showErrorsFlag, context, ref),
     );
     
-    // Unified Failure Animation Wrapper
-    // If any issue is present, we wrap in ShakingWrapper (which handles jiggle)
-    // Pulsing is handled by the AnimatedContainer shadow/gradient updates or we can keep it separate
-    
+    // Shaking animation - always show when errors exist
     if (hasError || isOverloaded || isSlow) {
       child = ShakingWrapper(child: child);
     }
     
-    // Add scaling pulse for autoscaling
     if (isScaling) {
       child = ScalingPulseWrapper(child: child);
     }
@@ -184,24 +164,7 @@ class ComponentNode extends ConsumerWidget {
     return child;
   }
 
-  Widget _buildTextContent() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.notes, size: 16, color: AppTheme.textMuted.withValues(alpha: 0.5)),
-        const SizedBox(height: 4),
-        Text(
-          component.customName ?? '',
-          style: const TextStyle(
-            color: AppTheme.textPrimary,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-  }
+  // ... (keep _buildTextContent)
 
   Widget _buildStandardContent(
     ComponentStatus status, 
@@ -210,208 +173,570 @@ class ComponentNode extends ConsumerWidget {
     ComponentMetrics metrics,
     bool hasError,
     bool isSlow,
-    bool isOverloaded
+    bool isOverloaded,
+    bool isCyberpunk,
+    bool showErrorsFlag, // Flag to show/hide error indicators
+    BuildContext context,
+    WidgetRef ref,
   ) {
       final config = component.config;
       
+      // Determine if we show detailed or standard internal architecture
+      final showDetailed = config.displayMode == ComponentDisplayMode.detailed;
+      final showInternals = config.sharding || config.replication;
+
+      if (showDetailed) {
+        return _buildDetailedView(config, color, isActive, isCyberpunk, context, ref);
+      }
+
       return Stack(
         clipBehavior: Clip.none,
         alignment: Alignment.center,
         children: [
-          // Replication Shadow (Faded replicas behind)
-          if (config.replication && config.replicationFactor > 1)
-            Positioned(
-              top: 2,
-              left: 2,
-              child: Opacity(
-                opacity: 0.3,
-                child: Icon(component.type.icon, color: color, size: 20),
-              ),
-            ),
-            
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Icon with status indicator
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  // Visual Instances (Stacked Icons behind)
-                  // Show up to 3 icons total for instances
-                  if (config.instances > 1)
-                    ...List.generate(math.min(config.instances - 1, 2), (i) => Positioned(
-                      left: (i + 1) * 3.0,
-                      top: (i + 1) * 2.0,
-                      child: Icon(
-                        component.type.icon,
-                        color: color.withValues(alpha: 0.5 - (i * 0.15)),
-                        size: 20,
-                      ),
-                    )),
-
-                  // Read Replicas Visual (Small satellite icons)
-                  if (config.replication && config.replicationFactor > 1)
-                     ...List.generate(math.min(config.replicationFactor - 1, 3), (i) => Positioned(
-                        right: -8.0 - (i * 4.0),
-                        bottom: 0,
-                        child: Icon(
-                          component.type.icon,
-                          color: color.withValues(alpha: 0.6),
-                          size: 10,
-                        ),
-                      )),
-
-                  // Sharding Visual (Multiple Icons if sharded - keeping this but adjusting)
-                  if (config.sharding)
-                    ...List.generate(math.min(config.partitionCount, 3), (i) => Positioned(
-                      left: -i * 4.0,
-                      bottom: i * 2.0,
-                      child: Icon(
-                        component.type.icon,
-                        color: color.withValues(alpha: 0.8 - (i * 0.2)),
-                        size: 14,
-                      ),
-                    )),
-                    
-                  Icon(
-                    component.type.icon,
-                    color: color,
-                    size: 20,
-                  ),
-                  
-                  // Replica/Instance count badge
-                  if (config.instances > 1 || (config.replication && config.replicationFactor > 1))
-                    Positioned(
-                      left: -8,
-                      bottom: -4,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primary,
-                          borderRadius: BorderRadius.circular(4),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.2),
-                              blurRadius: 2,
-                            ),
-                          ],
-                        ),
-                        child: Text(
-                          config.instances > 1 ? '×${config.instances}' : 'R:${config.replicationFactor}',
-                          style: const TextStyle(
-                            fontSize: 7,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 2),
-              // Name (Flexible to avoid overflow)
-              Flexible(
-                child: Text(
-                  component.customName ?? component.type.displayName,
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w500,
-                    color: isActive ? AppTheme.textPrimary : AppTheme.textSecondary,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              
-              // Strategy Indicators (Sharding/Consistent Hashing/Quorum labels)
-              if (config.sharding || config.consistentHashing || config.replication)
-                Padding(
-                  padding: const EdgeInsets.only(top: 1),
-                  child: Text(
-                    [
-                      if (config.sharding) 'SHARDED',
-                      if (config.consistentHashing) 'HASH',
-                      if (config.replication) 'REP',
-                    ].join(' • '),
-                    style: const TextStyle(fontSize: 5, fontWeight: FontWeight.bold, color: AppTheme.textMuted),
-                  ),
-                ),
-
-              // Capacity / Traffic Indicator
-              if (isActive)
-                Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: Builder(
-                    builder: (context) {
-                      final totalCapacity = config.capacity * config.instances;
-                      final isOverflow = metrics.currentRps > totalCapacity;
-                      return Text(
-                        '${metrics.currentRps} / ${totalCapacity} RPS',
-                        style: TextStyle(
-                          fontSize: 6,
-                          fontWeight: FontWeight.bold,
-                          color: isOverflow ? Colors.red : AppTheme.textSecondary.withValues(alpha: 0.7),
-                        ),
-                      );
-                    }
-                  ),
-                ),
-
-              // Schema View (Optional)
-              if (component.type == ComponentType.database && config.showSchema && config.dbSchema != null) ...[
-                const SizedBox(height: 6),
-                Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: AppTheme.surfaceLight.withValues(alpha: 0.9),
-                    border: Border.all(color: AppTheme.border.withValues(alpha: 0.5)),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    config.dbSchema!,
-                    style: GoogleFonts.robotoMono(
-                      fontSize: 6,
-                      color: AppTheme.textSecondary,
-                      height: 1.2,
-                    ),
-                    maxLines: 6,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ],
-          ),
+          // Content
+          if (showInternals)
+            _buildInternalArchitecture(config, color, isActive, isCyberpunk)
+          else
+            _buildSimpleIcon(color, isActive, status),
           
-          // Strategy Overlays (Badges)
-          _buildStrategyBadges(config),
+          // Strategy badges - only if showErrors is enabled
+          if (showErrorsFlag)
+            _buildStrategyBadges(config),
 
-          // Load Bar (New "Human" Feature)
+          // ... (keep load bar)
           if (isActive)
             Positioned(
               bottom: 4,
               left: 4,
               right: 4,
               child: _buildLoadBar(metrics.cpuUsage),
-            ),
+            ).animate().scale(duration: 300.ms, curve: Curves.easeOutBack).fadeIn(duration: 200.ms),
 
-          // Status Emoji (New "Human" Feature)
-          if (hasError || isSlow || isOverloaded)
+
+          // Status emoji/icon - only if showErrors is enabled
+          if (showErrorsFlag && (hasError || isSlow || isOverloaded))
             Positioned(
-              top: -8,
-              left: -8,
+              top: -12,
+              right: -12, // Moved to top-right
               child: _buildStatusEmoji(hasError, isSlow, isOverloaded),
             ),
             
-          // Pressure Label (Explicit "Capacity Used" indicator)
+          // ... (keep pressure label)
           if (isActive && (metrics.cpuUsage > 0.5 || metrics.queueDepth > 10 || metrics.connectionPoolUtilization > 0.5))
              Positioned(
-               bottom: 12,
-               right: 4,
+               bottom: -24, // Moved outside bottom
                child: _buildPressureLabel(metrics),
              ),
         ],
       );
+  }
+
+  Widget _buildSimpleIcon(Color color, bool isActive, ComponentStatus status) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          component.type.icon,
+          color: color,
+          size: 24,
+        ),
+        const SizedBox(height: 4),
+        Flexible(
+          child: Text(
+            component.customName ?? component.type.displayName,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+              color: isActive ? AppTheme.textPrimary : AppTheme.textSecondary,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        // Schema View (Optional for simple view too)
+        if (component.type == ComponentType.database && component.config.showSchema && component.config.dbSchema != null)
+          _buildMiniSchema(),
+      ],
+    );
+  }
+
+  /// Build detailed PostgreSQL/Cluster style visualization
+  Widget _buildDetailedView(ComponentConfig config, Color color, bool isActive, bool isCyberpunk, BuildContext context, WidgetRef ref) {
+    return _GlassContainer(
+      isCyberpunk: isCyberpunk,
+      child: component.customComponentId != null && 
+             ref.read(customComponentProvider.notifier).getById(component.customComponentId!) != null
+          ? _buildCustomGraph(ref.read(customComponentProvider.notifier).getById(component.customComponentId!)!, color)
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+            // Header
+            Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                decoration: BoxDecoration(
+                    border: Border(bottom: BorderSide(color: color.withOpacity(0.3))),
+                    color: color.withOpacity(0.1),
+                ),
+                child: Row(
+                    children: [
+                        Icon(component.type.icon, size: 14, color: color),
+                        const SizedBox(width: 6),
+                        Expanded(child: Text(
+                             component.customName?.toUpperCase() ?? component.type.displayName.toUpperCase(),
+                             style: TextStyle(
+                               fontSize: 11, 
+                               fontWeight: FontWeight.w900, 
+                               color: color, 
+                               letterSpacing: 0.8
+                             ),
+                        )),
+                    ],
+                ),
+            ),
+            
+            Expanded(
+                child: SingleChildScrollView( 
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    child: Column(
+                        children: [
+                            // SHARDS ROW
+                            if (config.shardConfigs.isNotEmpty) ...[
+                                Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                    children: config.shardConfigs.map((s) => _buildDetailNode(
+                                        label: s.name,
+                                        sublabel: s.keyRange,
+                                        icon: Icons.pie_chart_outline,
+                                        color: Colors.cyanAccent,
+                                    )).toList(),
+                                ),
+                                _buildVerticalConnector(height: 12, color: color.withOpacity(0.3)),
+                            ],
+                            
+                            // PRIMARY NODE
+                            Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                    border: Border.all(color: color.withOpacity(0.6), width: 1.5),
+                                    borderRadius: BorderRadius.circular(6),
+                                    color: color.withOpacity(0.05),
+                                    boxShadow: [BoxShadow(color: color.withOpacity(0.1), blurRadius: 8)],
+                                ),
+                                child: Column(
+                                    children: [
+                                        Text('PRIMARY NODE', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: color)),
+                                        if (config.partitionConfigs.isNotEmpty) ...[
+                                            const SizedBox(height: 6),
+                                            ...config.partitionConfigs.map((p) => Container(
+                                                margin: const EdgeInsets.only(bottom: 4),
+                                                padding: const EdgeInsets.all(4),
+                                                decoration: BoxDecoration(
+                                                    color: Colors.white.withOpacity(0.05),
+                                                    borderRadius: BorderRadius.circular(4),
+                                                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                                                ),
+                                                child: Row(
+                                                    children: [
+                                                        const Icon(Icons.table_chart, size: 10, color: Colors.white70),
+                                                        const SizedBox(width: 4),
+                                                        Expanded(child: Text(p.tableName, style: const TextStyle(fontSize: 9, color: Colors.white))),
+                                                        Container(
+                                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                                            decoration: BoxDecoration(color: Colors.blueAccent.withOpacity(0.3), borderRadius: BorderRadius.circular(2)),
+                                                            child: Text('${p.partitions.length} partitions', style: const TextStyle(fontSize: 7, color: Colors.blueAccent)),
+                                                        ),
+                                                    ],
+                                                ),
+                                            )),
+                                        ]
+                                    ],
+                                ),
+                            ),
+
+                            // REPLICAS ROW
+                            if (config.replicationType != ReplicationType.none) ...[
+                                _buildVerticalConnector(height: 12, color: color.withOpacity(0.3)),
+                                Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                        color: Colors.black38,
+                                        borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text('REPLICATION: ${config.replicationType.name.toUpperCase()}', 
+                                        style: const TextStyle(fontSize: 7, color: Colors.white54, letterSpacing: 0.5)),
+                                ),
+                                const SizedBox(height: 6),
+                                Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                    children: List.generate(
+                                        math.min(3, config.replicationFactor), 
+                                        (i) => _buildDetailNode(
+                                            label: 'Replica ${i+1}', 
+                                            icon: Icons.copy, 
+                                            color: Colors.greenAccent, 
+                                        )
+                                    ),
+                                ),
+                            ],
+                        ],
+                    ),
+                ),
+            ),
+        ],
+      )
+    );
+  }
+
+  Widget _buildDetailNode({required String label, String? sublabel, required IconData icon, required Color color}) {
+     return Flexible( // Flex to avoid overflow
+       child: Container(
+           margin: const EdgeInsets.symmetric(horizontal: 2),
+           padding: const EdgeInsets.all(4),
+           constraints: const BoxConstraints(minWidth: 40),
+           decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              border: Border.all(color: color.withOpacity(0.4)),
+              borderRadius: BorderRadius.circular(6),
+           ),
+           child: Column(
+               children: [
+                   Icon(icon, size: 12, color: color),
+                   const SizedBox(height: 2),
+                   Text(label, style: TextStyle(fontSize: 8, color: color, fontWeight: FontWeight.w600), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
+                   if (sublabel != null) Text(sublabel, style: TextStyle(fontSize: 6, color: color.withOpacity(0.7)), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
+               ],
+           ),
+       ),
+     );
+  }
+
+  Widget _buildVerticalConnector({required double height, required Color color}) {
+      return Center(child: Container(width: 1, height: height, color: color));
+  }
+
+  Widget _buildCustomGraph(CustomComponentDefinition def, Color color) {
+    if (def.internalNodes.isEmpty) return const SizedBox();
+
+    // Find bounds
+    double minX = double.infinity, minY = double.infinity;
+    double maxX = -double.infinity, maxY = -double.infinity;
+    
+    for (var n in def.internalNodes) {
+      if (n.relativePosition.dx < minX) minX = n.relativePosition.dx;
+      if (n.relativePosition.dy < minY) minY = n.relativePosition.dy;
+      if (n.relativePosition.dx > maxX) maxX = n.relativePosition.dx;
+      if (n.relativePosition.dy > maxY) maxY = n.relativePosition.dy;
+    }
+    
+    // Normalize and add padding
+    final width = maxX - minX + 80;
+    final height = maxY - minY + 60;
+    
+    return SingleChildScrollView(
+      scrollDirection: Axis.vertical,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: SizedBox(
+           width: width,
+           height: height,
+           child: Stack(
+             children: [
+               // Connections relative to minX/minY
+               ...def.internalConnections.map((c) {
+                  final src = def.internalNodes.firstWhere((n) => n.id == c.sourceNodeId, orElse: () => def.internalNodes.first);
+                  final dst = def.internalNodes.firstWhere((n) => n.id == c.targetNodeId, orElse: () => def.internalNodes.first);
+                  
+                  return Positioned.fill(
+                     child: CustomPaint(
+                       painter: _SimpleLinePainter(
+                          start: src.relativePosition - Offset(minX, minY) + const Offset(40, 30),
+                          end: dst.relativePosition - Offset(minX, minY) + const Offset(40, 30),
+                          color: color.withOpacity(0.5)
+                       )
+                     )
+                  );
+               }),
+               // Nodes
+               ...def.internalNodes.map((n) {
+                  return Positioned(
+                    left: n.relativePosition.dx - minX,
+                    top: n.relativePosition.dy - minY,
+                    child: Container(
+                       width: 80, height: 60,
+                       decoration: BoxDecoration(
+                         color: n.type == ComponentType.shardNode ? Colors.orange.withOpacity(0.2) : 
+                                n.type == ComponentType.replicaNode ? Colors.green.withOpacity(0.2) : 
+                                n.type == ComponentType.inputNode ? Colors.cyanAccent.withOpacity(0.2) :
+                                n.type == ComponentType.outputNode ? Colors.pinkAccent.withOpacity(0.2) :
+                                color.withOpacity(0.2),
+                         border: Border.all(color: color.withOpacity(0.5)),
+                         borderRadius: BorderRadius.circular(6)
+                       ),
+                       child: Column(
+                         mainAxisAlignment: MainAxisAlignment.center,
+                         children: [
+                           Icon(n.type.icon, size: 16, color: color),
+                           const SizedBox(height: 2),
+                           Text(n.label, style: TextStyle(fontSize: 9, color: color), overflow: TextOverflow.ellipsis),
+                         ],
+                       )
+                    )
+                  );
+               })
+             ]
+           )
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInternalArchitecture(ComponentConfig config, Color color, bool isActive, bool isCyberpunk) {
+    // Wrap in Glass Container
+    return _GlassContainer(
+      isCyberpunk: isCyberpunk,
+      child: Builder(
+        builder: (context) {
+          // Priority-based exclusive rendering to avoid overlap
+          if (config.sharding) {
+            return _buildShardedView(config, color);
+          } else if (config.replication) {
+            return _buildReplicatedView(config, color);
+          }
+          // Removed cluster view - visual nodes represent instances
+          return const SizedBox.shrink();
+        }
+      ),
+    );
+  }
+
+  Widget _buildShardedView(ComponentConfig config, Color color) {
+    final partitionCount = math.min(config.partitionCount, 4);
+    
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // Router / Balancer
+        Icon(Icons.alt_route, size: 12, color: color),
+        
+        // Distribution Lines
+        SizedBox(
+          height: 8,
+          width: 40 + (partitionCount * 10.0),
+          child: CustomPaint(
+            painter: _DistributionLinePainter(
+              color: color.withValues(alpha: 0.5), 
+              count: partitionCount
+            ),
+          ),
+        ),
+
+        // Grid of shards
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(partitionCount, (index) {
+            return Column(
+              children: [
+                // Incoming Data Packet (Animated)
+                Container(
+                  width: 2, height: 4, 
+                  margin: const EdgeInsets.symmetric(vertical: 1),
+                  decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(1)),
+                ).animate(onPlay: (c) => c.repeat())
+                 .slideY(begin: -2, end: 0, duration: (800 + index * 100).ms, curve: Curves.easeIn)
+                 .fade(begin: 0, end: 1),
+
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 2),
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: color.withValues(alpha: 0.6)),
+                    borderRadius: BorderRadius.circular(4),
+                    color: color.withValues(alpha: 0.1),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(component.type.icon, size: 10, color: color),
+                      const SizedBox(height: 1),
+                      Text('S${index + 1}', style: const TextStyle(fontSize: 5, color: AppTheme.textMuted)),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          }),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReplicatedView(ComponentConfig config, Color color) {
+    // Explicit Leader -> Follower Wiring
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // LEADER
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: color, width: 2),
+            color: color.withValues(alpha: 0.2),
+            boxShadow: [BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 6)]
+          ),
+          child: Icon(component.type.icon, size: 16, color: color),
+        ),
+        
+        // Connection Lines (Leader to Followers)
+        SizedBox(
+          height: 16,
+          width: 60,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+               // Central Down Line
+               Container(width: 1, height: 16, color: color.withValues(alpha: 0.5)),
+               // Horizontal Bracket
+               Positioned(
+                 bottom: 0,
+                 child: Container(width: 40, height: 1, color: color.withValues(alpha: 0.5)),
+               ),
+               // Animated Packet - flowing down
+                Container(width: 3, height: 3, decoration: BoxDecoration(color: color, shape: BoxShape.circle))
+                  .animate(onPlay: (c) => c.repeat())
+                  .slideY(begin: -2.5, end: 2.5, duration: 1000.ms),
+            ],
+          ),
+        ),
+
+        // FOLLOWERS
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+             // Follower 1
+             _buildFollowerNode(color),
+             const SizedBox(width: 12),
+             // Follower 2 (or more stacked)
+             _buildFollowerNode(color, count: config.replicationFactor > 2 ? config.replicationFactor - 1 : 1),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFollowerNode(Color color, {int count = 1}) {
+    return Column(
+      children: [
+        // Connecting line from bracket
+        Container(width: 1, height: 4, color: color.withValues(alpha: 0.5)),
+        
+        // Node
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+             if (count > 1) 
+               Positioned(
+                 left: 2, top: -2,
+                 child: Icon(component.type.icon, size: 12, color: color.withValues(alpha: 0.3)),
+               ),
+             iconContainer(color, 12),
+          ],
+        ),
+        const SizedBox(height: 2),
+        const Text('Sync', style: TextStyle(fontSize: 4, color: AppTheme.textMuted)),
+      ],
+    );
+  }
+  
+  Widget iconContainer(Color color, double size) {
+     return Container(
+          padding: const EdgeInsets.all(3),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: color.withValues(alpha: 0.6)),
+            color: color.withValues(alpha: 0.05),
+          ),
+          child: Icon(component.type.icon, size: size, color: color),
+        );
+  }
+
+  Widget _buildClusterView(ComponentConfig config, Color color) {
+    // Grid of instances
+    final displayCount = math.min(config.instances, 4);
+    
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Wrap(
+          spacing: 4,
+          runSpacing: 4,
+          alignment: WrapAlignment.center,
+          children: List.generate(displayCount, (index) {
+            return Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: color.withValues(alpha: 0.3)),
+              ),
+              child: Icon(component.type.icon, size: 10, color: color),
+            );
+          }),
+        ),
+        if (config.instances > 4)
+           Padding(
+             padding: const EdgeInsets.only(top: 2),
+             child: Text('+${config.instances - 4} more', style: const TextStyle(fontSize: 6, color: AppTheme.textMuted)),
+           ),
+        const SizedBox(height: 4),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceLight,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: AppTheme.border),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.alt_route, size: 8, color: AppTheme.textMuted),
+              const SizedBox(width: 2),
+              Text(
+                'N=${config.instances}',
+                style: const TextStyle(fontSize: 7, fontWeight: FontWeight.bold, color: AppTheme.textSecondary),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          component.customName ?? component.type.displayName,
+          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMiniSchema() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Container(
+        padding: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceLight.withValues(alpha: 0.9),
+          border: Border.all(color: AppTheme.border.withValues(alpha: 0.5)),
+          borderRadius: BorderRadius.circular(2),
+        ),
+        child: const Text(
+          'SCHEMA',
+          style: TextStyle(fontSize: 5, fontFamily: 'RobotoMono', color: AppTheme.textMuted),
+        ),
+      ),
+    );
   }
 
   Widget _buildPressureLabel(ComponentMetrics metrics) {
@@ -795,4 +1120,116 @@ class _InlineTextEditorState extends State<_InlineTextEditor> {
       ),
     );
   }
+}
+
+class _GlassContainer extends StatelessWidget {
+  final Widget child;
+  final bool isCyberpunk;
+  
+  const _GlassContainer({
+    required this.child,
+    this.isCyberpunk = false,
+  });
+  
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isCyberpunk 
+            ? AppTheme.neonCyan.withValues(alpha: 0.1)
+            : Colors.black.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isCyberpunk 
+              ? AppTheme.neonCyan.withValues(alpha: 0.6)
+              : Colors.white.withValues(alpha: 0.2), 
+          width: isCyberpunk ? 1.5 : 0.5
+        ),
+        boxShadow: isCyberpunk 
+            ? [
+                BoxShadow(
+                  color: AppTheme.neonCyan.withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                )
+              ]
+            : [],
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: isCyberpunk ? 0.15 : 0.05),
+            Colors.white.withValues(alpha: 0.0),
+          ],
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: child,
+      ),
+    );
+  }
+}
+
+class _DistributionLinePainter extends CustomPainter {
+  final Color color;
+  final int count;
+  
+  _DistributionLinePainter({required this.color, required this.count});
+  
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
+      
+    // Center point top
+    final centerTop = Offset(size.width / 2, 0);
+    // Draw vertical down
+    canvas.drawLine(centerTop, Offset(centerTop.dx, size.height * 0.5), paint);
+    
+    // Draw horizontal bar
+    final barY = size.height * 0.5;
+    
+    // Calculate width of distribution
+    // 4 shards -> 3 gaps. 
+    // We assume the caller sized the canvas to fit the shards
+    
+    final spacePerShard = size.width / count;
+    final startX = spacePerShard / 2;
+    final endX = size.width - (spacePerShard / 2);
+    
+    canvas.drawLine(Offset(startX, barY), Offset(endX, barY), paint);
+    
+    // Draw verticals down to shards
+    for (int i = 0; i < count; i++) {
+      final x = startX + (i * spacePerShard);
+      canvas.drawLine(Offset(x, barY), Offset(x, size.height), paint);
+    }
+  }
+  
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _SimpleLinePainter extends CustomPainter {
+  final Offset start;
+  final Offset end;
+  final Color color;
+  
+  _SimpleLinePainter({required this.start, required this.end, required this.color});
+  
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+      
+    canvas.drawLine(start, end, paint);
+  }
+  
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
