@@ -5,16 +5,26 @@ import '../theme/app_theme.dart';
 /// Types of system components available in the game
 enum ComponentType {
   // Traffic & Edge
-  // Traffic & Edge
   dns('DNS', 'Traffic routing & domain resolution', Icons.hub_outlined),
   cdn('CDN', 'Cache static content globally', Icons.language_outlined),
   loadBalancer('Load Balancer', 'Distribute traffic across servers', Icons.alt_route), // Updated Icon
   apiGateway('API Gateway', 'Auth, rate limiting, routing', Icons.security_outlined),
+  waf('WAF', 'Web application firewall', Icons.shield_outlined),
+  ingress('Ingress', 'Edge reverse proxy / ingress', Icons.call_split),
 
   // Compute
   appServer('App Server', 'Business logic processing', Icons.terminal_outlined),
   worker('Worker', 'Async background jobs', Icons.settings_suggest_outlined),
   serverless('Serverless', 'Event-based compute', Icons.bolt_outlined),
+  authService('Auth Service', 'Authentication & authorization', Icons.lock_outline),
+  notificationService('Notification Service', 'Email/SMS/push dispatch', Icons.notifications_outlined),
+  searchService('Search Service', 'Query and ranking layer', Icons.search),
+  analyticsService('Analytics Service', 'Event processing & insights', Icons.analytics_outlined),
+  scheduler('Scheduler', 'Cron/workflow scheduling', Icons.schedule),
+  serviceDiscovery('Service Discovery', 'Service registry & lookup', Icons.device_hub),
+  configService('Config Service', 'Dynamic configuration store', Icons.tune),
+  secretsManager('Secrets Manager', 'Keys & secrets storage', Icons.vpn_key_outlined),
+  featureFlag('Feature Flags', 'Runtime feature toggles', Icons.flag_outlined),
   
   // Clients
   client('Users', 'Client traffic source', Icons.devices_outlined),
@@ -23,6 +33,13 @@ enum ComponentType {
   cache('Cache', 'Hot data caching (Redis)', Icons.speed_outlined),
   database('Database', 'Persistent data storage', Icons.dataset_outlined),
   objectStore('Object Store', 'Files, images, videos', Icons.inventory_2_outlined),
+  keyValueStore('KV Store', 'Key-value storage', Icons.view_list),
+  timeSeriesDb('Time Series DB', 'Metrics & time-series data', Icons.show_chart),
+  graphDb('Graph DB', 'Relationship storage', Icons.account_tree_outlined),
+  vectorDb('Vector DB', 'Embeddings & similarity search', Icons.scatter_plot),
+  searchIndex('Search Index', 'Index for fast search', Icons.manage_search),
+  dataWarehouse('Data Warehouse', 'Analytical storage', Icons.storage_outlined),
+  dataLake('Data Lake', 'Raw data storage', Icons.cloud_outlined),
 
   // Messaging
   queue('Message Queue', 'Async job processing', Icons.layers_outlined),
@@ -84,8 +101,8 @@ enum ComponentType {
       return null; // Always allow
     }
 
-    // 1. Load Balancer Rules
-    if (this == ComponentType.loadBalancer) {
+    // 1. Load Balancer / Ingress Rules
+    if (this == ComponentType.loadBalancer || this == ComponentType.ingress) {
       if (other == ComponentType.database || 
           other == ComponentType.cache || 
           other == ComponentType.objectStore ||
@@ -101,8 +118,8 @@ enum ComponentType {
       }
     }
 
-    // 4. API Gateway Rules
-    if (this == ComponentType.apiGateway) {
+    // 4. API Gateway / WAF Rules
+    if (this == ComponentType.apiGateway || this == ComponentType.waf) {
       if (other == ComponentType.database || other == ComponentType.cache) {
         return "API Gateways should route to Services (App Servers, Serverless), not directly to Data Stores.";
       }
@@ -133,13 +150,31 @@ enum ComponentType {
         ComponentType.cdn => AppTheme.cdnColor,
         ComponentType.loadBalancer => AppTheme.loadBalancerColor,
         ComponentType.apiGateway => AppTheme.apiGatewayColor,
+        ComponentType.waf => AppTheme.apiGatewayColor,
+        ComponentType.ingress => AppTheme.loadBalancerColor,
         ComponentType.appServer => AppTheme.appServerColor,
         ComponentType.worker => AppTheme.workerColor,
         ComponentType.serverless => AppTheme.serverlessColor,
+        ComponentType.authService => AppTheme.appServerColor,
+        ComponentType.notificationService => AppTheme.workerColor,
+        ComponentType.searchService => AppTheme.appServerColor,
+        ComponentType.analyticsService => AppTheme.workerColor,
+        ComponentType.scheduler => AppTheme.workerColor,
+        ComponentType.serviceDiscovery => AppTheme.appServerColor,
+        ComponentType.configService => AppTheme.primaryMuted,
+        ComponentType.secretsManager => AppTheme.warning,
+        ComponentType.featureFlag => AppTheme.secondary,
         ComponentType.customService => AppTheme.primary,
         ComponentType.cache => AppTheme.cacheColor,
         ComponentType.database => AppTheme.databaseColor,
         ComponentType.objectStore => AppTheme.objectStoreColor,
+        ComponentType.keyValueStore => AppTheme.cacheColor,
+        ComponentType.timeSeriesDb => AppTheme.databaseColor,
+        ComponentType.graphDb => AppTheme.databaseColor,
+        ComponentType.vectorDb => AppTheme.databaseColor,
+        ComponentType.searchIndex => AppTheme.databaseColor,
+        ComponentType.dataWarehouse => AppTheme.databaseColor,
+        ComponentType.dataLake => AppTheme.objectStoreColor,
         ComponentType.queue => AppTheme.queueColor,
         ComponentType.pubsub => AppTheme.pubsubColor,
         ComponentType.stream => AppTheme.streamColor,
@@ -170,18 +205,36 @@ enum ComponentType {
         ComponentType.dns ||
         ComponentType.cdn ||
         ComponentType.loadBalancer ||
-        ComponentType.apiGateway =>
+        ComponentType.apiGateway ||
+        ComponentType.waf ||
+        ComponentType.ingress =>
           ComponentCategory.traffic,
         ComponentType.client ||
         ComponentType.customService => 
           ComponentCategory.user,
         ComponentType.appServer ||
         ComponentType.worker ||
-        ComponentType.serverless => 
+        ComponentType.serverless ||
+        ComponentType.authService ||
+        ComponentType.notificationService ||
+        ComponentType.searchService ||
+        ComponentType.analyticsService ||
+        ComponentType.scheduler ||
+        ComponentType.serviceDiscovery ||
+        ComponentType.configService ||
+        ComponentType.secretsManager ||
+        ComponentType.featureFlag =>
           ComponentCategory.compute,
         ComponentType.cache ||
         ComponentType.database ||
-        ComponentType.objectStore =>
+        ComponentType.objectStore ||
+        ComponentType.keyValueStore ||
+        ComponentType.timeSeriesDb ||
+        ComponentType.graphDb ||
+        ComponentType.vectorDb ||
+        ComponentType.searchIndex ||
+        ComponentType.dataWarehouse ||
+        ComponentType.dataLake =>
           ComponentCategory.storage,
         ComponentType.queue ||
         ComponentType.pubsub ||
@@ -224,14 +277,32 @@ enum ComponentType {
         ComponentType.objectStore => const ['AWS S3', 'Google Cloud Storage', 'MinIO', 'Azure Blob'],
         ComponentType.cdn => const ['Cloudflare', 'CloudFront', 'Akamai', 'Fastly'],
         ComponentType.apiGateway => const ['Kong', 'Apigee', 'AWS API Gateway', 'Zuul'],
+        ComponentType.waf => const ['AWS WAF', 'Cloudflare WAF', 'Akamai Kona', 'F5 ASM'],
+        ComponentType.ingress => const ['Nginx', 'Traefik', 'Envoy', 'HAProxy'],
         ComponentType.appServer => const ['Node.js', 'Go (Gin)', 'Java (Spring)', 'Python (FastAPI)'],
         ComponentType.worker => const ['Celery', 'Sidekiq', 'BullMQ', 'Temporal'],
         ComponentType.serverless => const ['AWS Lambda', 'Cloud Functions', 'Azure Functions', 'OpenFaaS'],
+        ComponentType.authService => const ['Auth0', 'Keycloak', 'Cognito', 'Okta'],
+        ComponentType.notificationService => const ['Twilio', 'Amazon SNS', 'Firebase', 'OneSignal'],
+        ComponentType.searchService => const ['Algolia', 'Elasticsearch', 'OpenSearch', 'Typesense'],
+        ComponentType.analyticsService => const ['Segment', 'Amplitude', 'Mixpanel', 'Snowplow'],
+        ComponentType.scheduler => const ['Cron', 'Airflow', 'Temporal', 'Quartz'],
+        ComponentType.serviceDiscovery => const ['Consul', 'Eureka', 'etcd', 'Zookeeper'],
+        ComponentType.configService => const ['Spring Cloud Config', 'Consul KV', 'etcd', 'AWS AppConfig'],
+        ComponentType.secretsManager => const ['HashiCorp Vault', 'AWS Secrets Manager', 'GCP Secret Manager', 'Azure Key Vault'],
+        ComponentType.featureFlag => const ['LaunchDarkly', 'Unleash', 'Flagsmith', 'Split'],
         ComponentType.dns => const ['Route53', 'Cloudflare', 'Google Cloud DNS', 'NS1'],
         ComponentType.stream => const ['Apache Flink', 'Spark Streaming', 'Kinesis', 'Storm'],
         ComponentType.sharding => const ['Consistent Hashing', 'Range Based', 'Directory Based'],
         ComponentType.hashing => const ['MD5', 'SHA-256', 'MurmurHash', 'CityHash'],
         ComponentType.client => const ['Mobile App', 'Web Browser', 'IoT Device', 'External Service'],
+        ComponentType.keyValueStore => const ['DynamoDB', 'FoundationDB', 'RocksDB', 'etcd'],
+        ComponentType.timeSeriesDb => const ['InfluxDB', 'TimescaleDB', 'Prometheus', 'VictoriaMetrics'],
+        ComponentType.graphDb => const ['Neo4j', 'JanusGraph', 'Amazon Neptune', 'TigerGraph'],
+        ComponentType.vectorDb => const ['Pinecone', 'Weaviate', 'Milvus', 'Qdrant'],
+        ComponentType.searchIndex => const ['Elasticsearch', 'OpenSearch', 'Solr', 'Meilisearch'],
+        ComponentType.dataWarehouse => const ['Snowflake', 'BigQuery', 'Redshift', 'ClickHouse'],
+        ComponentType.dataLake => const ['S3', 'ADLS', 'GCS', 'Delta Lake'],
         _ => const [],
       };
 }
@@ -514,6 +585,15 @@ class ComponentConfig {
           cacheTtlSeconds: 60,
           costPerHour: 0.15,
         ),
+      ComponentType.waf => const ComponentConfig(
+          capacity: 200000,
+          costPerHour: 0.12,
+        ),
+      ComponentType.ingress => const ComponentConfig(
+          capacity: 150000,
+          instances: 2,
+          costPerHour: 0.10,
+        ),
       ComponentType.appServer => const ComponentConfig(
           capacity: 1000,
           instances: 2,
@@ -531,6 +611,60 @@ class ComponentConfig {
           capacity: 10000,
           costPerHour: 0.0001,
         ),
+      ComponentType.authService => const ComponentConfig(
+          capacity: 5000,
+          instances: 2,
+          autoScale: true,
+          minInstances: 2,
+          maxInstances: 12,
+          costPerHour: 0.18,
+        ),
+      ComponentType.notificationService => const ComponentConfig(
+          capacity: 12000,
+          instances: 2,
+          costPerHour: 0.12,
+        ),
+      ComponentType.searchService => const ComponentConfig(
+          capacity: 4000,
+          instances: 2,
+          autoScale: true,
+          minInstances: 2,
+          maxInstances: 10,
+          costPerHour: 0.22,
+        ),
+      ComponentType.analyticsService => const ComponentConfig(
+          capacity: 3000,
+          instances: 2,
+          autoScale: true,
+          minInstances: 2,
+          maxInstances: 10,
+          costPerHour: 0.25,
+        ),
+      ComponentType.scheduler => const ComponentConfig(
+          capacity: 1000,
+          instances: 1,
+          costPerHour: 0.05,
+        ),
+      ComponentType.serviceDiscovery => const ComponentConfig(
+          capacity: 10000,
+          instances: 2,
+          costPerHour: 0.08,
+        ),
+      ComponentType.configService => const ComponentConfig(
+          capacity: 10000,
+          instances: 2,
+          costPerHour: 0.08,
+        ),
+      ComponentType.secretsManager => const ComponentConfig(
+          capacity: 8000,
+          instances: 2,
+          costPerHour: 0.12,
+        ),
+      ComponentType.featureFlag => const ComponentConfig(
+          capacity: 12000,
+          instances: 2,
+          costPerHour: 0.10,
+        ),
       ComponentType.cache => const ComponentConfig(
           capacity: 100000,
           cacheTtlSeconds: 3600,
@@ -546,6 +680,41 @@ class ComponentConfig {
           capacity: 1000000,
           regions: ['us-east-1'],
           costPerHour: 0.02,
+        ),
+      ComponentType.keyValueStore => const ComponentConfig(
+          capacity: 20000,
+          instances: 2,
+          costPerHour: 0.18,
+        ),
+      ComponentType.timeSeriesDb => const ComponentConfig(
+          capacity: 8000,
+          instances: 2,
+          costPerHour: 0.25,
+        ),
+      ComponentType.graphDb => const ComponentConfig(
+          capacity: 6000,
+          instances: 2,
+          costPerHour: 0.28,
+        ),
+      ComponentType.vectorDb => const ComponentConfig(
+          capacity: 6000,
+          instances: 2,
+          costPerHour: 0.30,
+        ),
+      ComponentType.searchIndex => const ComponentConfig(
+          capacity: 7000,
+          instances: 2,
+          costPerHour: 0.22,
+        ),
+      ComponentType.dataWarehouse => const ComponentConfig(
+          capacity: 5000,
+          instances: 2,
+          costPerHour: 0.40,
+        ),
+      ComponentType.dataLake => const ComponentConfig(
+          capacity: 200000,
+          instances: 1,
+          costPerHour: 0.15,
         ),
       ComponentType.queue => const ComponentConfig(
           capacity: 100000,

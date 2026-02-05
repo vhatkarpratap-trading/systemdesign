@@ -1634,7 +1634,14 @@ class ComponentNode extends ConsumerWidget {
 
   _LoadThresholds _loadThresholds(ComponentType type) {
     return switch (type) {
-      ComponentType.database => const _LoadThresholds(
+      ComponentType.database ||
+      ComponentType.keyValueStore ||
+      ComponentType.timeSeriesDb ||
+      ComponentType.graphDb ||
+      ComponentType.vectorDb ||
+      ComponentType.searchIndex ||
+      ComponentType.dataWarehouse ||
+      ComponentType.dataLake => const _LoadThresholds(
           warning: 0.65,
           critical: 0.8,
           overload: 1.0,
@@ -1661,6 +1668,20 @@ class ComponentNode extends ConsumerWidget {
           critical: 0.85,
           overload: 1.1,
         ),
+    };
+  }
+
+  bool _isDatabaseLikeComponent(ComponentType type) {
+    return switch (type) {
+      ComponentType.database ||
+      ComponentType.keyValueStore ||
+      ComponentType.timeSeriesDb ||
+      ComponentType.graphDb ||
+      ComponentType.vectorDb ||
+      ComponentType.searchIndex ||
+      ComponentType.dataWarehouse ||
+      ComponentType.dataLake => true,
+      _ => false,
     };
   }
 
@@ -1758,7 +1779,7 @@ class ComponentNode extends ConsumerWidget {
     switch (type) {
       case FailureType.overload:
       case FailureType.trafficOverflow:
-        if (componentType == ComponentType.database) {
+        if (_isDatabaseLikeComponent(componentType)) {
           return '$autoscaleHint; add read replicas or shard/partition; add cache to offload reads';
         }
         if (componentType == ComponentType.cache) {

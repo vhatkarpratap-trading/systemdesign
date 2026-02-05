@@ -515,14 +515,14 @@ SimulationResult runSimulationTick(SimulationData data) {
     // Chaos: DB slowdown
     for (final event in activeChaosEvents) {
       if (event.type == ChaosType.databaseSlowdown &&
-          state.component.type == ComponentType.database &&
+          _isDatabaseLike(state.component.type) &&
           _affectsComponent(event, state.component)) {
         final mult = (event.parameters['multiplier'] as num?)?.toDouble() ?? 6.0;
         final intensity = _chaosIntensity(event);
         mean *= 1.0 + ((mult - 1.0) * intensity);
       }
       if (event.type == ChaosType.cacheMissStorm &&
-          state.component.type == ComponentType.database &&
+          _isDatabaseLike(state.component.type) &&
           _affectsComponent(event, state.component)) {
         final drop = (event.parameters['hitRateDrop'] as num?)?.toDouble() ?? 0.9;
         final intensity = _chaosIntensity(event);
@@ -743,13 +743,13 @@ SimulationResult runSimulationTick(SimulationData data) {
   bool isStatefulTarget(SystemComponent component, String label) =>
       labelHasAny(label, ['stateful', 'session']) ||
       component.type == ComponentType.cache ||
-      component.type == ComponentType.database;
+      _isDatabaseLike(component.type);
   bool isOriginTarget(SystemComponent component) =>
-      component.type == ComponentType.appServer ||
+      _isServiceLike(component.type) ||
       component.type == ComponentType.apiGateway ||
       component.type == ComponentType.objectStore ||
+      component.type == ComponentType.dataLake ||
       component.type == ComponentType.serverless ||
-      component.type == ComponentType.customService ||
       component.type == ComponentType.worker;
 
   Connection pickByAdaptiveScore(
@@ -856,7 +856,7 @@ SimulationResult runSimulationTick(SimulationData data) {
         if (isL1Cache(label)) cacheL1Targets.add(conn);
         if (isL2Cache(label)) cacheL2Targets.add(conn);
       }
-      if (targetComponent?.type == ComponentType.database) {
+      if (targetComponent != null && _isDatabaseLike(targetComponent.type)) {
         dbTargets.add(conn);
         if (isReplicaTarget(targetComponent!, label)) {
           dbReplicaTargets.add(conn);
@@ -1454,9 +1454,7 @@ SimulationResult runSimulationTick(SimulationData data) {
     double connectionPoolUtilization = 0.0;
     int activeConnections = 0;
     final maxConnections = state.autoscale.effectiveInstances * 100;
-    if (component.type == ComponentType.database ||
-        component.type == ComponentType.appServer ||
-        component.type == ComponentType.customService) {
+    if (_isDatabaseLike(component.type) || _isServiceLike(component.type)) {
       connectionPoolUtilization = smooth(
         effectiveLoad.clamp(0.0, 1.0),
         prev?.connectionPoolUtilization ?? 0.0,
@@ -1672,12 +1670,12 @@ ComponentMetrics _calculateComponentMetrics(
         final latencyMs = (event.parameters['latencyMs'] as num?)?.toDouble() ?? 300.0;
         slownessFactor += (latencyMs / 50.0) * _chaosIntensity(event); // Rough conversion
       }
-    } else if (event.type == ChaosType.databaseSlowdown && component.type == ComponentType.database) {
+    } else if (event.type == ChaosType.databaseSlowdown && _isDatabaseLike(component.type)) {
       if (_affectsComponent(event, component)) {
         final mult = (event.parameters['multiplier'] as num?)?.toDouble() ?? 8.0;
         slownessFactor *= 1.0 + ((mult - 1.0) * _chaosIntensity(event));
       }
-    } else if (event.type == ChaosType.cacheMissStorm && component.type == ComponentType.database) {
+    } else if (event.type == ChaosType.cacheMissStorm && _isDatabaseLike(component.type)) {
       if (_affectsComponent(event, component)) {
         final drop = (event.parameters['hitRateDrop'] as num?)?.toDouble() ?? 0.9;
         slownessFactor *= 1.0 + (drop * 2.0 * _chaosIntensity(event));
@@ -1806,9 +1804,7 @@ ComponentMetrics _calculateComponentMetrics(
   int activeConnections = 0;
   final maxConnections = component.config.instances * 100;
   
-  if (component.type == ComponentType.database ||
-      component.type == ComponentType.appServer ||
-      component.type == ComponentType.customService) {
+  if (_isDatabaseLike(component.type) || _isServiceLike(component.type)) {
     // Connection pool utilization tracks with load
     final targetUtil = effectiveLoad.clamp(0.0, 1.0);
     connectionPoolUtilization = (targetUtil * alpha) + (lastMetrics.connectionPoolUtilization * (1 - alpha));
@@ -1871,12 +1867,30 @@ double _getBaseLatency(ComponentType type) {
     ComponentType.cdn => 5.0,
     ComponentType.loadBalancer => 1.0,
     ComponentType.apiGateway => 5.0,
+    ComponentType.waf => 2.0,
+    ComponentType.ingress => 2.0,
     ComponentType.appServer => 20.0,
     ComponentType.worker => 100.0,
     ComponentType.serverless => 50.0,
+    ComponentType.authService => 15.0,
+    ComponentType.notificationService => 30.0,
+    ComponentType.searchService => 25.0,
+    ComponentType.analyticsService => 40.0,
+    ComponentType.scheduler => 80.0,
+    ComponentType.serviceDiscovery => 5.0,
+    ComponentType.configService => 5.0,
+    ComponentType.secretsManager => 10.0,
+    ComponentType.featureFlag => 8.0,
     ComponentType.cache => 2.0,
     ComponentType.database => 10.0,
     ComponentType.objectStore => 50.0,
+    ComponentType.keyValueStore => 5.0,
+    ComponentType.timeSeriesDb => 15.0,
+    ComponentType.graphDb => 25.0,
+    ComponentType.vectorDb => 25.0,
+    ComponentType.searchIndex => 20.0,
+    ComponentType.dataWarehouse => 60.0,
+    ComponentType.dataLake => 80.0,
     ComponentType.queue => 5.0,
     ComponentType.pubsub => 5.0,
     ComponentType.stream => 10.0,
@@ -1960,7 +1974,7 @@ List<FailureEvent> _checkFailures(
   
   // Apply replication read scaling (Leader + followers boost read capacity)
   if (component.config.replication && component.config.replicationFactor > 1) {
-    if (component.type == ComponentType.database || component.type == ComponentType.cache) {
+    if (_isDatabaseLike(component.type) || component.type == ComponentType.cache) {
       final readCapacity = effectiveCapacity * component.config.replicationFactor;
       // Assume 80% reads, 20% writes
       effectiveCapacity = (readCapacity * 0.8) + (effectiveCapacity * 0.2);
@@ -2051,7 +2065,7 @@ List<FailureEvent> _checkFailures(
   }
 
   // 4. Data Loss Risk
-  if (component.type == ComponentType.database && !component.config.replication) {
+  if (_isDatabaseLike(component.type) && !component.config.replication) {
     // HOLISTIC CHECK: Only show if no sibling redundancy
     final mySources = allConnections.where((c) => c.targetId == component.id).map((c) => c.sourceId).toSet();
     bool hasSiblingRedundancy = false;
@@ -2233,15 +2247,46 @@ GlobalMetrics _calculateGlobalMetrics(
   );
 }
 
+bool _isDatabaseLike(ComponentType type) {
+  return switch (type) {
+    ComponentType.database ||
+    ComponentType.keyValueStore ||
+    ComponentType.timeSeriesDb ||
+    ComponentType.graphDb ||
+    ComponentType.vectorDb ||
+    ComponentType.searchIndex ||
+    ComponentType.dataWarehouse ||
+    ComponentType.dataLake => true,
+    _ => false,
+  };
+}
+
+bool _isServiceLike(ComponentType type) {
+  return switch (type) {
+    ComponentType.appServer ||
+    ComponentType.customService ||
+    ComponentType.authService ||
+    ComponentType.notificationService ||
+    ComponentType.searchService ||
+    ComponentType.analyticsService ||
+    ComponentType.scheduler ||
+    ComponentType.serviceDiscovery ||
+    ComponentType.configService ||
+    ComponentType.secretsManager ||
+    ComponentType.featureFlag => true,
+    _ => false,
+  };
+}
+
 bool _isCriticalPath(ComponentType type) {
+  if (_isDatabaseLike(type) || _isServiceLike(type)) return true;
   return switch (type) {
     ComponentType.loadBalancer ||
     ComponentType.apiGateway ||
-    ComponentType.appServer ||
-    ComponentType.database ||
+    ComponentType.waf ||
+    ComponentType.ingress ||
     ComponentType.cache ||
-    ComponentType.serverless ||
-    ComponentType.customService => true,
+    ComponentType.serverless => true,
     _ => false,
   };
 }
@@ -2252,12 +2297,28 @@ bool _isSpofCandidate(ComponentType type) {
   return switch (type) {
     ComponentType.appServer ||
     ComponentType.database ||
+    ComponentType.keyValueStore ||
+    ComponentType.timeSeriesDb ||
+    ComponentType.graphDb ||
+    ComponentType.vectorDb ||
+    ComponentType.searchIndex ||
+    ComponentType.dataWarehouse ||
+    ComponentType.dataLake ||
     ComponentType.cache ||
     ComponentType.queue ||
     ComponentType.pubsub ||
     ComponentType.stream ||
     ComponentType.worker ||
-    ComponentType.customService => true,
+    ComponentType.customService ||
+    ComponentType.authService ||
+    ComponentType.notificationService ||
+    ComponentType.searchService ||
+    ComponentType.analyticsService ||
+    ComponentType.scheduler ||
+    ComponentType.serviceDiscovery ||
+    ComponentType.configService ||
+    ComponentType.secretsManager ||
+    ComponentType.featureFlag => true,
     ComponentType.objectStore => false,
     _ => false,
   };
@@ -2304,7 +2365,7 @@ List<FailureEvent> _checkConsistencyIssues(
   final random = Random(tickCount);
   
   // Check database replication lag
-  for (final db in components.where((c) => c.type == ComponentType.database)) {
+  for (final db in components.where((c) => _isDatabaseLike(c.type))) {
     if (db.config.replication && db.config.replicationFactor > 1) {
       final metrics = componentMetrics[db.id];
       if (metrics == null) continue;
