@@ -1,6 +1,8 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/chaos_event.dart';
+import '../../models/component.dart';
 import '../../providers/game_provider.dart';
 import '../../simulation/simulation_engine.dart';
 import '../../theme/app_theme.dart';
@@ -17,6 +19,7 @@ class ChaosControlsPanel extends ConsumerStatefulWidget {
 class _ChaosControlsPanelState extends ConsumerState<ChaosControlsPanel> {
   bool _isExpanded = true;
   final _uuid = const Uuid();
+  final _random = Random();
 
   void _setSpeed(double speed) {
     ref.read(simulationProvider.notifier).setSpeed(speed);
@@ -24,12 +27,20 @@ class _ChaosControlsPanelState extends ConsumerState<ChaosControlsPanel> {
   }
 
   void _triggerChaos(ChaosType type) {
+    final canvasState = ref.read(canvasProvider);
+    final selectedId = canvasState.selectedComponentId;
+    final selectedComponent =
+        selectedId != null ? canvasState.getComponent(selectedId) : null;
     final event = ChaosEvent(
       id: _uuid.v4(),
       type: type,
       startTime: DateTime.now(),
       duration: _getDuration(type),
-      parameters: _getParameters(type),
+      parameters: _getParameters(
+        type,
+        selectedComponent: selectedComponent,
+        components: canvasState.components,
+      ),
     );
 
     ref.read(simulationProvider.notifier).addChaosEvent(event);
@@ -73,20 +84,62 @@ class _ChaosControlsPanelState extends ConsumerState<ChaosControlsPanel> {
     }
   }
 
-  Map<String, dynamic> _getParameters(ChaosType type) {
+  Map<String, dynamic> _getParameters(
+    ChaosType type, {
+    SystemComponent? selectedComponent,
+    List<SystemComponent> components = const [],
+  }) {
+    String? targetId;
+    String? region;
+    if (selectedComponent != null) {
+      targetId = selectedComponent.id;
+      region = selectedComponent.config.regions.isNotEmpty
+          ? selectedComponent.config.regions.first
+          : null;
+    }
+
+    if (targetId == null && components.isNotEmpty) {
+      final fallback = components[_random.nextInt(components.length)];
+      region = fallback.config.regions.isNotEmpty
+          ? fallback.config.regions.first
+          : region;
+    }
+
     switch (type) {
       case ChaosType.trafficSpike:
-        return {'multiplier': 4.0};
+        return {'multiplier': 4.0, 'severity': 1.0};
       case ChaosType.networkLatency:
-        return {'latencyMs': 300};
+        return {
+          'latencyMs': 300,
+          if (targetId != null) 'componentId': targetId,
+          if (region != null && targetId == null) 'region': region,
+          'severity': 1.0,
+        };
       case ChaosType.networkPartition:
-        return {};
+        return {
+          if (targetId != null) 'componentId': targetId,
+          if (region != null && targetId == null) 'region': region,
+          'severity': 1.0,
+        };
       case ChaosType.databaseSlowdown:
-        return {'multiplier': 8.0};
+        return {
+          'multiplier': 8.0,
+          if (selectedComponent?.type == ComponentType.database && targetId != null)
+            'componentId': targetId,
+          'severity': 1.0,
+        };
       case ChaosType.cacheMissStorm:
-        return {'hitRateDrop': 0.9};
+        return {
+          'hitRateDrop': 0.9,
+          if (selectedComponent?.type == ComponentType.cache && targetId != null)
+            'componentId': targetId,
+          'severity': 1.0,
+        };
       case ChaosType.componentCrash:
-        return {};
+        return {
+          if (targetId != null) 'componentId': targetId,
+          'severity': 1.0,
+        };
     }
   }
 

@@ -89,7 +89,7 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
     if (loadedState != null) {
       state = loadedState;
     } else {
-      final loadedSample = await _loadDesignFromAsset('assets/solutions/complex_sample_design.json');
+      final loadedSample = await _loadDesignFromAsset('assets/solutions/minimal_design.json');
       if (!loadedSample) {
         state = const CanvasState();
       }

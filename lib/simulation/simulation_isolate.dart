@@ -56,15 +56,112 @@ const int _maxSampleEvents = 2000;
 
 enum _EventType { arrival, completion }
 
+double _chaosSeverity(ChaosEvent event) {
+  final raw = event.parameters['severity'];
+  if (raw is num) {
+    return raw.toDouble().clamp(0.0, 1.0);
+  }
+  return 1.0;
+}
+
+double _chaosIntensity(ChaosEvent event) {
+  final severity = _chaosSeverity(event);
+  if (event.duration.inMilliseconds <= 0) return severity;
+  if (event.type == ChaosType.componentCrash ||
+      event.type == ChaosType.networkPartition) {
+    return severity;
+  }
+  final p = event.progress.clamp(0.0, 1.0);
+  final ramp = sin(pi * p);
+  return (ramp * severity).clamp(0.0, 1.0);
+}
+
+String? _eventTargetId(ChaosEvent event) {
+  final target = event.parameters['targetId'] ?? event.parameters['componentId'];
+  return target is String ? target : null;
+}
+
+String? _eventRegion(ChaosEvent event) {
+  final region = event.parameters['region'];
+  return region is String ? region : null;
+}
+
+bool _affectsComponent(ChaosEvent event, SystemComponent component) {
+  final targetId = _eventTargetId(event);
+  if (targetId != null) return component.id == targetId;
+  final region = _eventRegion(event);
+  if (region != null) {
+    final componentRegion =
+        component.config.regions.isNotEmpty ? component.config.regions.first : 'us-east-1';
+    return componentRegion == region;
+  }
+  return true;
+}
+
+bool _affectsConnection(
+  ChaosEvent event,
+  SystemComponent source,
+  SystemComponent target,
+) {
+  final targetId = _eventTargetId(event);
+  if (targetId != null) {
+    return source.id == targetId || target.id == targetId;
+  }
+  final region = _eventRegion(event);
+  if (region != null) {
+    final sourceRegion =
+        source.config.regions.isNotEmpty ? source.config.regions.first : 'us-east-1';
+    final targetRegion =
+        target.config.regions.isNotEmpty ? target.config.regions.first : 'us-east-1';
+    return sourceRegion == region || targetRegion == region;
+  }
+  return true;
+}
+
+Set<String> _collectDisconnectedComponents(
+  List<ChaosEvent> activeChaosEvents,
+  List<SystemComponent> components,
+) {
+  final disconnected = <String>{};
+  for (final event in activeChaosEvents) {
+    if (event.type != ChaosType.networkPartition) continue;
+    if (_chaosIntensity(event) <= 0) continue;
+    for (final component in components) {
+      if (_affectsComponent(event, component)) {
+        disconnected.add(component.id);
+      }
+    }
+  }
+  return disconnected;
+}
+
 class _Token {
   final double weight; // How many real requests this token represents
   final double arrivedAt; // Arrival time at current component (seconds)
   final String? callerId; // Upstream component that sent this token
   final int retryCount;
+  final int clientId; // Stable-ish key for hashing-based routing
+  final int keyId; // Key for shard/hot-key routing
+  final String region; // Client region hint
+  final bool isWrite;
+  final bool requiresAuth;
+  final bool featureEnabled;
+  final bool isPremium;
+  final bool isCanary;
+  final bool isHotKey;
 
   const _Token({
     required this.weight,
     required this.arrivedAt,
+    required this.clientId,
+    required this.keyId,
+    required this.region,
+    required this.isWrite,
+    required this.requiresAuth,
+    required this.featureEnabled,
+    required this.isPremium,
+    required this.isCanary,
+    required this.isHotKey,
     this.callerId,
     this.retryCount = 0,
   });
@@ -73,10 +170,26 @@ class _Token {
     double? arrivedAt,
     String? callerId,
     int? retryCount,
+    String? region,
+    bool? isWrite,
+    bool? requiresAuth,
+    bool? featureEnabled,
+    bool? isPremium,
+    bool? isCanary,
+    bool? isHotKey,
   }) {
     return _Token(
       weight: weight,
       arrivedAt: arrivedAt ?? this.arrivedAt,
+      clientId: clientId,
+      keyId: keyId,
+      region: region ?? this.region,
+      isWrite: isWrite ?? this.isWrite,
+      requiresAuth: requiresAuth ?? this.requiresAuth,
+      featureEnabled: featureEnabled ?? this.featureEnabled,
+      isPremium: isPremium ?? this.isPremium,
+      isCanary: isCanary ?? this.isCanary,
+      isHotKey: isHotKey ?? this.isHotKey,
       callerId: callerId ?? this.callerId,
       retryCount: retryCount ?? this.retryCount,
     );
@@ -230,7 +343,9 @@ SimulationResult runSimulationTick(SimulationData data) {
   double chaosMultiplier = 1.0;
   for (final event in data.activeChaosEvents) {
     if (event.type == ChaosType.trafficSpike) {
-      chaosMultiplier *= (event.parameters['multiplier'] ?? 4.0);
+      final mult = (event.parameters['multiplier'] as num?)?.toDouble() ?? 4.0;
+      final intensity = _chaosIntensity(event);
+      chaosMultiplier *= 1.0 + ((mult - 1.0) * intensity);
     }
   }
 
@@ -276,6 +391,11 @@ SimulationResult runSimulationTick(SimulationData data) {
     componentMetrics,
     connections,
   );
+
+  final chaosFailures = _buildChaosFailures(
+    components,
+    data.activeChaosEvents,
+  );
   
   // Check for network partitions (rare but impactful)
   final networkFailure = _simulateNetworkPartition(components, data.tickCount, random);
@@ -286,6 +406,7 @@ SimulationResult runSimulationTick(SimulationData data) {
     ...consistencyIssues,
     ...cascadingFailures,
     ...retryStorms,
+    ...chaosFailures,
     if (networkFailure != null) networkFailure,
   ];
 
@@ -394,8 +515,18 @@ SimulationResult runSimulationTick(SimulationData data) {
     // Chaos: DB slowdown
     for (final event in activeChaosEvents) {
       if (event.type == ChaosType.databaseSlowdown &&
-          state.component.type == ComponentType.database) {
-        mean *= (event.parameters['multiplier'] ?? 6.0);
+          state.component.type == ComponentType.database &&
+          _affectsComponent(event, state.component)) {
+        final mult = (event.parameters['multiplier'] as num?)?.toDouble() ?? 6.0;
+        final intensity = _chaosIntensity(event);
+        mean *= 1.0 + ((mult - 1.0) * intensity);
+      }
+      if (event.type == ChaosType.cacheMissStorm &&
+          state.component.type == ComponentType.database &&
+          _affectsComponent(event, state.component)) {
+        final drop = (event.parameters['hitRateDrop'] as num?)?.toDouble() ?? 0.9;
+        final intensity = _chaosIntensity(event);
+        mean *= 1.0 + (drop * 2.0 * intensity);
       }
     }
 
@@ -410,8 +541,10 @@ SimulationResult runSimulationTick(SimulationData data) {
     var base = sameRegion ? 2.0 + random.nextDouble() * 4.0 : 40.0 + random.nextDouble() * 90.0;
 
     for (final event in activeChaosEvents) {
-      if (event.type == ChaosType.networkLatency) {
-        base += (event.parameters['latencyMs'] ?? 300).toDouble();
+      if (event.type == ChaosType.networkLatency &&
+          _affectsConnection(event, source, target)) {
+        final latencyMs = (event.parameters['latencyMs'] as num?)?.toDouble() ?? 300.0;
+        base += latencyMs * _chaosIntensity(event);
       }
     }
 
@@ -461,14 +594,23 @@ SimulationResult runSimulationTick(SimulationData data) {
     bool isCrashed = false;
     for (final event in activeChaosEvents) {
       if (event.type == ChaosType.componentCrash) {
-        final targetId = event.parameters['componentId'];
-        if (targetId == null || targetId == component.id) {
-          isCrashed = random.nextDouble() < 0.1;
+        final targetId = _eventTargetId(event);
+        final intensity = _chaosIntensity(event);
+        if (intensity <= 0) continue;
+        if (targetId != null) {
+          if (component.id == targetId) {
+            isCrashed = true;
+          }
+        } else {
+          if (random.nextDouble() < (0.15 * intensity)) {
+            isCrashed = true;
+          }
         }
       }
     }
 
-    final isSlow = random.nextDouble() < 0.02;
+    final hadTraffic = estimatedRps > 0 || (prev?.currentRps ?? 0) > 0;
+    final isSlow = hadTraffic && random.nextDouble() < 0.02;
     final slownessFactor = isSlow ? (1.5 + random.nextDouble() * 3.5) : 1.0;
     final circuitOpen = component.config.circuitBreaker &&
         (prev?.errorRate ?? 0.0) > 0.25;
@@ -514,16 +656,486 @@ SimulationResult runSimulationTick(SimulationData data) {
     );
   }
 
+  final disconnected = _collectDisconnectedComponents(activeChaosEvents, components);
+
+  final rrCursor = <String, int>{};
+
+  int hashIndex(int hash, int length) {
+    if (length <= 0) return 0;
+    final mod = hash % length;
+    return mod < 0 ? mod + length : mod;
+  }
+
+  List<Connection> filterHealthyTargets(List<Connection> candidates) {
+    if (candidates.isEmpty) return candidates;
+    final healthy = <Connection>[];
+    for (final conn in candidates) {
+      if (disconnected.contains(conn.targetId)) continue;
+      final targetState = states[conn.targetId];
+      if (targetState == null) continue;
+      if (targetState.isCrashed || targetState.circuitOpen) continue;
+      healthy.add(conn);
+    }
+    return healthy.isNotEmpty ? healthy : candidates;
+  }
+
+  List<Connection> buildWeightedRoundRobinList(List<Connection> candidates) {
+    if (candidates.length <= 1) return candidates;
+    final weights = <double>[];
+    for (final conn in candidates) {
+      final targetState = states[conn.targetId];
+      final capacity = targetState == null
+          ? 1.0
+          : (targetState.capacityPerInstance *
+                  targetState.autoscale.effectiveInstances)
+              .toDouble();
+      weights.add(max(1.0, capacity));
+    }
+    final minWeight = weights.reduce(min).clamp(1.0, double.infinity);
+    const maxSlotsPerTarget = 10;
+    final list = <Connection>[];
+    for (int i = 0; i < candidates.length; i++) {
+      final ratio = (weights[i] / minWeight);
+      final slots = ratio.isFinite
+          ? ratio.round().clamp(1, maxSlotsPerTarget)
+          : 1;
+      for (int j = 0; j < slots; j++) {
+        list.add(candidates[i]);
+      }
+    }
+    return list.isNotEmpty ? list : candidates;
+  }
+
+  final labelById = <String, String>{
+    for (final component in components)
+      component.id: (component.customName ?? component.type.displayName).toLowerCase(),
+  };
+
+  bool labelHasAny(String label, List<String> tags) {
+    for (final tag in tags) {
+      if (label.contains(tag)) return true;
+    }
+    return false;
+  }
+
+  bool isAuthTarget(String label) =>
+      labelHasAny(label, ['auth', 'login', 'identity', 'oauth', 'sso']);
+  bool isFeatureTarget(String label) =>
+      labelHasAny(label, ['feature', 'exp', 'experiment', 'variant', 'beta']);
+  bool isCanaryTarget(String label) => label.contains('canary');
+  bool isBlueTarget(String label) => label.contains('blue');
+  bool isGreenTarget(String label) => label.contains('green');
+  bool isPremiumTarget(String label) =>
+      labelHasAny(label, ['premium', 'gold', 'pro', 'enterprise', 'paid']);
+  bool isStandardTarget(String label) =>
+      labelHasAny(label, ['free', 'standard', 'basic', 'community']);
+  bool isBatchTarget(String label) => labelHasAny(label, ['batch', 'offline', 'bulk']);
+  bool isFallbackTarget(String label) =>
+      labelHasAny(label, ['fallback', 'degraded', 'backup']);
+  bool isHotTarget(String label) => labelHasAny(label, ['hot', 'hotspot', 'hot-shard']);
+  bool isL1Cache(String label) => labelHasAny(label, ['l1', 'tier1', 'edge']);
+  bool isL2Cache(String label) => labelHasAny(label, ['l2', 'tier2']);
+  bool isReplicaTarget(SystemComponent component, String label) =>
+      component.type == ComponentType.replicaNode ||
+      labelHasAny(label, ['replica', 'read']);
+  bool isPrimaryTarget(String label) =>
+      labelHasAny(label, ['primary', 'leader', 'master', 'write']);
+  bool isStatefulTarget(SystemComponent component, String label) =>
+      labelHasAny(label, ['stateful', 'session']) ||
+      component.type == ComponentType.cache ||
+      component.type == ComponentType.database;
+  bool isOriginTarget(SystemComponent component) =>
+      component.type == ComponentType.appServer ||
+      component.type == ComponentType.apiGateway ||
+      component.type == ComponentType.objectStore ||
+      component.type == ComponentType.serverless ||
+      component.type == ComponentType.customService ||
+      component.type == ComponentType.worker;
+
+  Connection pickByAdaptiveScore(
+    SystemComponent source,
+    List<Connection> candidates,
+    _Token token,
+  ) {
+    final shuffled = candidates.toList()..shuffle(random);
+    final utilList = <double>[];
+    final latencyList = <double>[];
+    final costList = <double>[];
+
+    for (final conn in shuffled) {
+      final targetState = states[conn.targetId];
+      final util = targetState?.utilization ?? 0.0;
+      final prev = targetState?.prevMetrics;
+      final latency = (prev?.p95LatencyMs ?? prev?.latencyMs ?? _getBaseLatency(targetState?.component.type ?? ComponentType.appServer)).toDouble();
+      final cost = targetState?.component.config.costPerHour ?? 0.1;
+      utilList.add(util);
+      latencyList.add(latency);
+      costList.add(cost);
+    }
+
+    final maxUtil = utilList.isNotEmpty ? utilList.reduce(max) : 1.0;
+    final maxLatency = latencyList.isNotEmpty ? latencyList.reduce(max) : 1.0;
+    final maxCost = costList.isNotEmpty ? costList.reduce(max) : 1.0;
+
+    final sourceUtil = states[source.id]?.utilization ?? 0.0;
+    final costWeight = sourceUtil < 0.6 ? 0.2 : 0.1;
+    final latencyWeight = sourceUtil > 0.8 ? 0.45 : 0.35;
+    final utilWeight = 1.0 - costWeight - latencyWeight;
+
+    double bestScore = double.infinity;
+    Connection best = shuffled.first;
+    for (int i = 0; i < shuffled.length; i++) {
+      final conn = shuffled[i];
+      final targetState = states[conn.targetId];
+      final util = maxUtil > 0 ? utilList[i] / maxUtil : 0.0;
+      final latency = maxLatency > 0 ? latencyList[i] / maxLatency : 0.0;
+      final cost = maxCost > 0 ? costList[i] / maxCost : 0.0;
+      final label = labelById[conn.targetId] ?? '';
+      final targetRegions = targetState?.component.config.regions ?? const ['us-east-1'];
+      final regionPenalty = targetRegions.contains(token.region) ? 0.0 : 0.15;
+      final errorPenalty = (targetState?.prevMetrics?.errorRate ?? 0.0) > 0.2 ? 0.2 : 0.0;
+      final statefulPenalty = isStatefulTarget(targetState?.component ?? source, label) && !token.requiresAuth ? 0.0 : 0.0;
+      final score = util * utilWeight + latency * latencyWeight + cost * costWeight + regionPenalty + errorPenalty + statefulPenalty;
+      if (score < bestScore) {
+        bestScore = score;
+        best = conn;
+      }
+    }
+    return best;
+  }
+
+  Connection selectTargetConnection({
+    required SystemComponent source,
+    required List<Connection> candidates,
+    required _Token token,
+  }) {
+    var viable = filterHealthyTargets(candidates);
+    if (viable.length == 1) return viable.first;
+
+    final sourceLabel = labelById[source.id] ?? source.type.displayName.toLowerCase();
+
+    final featureTargets = <Connection>[];
+    final canaryTargets = <Connection>[];
+    final authTargets = <Connection>[];
+    final blueTargets = <Connection>[];
+    final greenTargets = <Connection>[];
+    final premiumTargets = <Connection>[];
+    final standardTargets = <Connection>[];
+    final batchTargets = <Connection>[];
+    final fallbackTargets = <Connection>[];
+    final hotTargets = <Connection>[];
+    final cacheTargets = <Connection>[];
+    final cacheL1Targets = <Connection>[];
+    final cacheL2Targets = <Connection>[];
+    final dbTargets = <Connection>[];
+    final dbReplicaTargets = <Connection>[];
+    final dbPrimaryTargets = <Connection>[];
+    final cdnTargets = <Connection>[];
+    final originTargets = <Connection>[];
+    final queueTargets = <Connection>[];
+    final shardTargets = <Connection>[];
+
+    for (final conn in viable) {
+      final targetState = states[conn.targetId];
+      final targetComponent = targetState?.component;
+      final label = labelById[conn.targetId] ?? '';
+
+      if (isFeatureTarget(label)) featureTargets.add(conn);
+      if (isCanaryTarget(label)) canaryTargets.add(conn);
+      if (isAuthTarget(label)) authTargets.add(conn);
+      if (isBlueTarget(label)) blueTargets.add(conn);
+      if (isGreenTarget(label)) greenTargets.add(conn);
+      if (isPremiumTarget(label)) premiumTargets.add(conn);
+      if (isStandardTarget(label)) standardTargets.add(conn);
+      if (isBatchTarget(label)) batchTargets.add(conn);
+      if (isFallbackTarget(label)) fallbackTargets.add(conn);
+      if (isHotTarget(label)) hotTargets.add(conn);
+
+      if (targetComponent?.type == ComponentType.cache) {
+        cacheTargets.add(conn);
+        if (isL1Cache(label)) cacheL1Targets.add(conn);
+        if (isL2Cache(label)) cacheL2Targets.add(conn);
+      }
+      if (targetComponent?.type == ComponentType.database) {
+        dbTargets.add(conn);
+        if (isReplicaTarget(targetComponent!, label)) {
+          dbReplicaTargets.add(conn);
+        } else if (isPrimaryTarget(label)) {
+          dbPrimaryTargets.add(conn);
+        }
+      }
+      if (targetComponent?.type == ComponentType.cdn) {
+        cdnTargets.add(conn);
+      }
+      if (targetComponent != null && isOriginTarget(targetComponent)) {
+        originTargets.add(conn);
+      }
+      if (targetComponent?.type == ComponentType.queue) {
+        queueTargets.add(conn);
+      }
+      if (targetComponent?.type == ComponentType.shardNode ||
+          targetComponent?.type == ComponentType.partitionNode ||
+          labelHasAny(label, ['shard', 'partition'])) {
+        shardTargets.add(conn);
+      }
+    }
+
+    // Feature flag routing
+    if (featureTargets.isNotEmpty) {
+      if (token.featureEnabled) {
+        viable = featureTargets;
+      } else {
+        viable = viable.where((c) => !featureTargets.contains(c)).toList();
+        if (viable.isEmpty) viable = featureTargets;
+      }
+    }
+
+    // SLA tier routing
+    if (premiumTargets.isNotEmpty || standardTargets.isNotEmpty) {
+      if (token.isPremium && premiumTargets.isNotEmpty) {
+        viable = premiumTargets;
+      } else if (!token.isPremium && standardTargets.isNotEmpty) {
+        viable = standardTargets;
+      }
+    }
+
+    // Canary deployments
+    if (canaryTargets.isNotEmpty) {
+      if (token.isCanary) {
+        viable = canaryTargets;
+      } else {
+        viable = viable.where((c) => !canaryTargets.contains(c)).toList();
+        if (viable.isEmpty) viable = canaryTargets;
+      }
+    }
+
+    // Blue/Green deployment
+    if (blueTargets.isNotEmpty && greenTargets.isNotEmpty) {
+      bool greenActive = false;
+      final greenActiveTag = greenTargets.any((c) => (labelById[c.targetId] ?? '').contains('active'));
+      final blueActiveTag = blueTargets.any((c) => (labelById[c.targetId] ?? '').contains('active'));
+      if (greenActiveTag && !blueActiveTag) {
+        greenActive = true;
+      } else if (!greenActiveTag && blueActiveTag) {
+        greenActive = false;
+      } else {
+        final greenErr = greenTargets
+            .map((c) => states[c.targetId]?.prevMetrics?.errorRate ?? 0.0)
+            .fold(0.0, (a, b) => a + b);
+        final blueErr = blueTargets
+            .map((c) => states[c.targetId]?.prevMetrics?.errorRate ?? 0.0)
+            .fold(0.0, (a, b) => a + b);
+        greenActive = greenErr <= blueErr;
+      }
+      viable = greenActive ? greenTargets : blueTargets;
+    }
+
+    // Auth gating: only some traffic hits auth services
+    if (authTargets.isNotEmpty &&
+        viable.length > 1 &&
+        (source.type == ComponentType.apiGateway || sourceLabel.contains('gateway'))) {
+      if (token.requiresAuth) {
+        viable = authTargets;
+      } else {
+        viable = viable.where((c) => !authTargets.contains(c)).toList();
+        if (viable.isEmpty) viable = authTargets;
+      }
+    }
+
+    // Region preference
+    if (token.region.isNotEmpty) {
+      final regional = viable.where((c) {
+        final targetRegions = states[c.targetId]?.component.config.regions ?? const ['us-east-1'];
+        return targetRegions.contains(token.region);
+      }).toList();
+      if (regional.isNotEmpty) viable = regional;
+    }
+
+    // Shard routing (hash-based)
+    if (shardTargets.isNotEmpty && (source.config.sharding || shardTargets.length > 1)) {
+      final stable = shardTargets.toList()
+        ..sort((a, b) => a.targetId.compareTo(b.targetId));
+      final idx = hashIndex(Object.hash(token.keyId, source.id), stable.length);
+      return stable[idx];
+    }
+
+    // Read/write split for DB replicas
+    if (dbTargets.isNotEmpty && dbTargets.length >= 2) {
+      if (!token.isWrite && dbReplicaTargets.isNotEmpty) {
+        viable = dbReplicaTargets;
+      } else if (token.isWrite && dbPrimaryTargets.isNotEmpty) {
+        viable = dbPrimaryTargets;
+      }
+    }
+
+    // Hot-key routing
+    if (token.isHotKey) {
+      if (hotTargets.isNotEmpty) {
+        viable = hotTargets;
+      } else if (cacheTargets.isNotEmpty) {
+        viable = cacheTargets;
+      }
+    }
+
+    // Tiered cache preference
+    if (cacheL1Targets.isNotEmpty && cacheL2Targets.isNotEmpty) {
+      final l1Health = cacheL1Targets.every((c) {
+        final prev = states[c.targetId]?.prevMetrics;
+        return (prev?.errorRate ?? 0.0) < 0.1 && (states[c.targetId]?.utilization ?? 0.0) < 1.2;
+      });
+      final useL1 = l1Health ? (random.nextDouble() < 0.9) : (random.nextDouble() < 0.3);
+      viable = useL1 ? cacheL1Targets : cacheL2Targets;
+    }
+
+    // Cache/DB bias (dynamic by cache hit rate)
+    if (cacheTargets.isNotEmpty && dbTargets.isNotEmpty) {
+      final cacheHitAvg = cacheTargets
+          .map((c) => states[c.targetId]?.prevMetrics?.cacheHitRate ?? 0.85)
+          .fold(0.0, (a, b) => a + b) / cacheTargets.length;
+      final cacheHealthPenalty = cacheTargets.any((c) {
+        final prev = states[c.targetId]?.prevMetrics;
+        return (prev?.errorRate ?? 0.0) > 0.15 || (states[c.targetId]?.utilization ?? 0.0) > 1.4;
+      });
+      var cacheBias = cacheHitAvg.clamp(0.6, 0.98);
+      if (cacheHealthPenalty) cacheBias = max(0.5, cacheBias - 0.25);
+      if (token.isHotKey) cacheBias = min(0.99, cacheBias + 0.05);
+      if (cacheTargets.length + dbTargets.length == viable.length) {
+        final useCache = random.nextDouble() < cacheBias;
+        viable = useCache ? cacheTargets : dbTargets;
+      }
+    }
+
+    // CDN vs Origin bias
+    if (cdnTargets.isNotEmpty && originTargets.isNotEmpty) {
+      final useCdn = random.nextDouble() < 0.95;
+      viable = useCdn ? cdnTargets : originTargets;
+    }
+
+    // Queue offload under overload or throttling
+    if (queueTargets.isNotEmpty) {
+      final nonQueueTargets = viable.where((c) => !queueTargets.contains(c)).toList();
+      if (nonQueueTargets.isNotEmpty && token.isWrite) {
+        final overloaded = nonQueueTargets.any((c) {
+          final util = states[c.targetId]?.utilization ?? 0.0;
+          final err = states[c.targetId]?.prevMetrics?.errorRate ?? 0.0;
+          final throttled = states[c.targetId]?.prevMetrics?.isThrottled ?? false;
+          return util > 1.1 || err > 0.2 || throttled;
+        });
+        final queueBias = overloaded ? 0.6 : 0.1;
+        if (random.nextDouble() < queueBias) {
+          viable = queueTargets;
+        }
+      }
+    }
+
+    // Batch path for cost efficiency
+    if (batchTargets.isNotEmpty) {
+      final nonBatchTargets = viable.where((c) => !batchTargets.contains(c)).toList();
+      if (nonBatchTargets.isNotEmpty && token.isWrite) {
+        final sourceLoad = states[source.id]?.utilization ?? 0.0;
+        final batchBias = sourceLoad < 0.6 ? 0.2 : 0.05;
+        if (random.nextDouble() < batchBias) {
+          viable = batchTargets;
+        }
+      }
+    }
+
+    // Rate-limit spillover to fallback
+    if (fallbackTargets.isNotEmpty) {
+      final throttledTargets = viable.where((c) => states[c.targetId]?.prevMetrics?.isThrottled ?? false).toList();
+      if (throttledTargets.isNotEmpty) {
+        if (random.nextDouble() < 0.6) {
+          viable = fallbackTargets;
+        }
+      }
+    }
+
+    if (viable.length == 1) return viable.first;
+
+    var algorithm = source.config.algorithm?.toLowerCase();
+    final hasStateful = viable.any((c) {
+      final targetState = states[c.targetId];
+      final label = labelById[c.targetId] ?? '';
+      return isStatefulTarget(targetState?.component ?? source, label);
+    });
+    if (algorithm == null && (source.config.consistentHashing || hasStateful)) {
+      algorithm = 'ip_hash';
+    }
+    if (algorithm == null && source.type == ComponentType.loadBalancer) {
+      algorithm = 'round_robin';
+    }
+    algorithm ??= 'adaptive';
+
+    switch (algorithm) {
+      case 'round_robin':
+        final rrList = buildWeightedRoundRobinList(viable);
+        final idx = rrCursor[source.id] ?? 0;
+        rrCursor[source.id] = (idx + 1) % rrList.length;
+        return rrList[idx % rrList.length];
+      case 'ip_hash':
+      case 'consistent_hashing':
+        final stable = viable.toList()
+          ..sort((a, b) => a.targetId.compareTo(b.targetId));
+        final hash = Object.hash(token.clientId, source.id);
+        final idx = hashIndex(hash, stable.length);
+        return stable[idx];
+      case 'least_conn':
+        final shuffled = viable.toList()..shuffle(random);
+        shuffled.sort((a, b) {
+          final aUtil = states[a.targetId]?.utilization ?? 0.0;
+          final bUtil = states[b.targetId]?.utilization ?? 0.0;
+          return aUtil.compareTo(bUtil);
+        });
+        return shuffled.first;
+      case 'adaptive':
+      default:
+        return pickByAdaptiveScore(source, viable, token);
+    }
+  }
+
+  final configuredRegions = <String>{
+    ...problem.constraints.regions,
+    ...components.expand((c) => c.config.regions),
+  }.where((r) => r.isNotEmpty).toList();
+  final regionPool = configuredRegions.isNotEmpty
+      ? configuredRegions
+      : const ['us-east-1', 'us-west-2', 'eu-central-1', 'ap-southeast-1'];
+
+  final readRatio = max(0.0, problem.constraints.readWriteRatio);
+  final readProbability = readRatio / (readRatio + 1.0);
+
   // Event-driven simulation
   final events = _MinHeap();
+  final clientPool = max(50, min(5000, sampleCount));
   for (int i = 0; i < sampleCount; i++) {
     final entry = effectiveEntryPoints[random.nextInt(entryCount)];
     final time = random.nextDouble() * simWindowSeconds;
+    final clientId = random.nextInt(clientPool);
+    final keyId = Object.hash(clientId, i, random.nextInt(1 << 16));
+    final isWrite = random.nextDouble() > readProbability;
+    final requiresAuth = isWrite ? (random.nextDouble() < 0.7) : (random.nextDouble() < 0.2);
+    final featureEnabled = random.nextDouble() < 0.1;
+    final isPremium = random.nextDouble() < 0.1;
+    final isCanary = random.nextDouble() < 0.05;
+    final isHotKey = random.nextDouble() < 0.02;
+    final region = regionPool[random.nextInt(regionPool.length)];
     events.add(_Event(
       time: time,
       type: _EventType.arrival,
       componentId: entry.id,
-      token: _Token(weight: tokenWeight, arrivedAt: time),
+      token: _Token(
+        weight: tokenWeight,
+        arrivedAt: time,
+        clientId: clientId,
+        keyId: keyId,
+        region: region,
+        isWrite: isWrite,
+        requiresAuth: requiresAuth,
+        featureEnabled: featureEnabled,
+        isPremium: isPremium,
+        isCanary: isCanary,
+        isHotKey: isHotKey,
+      ),
     ));
   }
 
@@ -563,8 +1175,28 @@ SimulationResult runSimulationTick(SimulationData data) {
   }) {
     if (token.callerId == null) return;
     if (token.retryCount >= 3) return;
-    final caller = states[token.callerId!]?.component;
+    final callerState = states[token.callerId!];
+    final caller = callerState?.component;
     if (caller == null || !caller.config.retries) return;
+
+    // Retry storm control: dampen retries under high error or pressure
+    final errorRate = callerState?.prevMetrics?.errorRate ?? 0.0;
+    final utilization = callerState?.utilization ?? 0.0;
+    var retryChance = 1.0;
+    if (errorRate > 0.2) {
+      retryChance *= max(0.2, 1.0 - errorRate);
+    }
+    if (utilization > 1.2) {
+      retryChance *= 0.5;
+    }
+    if (callerState != null &&
+        callerState.queue.length > callerState.maxQueueTokens * 0.8) {
+      retryChance *= 0.5;
+    }
+    if (token.retryCount >= 1) {
+      retryChance *= 0.7;
+    }
+    if (random.nextDouble() > retryChance) return;
     final backoffMs = 50.0 * pow(2, token.retryCount).toDouble();
     final jitterMs = backoffMs * (0.2 + random.nextDouble() * 0.4);
     scheduleArrival(
@@ -582,6 +1214,16 @@ SimulationResult runSimulationTick(SimulationData data) {
 
     if (event.type == _EventType.arrival) {
       state.arrivals += 1;
+
+      if (disconnected.contains(state.component.id)) {
+        state.errors += 1;
+        maybeRetry(
+          token: event.token,
+          targetComponentId: state.component.id,
+          time: event.time,
+        );
+        continue;
+      }
 
       // Circuit breaker / crash handling
       if (state.circuitOpen || state.isCrashed) {
@@ -655,24 +1297,55 @@ SimulationResult runSimulationTick(SimulationData data) {
       final outgoingConns = outgoing[state.component.id] ?? [];
       if (outgoingConns.isEmpty) continue;
 
-      List<Connection> targets = outgoingConns;
-      final isFanout = state.component.type == ComponentType.pubsub ||
+      final isFanoutComponent = state.component.type == ComponentType.pubsub ||
           state.component.type == ComponentType.stream;
 
-      if (!isFanout && targets.length > 1) {
-        // Choose least pressured target (simple load balancing)
-        targets = targets.toList()
-          ..sort((a, b) {
-            final aUtil = states[a.targetId]?.utilization ?? 0.0;
-            final bUtil = states[b.targetId]?.utilization ?? 0.0;
-            return aUtil.compareTo(bUtil);
-          });
-        targets = [targets.first];
+      final fanoutTargets = <Connection>[];
+      final selectableTargets = <Connection>[];
+
+      if (isFanoutComponent) {
+        fanoutTargets.addAll(outgoingConns);
+      } else {
+        for (final conn in outgoingConns) {
+          if (conn.type == ConnectionType.replication) {
+            fanoutTargets.add(conn);
+          } else {
+            selectableTargets.add(conn);
+          }
+        }
       }
 
-      final fanoutCap = isFanout ? min(5, targets.length) : targets.length;
+      if (selectableTargets.isNotEmpty) {
+        final chosen = selectableTargets.length == 1
+            ? selectableTargets.first
+            : selectTargetConnection(
+                source: state.component,
+                candidates: selectableTargets,
+                token: event.token,
+              );
+        fanoutTargets.add(chosen);
+      }
+
+      if (fanoutTargets.isEmpty) continue;
+
+      var targets = filterHealthyTargets(fanoutTargets);
+      if (isFanoutComponent && targets.length > 1) {
+        targets = targets.toList()..shuffle(random);
+      }
+
+      final fanoutCap =
+          isFanoutComponent ? min(5, targets.length) : targets.length;
       for (int i = 0; i < fanoutCap; i++) {
         final conn = targets[i];
+        if (disconnected.contains(conn.targetId)) {
+          state.errors += 1;
+          maybeRetry(
+            token: event.token,
+            targetComponentId: conn.targetId,
+            time: event.time,
+          );
+          continue;
+        }
         final targetState = states[conn.targetId];
         if (targetState == null) continue;
 
@@ -721,6 +1394,9 @@ SimulationResult runSimulationTick(SimulationData data) {
 
     final capacity = component.config.capacity * state.autoscale.effectiveInstances;
     final effectiveLoad = capacity > 0 ? (arrivalRps / capacity) : 1.0;
+    final highLoadSeconds = effectiveLoad >= 0.8
+        ? ((prev?.highLoadSeconds ?? 0.0) + simWindowSeconds)
+        : 0.0;
 
     final avgLatency = state.latencySamples.isNotEmpty
         ? (state.totalLatencyMs / state.latencySamples.length)
@@ -760,6 +1436,15 @@ SimulationResult runSimulationTick(SimulationData data) {
       cacheHitRate = (0.9 - effectiveLoad * 0.3).clamp(0.0, 1.0);
       if (memoryUsage > 0.8) {
         evictionRate = (memoryUsage - 0.8) * 5000;
+      }
+      for (final event in activeChaosEvents) {
+        if (event.type == ChaosType.cacheMissStorm &&
+            _affectsComponent(event, component)) {
+          final drop = (event.parameters['hitRateDrop'] as num?)?.toDouble() ?? 0.9;
+          final intensity = _chaosIntensity(event);
+          cacheHitRate = (cacheHitRate * (1 - drop * intensity)).clamp(0.0, 1.0);
+          evictionRate += (drop * 1200 * intensity);
+        }
       }
     }
 
@@ -803,6 +1488,7 @@ SimulationResult runSimulationTick(SimulationData data) {
       isSlow: state.isSlow,
       slownessFactor: state.slownessFactor,
       isCrashed: state.isCrashed,
+      highLoadSeconds: highLoadSeconds,
     );
 
     componentMetrics[component.id] = metrics;
@@ -969,18 +1655,33 @@ ComponentMetrics _calculateComponentMetrics(
   // Recalculate with effective instances
   final effectiveCapacity = component.config.capacity * effectiveInstances;
   final effectiveLoad = effectiveCapacity > 0 ? incomingRps / effectiveCapacity : 1.0;
+  final highLoadSeconds = effectiveLoad >= 0.8
+      ? ((prevMetrics?.highLoadSeconds ?? 0.0) + 0.1)
+      : 0.0;
 
-  // Slow node simulation (5% chance a node becomes slow)
-  bool isSlow = random.nextDouble() < 0.05;
+  // Slow node simulation (5% chance a node becomes slow) - only when traffic exists
+  final hadTraffic = incomingRps > 0 || (prevMetrics?.currentRps ?? 0) > 0;
+  bool isSlow = hadTraffic && random.nextDouble() < 0.05;
   double slownessFactor = isSlow ? (2.0 + random.nextDouble() * 8.0) : 1.0;
 
   // APPLY CHAOS: Latency & DB Slowdown
   for (final event in activeChaosEvents) {
     if (event.type == ChaosType.networkLatency) {
       // Add global latency
-      slownessFactor += (event.parameters['latencyMs'] ?? 300) / 50.0; // Rough conversion
+      if (_affectsComponent(event, component)) {
+        final latencyMs = (event.parameters['latencyMs'] as num?)?.toDouble() ?? 300.0;
+        slownessFactor += (latencyMs / 50.0) * _chaosIntensity(event); // Rough conversion
+      }
     } else if (event.type == ChaosType.databaseSlowdown && component.type == ComponentType.database) {
-      slownessFactor *= (event.parameters['multiplier'] ?? 8.0);
+      if (_affectsComponent(event, component)) {
+        final mult = (event.parameters['multiplier'] as num?)?.toDouble() ?? 8.0;
+        slownessFactor *= 1.0 + ((mult - 1.0) * _chaosIntensity(event));
+      }
+    } else if (event.type == ChaosType.cacheMissStorm && component.type == ComponentType.database) {
+      if (_affectsComponent(event, component)) {
+        final drop = (event.parameters['hitRateDrop'] as num?)?.toDouble() ?? 0.9;
+        slownessFactor *= 1.0 + (drop * 2.0 * _chaosIntensity(event));
+      }
     }
   }
 
@@ -1077,6 +1778,16 @@ ComponentMetrics _calculateComponentMetrics(
       // Eviction rate drastically increases as memory fills up
       evictionRate = (memoryUsage - 0.8) * 5000; // up to 1000+ evictions/sec
     }
+
+    for (final event in activeChaosEvents) {
+      if (event.type == ChaosType.cacheMissStorm &&
+          _affectsComponent(event, component)) {
+        final drop = (event.parameters['hitRateDrop'] as num?)?.toDouble() ?? 0.9;
+        final intensity = _chaosIntensity(event);
+        cacheHitRate = (cacheHitRate * (1 - drop * intensity)).clamp(0.0, 1.0);
+        evictionRate += (drop * 1200 * intensity);
+      }
+    }
   }
 
   // Queue depth
@@ -1106,6 +1817,26 @@ ComponentMetrics _calculateComponentMetrics(
 
   final jitter = avgLatency * 0.1 * (1.0 + effectiveLoad);
 
+  // TRACKING: Glow/Blast Logic
+  // A component "glows" (red/orange) if it's overloaded (>90% CPU) or has high errors (>5%)
+  final isGlowing = cpuUsage > 0.9 || errorRate > 0.05 || isSlow;
+  
+  // Increment or reset the glow counter
+  int consecutiveGlowTicks = lastMetrics.consecutiveGlowTicks;
+  if (isGlowing) {
+    consecutiveGlowTicks++;
+  } else {
+    consecutiveGlowTicks = 0;
+  }
+  
+  // BLAST CHECK: If glowing for 30 seconds (assuming 10 ticks/sec -> 300 ticks)
+  // Force a crash
+  bool finalIsCrashed = isCrashed;
+  if (consecutiveGlowTicks >= 300 && !finalIsCrashed) {
+    finalIsCrashed = true;
+    consecutiveGlowTicks = 0; // Reset counter after crash
+  }
+
   return ComponentMetrics(
     cpuUsage: cpuUsage,
     memoryUsage: memoryUsage,
@@ -1128,7 +1859,9 @@ ComponentMetrics _calculateComponentMetrics(
     coldStartingInstances: coldStartingInstances,
     isSlow: isSlow,
     slownessFactor: slownessFactor,
-    isCrashed: isCrashed,
+    isCrashed: finalIsCrashed,
+    consecutiveGlowTicks: consecutiveGlowTicks,
+    highLoadSeconds: highLoadSeconds,
   );
 }
 
@@ -1253,7 +1986,7 @@ List<FailureEvent> _checkFailures(
 
   // 2. Single Point of Failure (Design-time warning - shows even without traffic)
   // SMARTER CHECK: Only show if component is actually receiving traffic AND there's no sibling redundancy
-  if (component.config.instances == 1 && _isCriticalPath(component.type) && metrics.currentRps > 0) {
+  if (component.config.instances == 1 && _isSpofCandidate(component.type) && metrics.currentRps > 0) {
     if (!component.config.autoScale) {
       // Look for sibling components that provide redundancy
       // A sibling is a component of the same type that shares AT LEAST ONE common source
@@ -1513,6 +2246,23 @@ bool _isCriticalPath(ComponentType type) {
   };
 }
 
+bool _isSpofCandidate(ComponentType type) {
+  // Treat managed edge components (API Gateway, Load Balancer, CDN, DNS, Serverless)
+  // as non-SPOF by default. Focus SPOF on self-managed/stateful services.
+  return switch (type) {
+    ComponentType.appServer ||
+    ComponentType.database ||
+    ComponentType.cache ||
+    ComponentType.queue ||
+    ComponentType.pubsub ||
+    ComponentType.stream ||
+    ComponentType.worker ||
+    ComponentType.customService => true,
+    ComponentType.objectStore => false,
+    _ => false,
+  };
+}
+
 double _getTrafficMultiplier(int tickCount) {
   final random = Random(tickCount);
   
@@ -1733,6 +2483,52 @@ FailureEvent? _simulateNetworkPartition(
     expectedRecoveryTime: const Duration(minutes: 5),
     userVisible: true,
   );
+}
+
+List<FailureEvent> _buildChaosFailures(
+  List<SystemComponent> components,
+  List<ChaosEvent> activeChaosEvents,
+) {
+  final failures = <FailureEvent>[];
+
+  for (final event in activeChaosEvents) {
+    if (event.type != ChaosType.networkPartition) continue;
+    if (_chaosIntensity(event) <= 0) continue;
+
+    final affected = components
+        .where((c) => _affectsComponent(event, c))
+        .map((c) => c.id)
+        .toList();
+
+    if (affected.isEmpty) continue;
+
+    final targetId = _eventTargetId(event);
+    final region = _eventRegion(event);
+    String scope = 'network partition';
+    if (targetId != null) {
+      final targetName = components
+          .firstWhere((c) => c.id == targetId, orElse: () => components.first)
+          .type
+          .displayName;
+      scope = '$targetName isolated';
+    } else if (region != null) {
+      scope = '$region isolated';
+    }
+
+    failures.add(FailureEvent(
+      timestamp: DateTime.now(),
+      componentId: 'infrastructure',
+      type: FailureType.networkPartition,
+      message: 'Network partition: $scope',
+      recommendation: 'Enable multi-region failover and circuit breakers',
+      severity: 0.9,
+      affectedComponents: affected,
+      expectedRecoveryTime: event.duration,
+      userVisible: true,
+    ));
+  }
+
+  return failures;
 }
 
 /// Detect retry storms (exponential retry amplification)

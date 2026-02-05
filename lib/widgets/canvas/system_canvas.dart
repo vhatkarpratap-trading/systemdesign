@@ -635,6 +635,10 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                                                   isConnecting: isConnectSource,
                                                   isValidTarget: isValidTarget,
                                                   isEditing: _editingComponentId == component.id,
+                                                  onLabelTap: () {
+                                                    ref.read(canvasProvider.notifier).selectComponent(component.id);
+                                                    setState(() => _editingComponentId = component.id);
+                                                  },
                                                   onTextChange: (newName) {
                                                     ref.read(canvasProvider.notifier).renameComponent(component.id, newName);
                                                     _resizeComponentToFitText(component, newName);

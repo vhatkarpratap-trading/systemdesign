@@ -728,6 +728,10 @@ class ComponentMetrics {
   
   // NEW: Chaos state
   final bool isCrashed;
+  
+  // NEW: Glow/Blast tracking
+  final int consecutiveGlowTicks;
+  final double highLoadSeconds;
 
   const ComponentMetrics({
     this.currentRps = 0,
@@ -752,6 +756,8 @@ class ComponentMetrics {
     this.isSlow = false,
     this.slownessFactor = 1.0,
     this.isCrashed = false,
+    this.consecutiveGlowTicks = 0,
+    this.highLoadSeconds = 0.0,
   });
 
   ComponentMetrics copyWith({
@@ -777,6 +783,8 @@ class ComponentMetrics {
     bool? isSlow,
     double? slownessFactor,
     bool? isCrashed,
+    int? consecutiveGlowTicks,
+    double? highLoadSeconds,
   }) {
     return ComponentMetrics(
       currentRps: currentRps ?? this.currentRps,
@@ -801,6 +809,8 @@ class ComponentMetrics {
       isSlow: isSlow ?? this.isSlow,
       slownessFactor: slownessFactor ?? this.slownessFactor,
       isCrashed: isCrashed ?? this.isCrashed,
+      consecutiveGlowTicks: consecutiveGlowTicks ?? this.consecutiveGlowTicks,
+      highLoadSeconds: highLoadSeconds ?? this.highLoadSeconds,
     );
   }
 
@@ -817,6 +827,32 @@ class ComponentMetrics {
     }
     return ComponentStatus.healthy;
   }
+
+  Map<String, dynamic> toJson() => {
+        'currentRps': currentRps,
+        'latencyMs': latencyMs,
+        'p95LatencyMs': p95LatencyMs,
+        'cpuUsage': cpuUsage,
+        'memoryUsage': memoryUsage,
+        'errorRate': errorRate,
+        'cacheHitRate': cacheHitRate,
+        'queueDepth': queueDepth,
+        'jitter': jitter,
+        'evictionRate': evictionRate,
+        'isThrottled': isThrottled,
+        'isCircuitOpen': isCircuitOpen,
+        'connectionPoolUtilization': connectionPoolUtilization,
+        'activeConnections': activeConnections,
+        'maxConnections': maxConnections,
+        'isScaling': isScaling,
+        'targetInstances': targetInstances,
+        'readyInstances': readyInstances,
+        'coldStartingInstances': coldStartingInstances,
+        'isSlow': isSlow,
+        'slownessFactor': slownessFactor,
+        'isCrashed': isCrashed,
+        'consecutiveGlowTicks': consecutiveGlowTicks,
+      };
 }
 
 /// A system component placed on the canvas

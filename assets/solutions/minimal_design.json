@@ -1,0 +1,49 @@
+{
+  "viewState": {
+    "panOffset": {"x": 0.0, "y": 0.0},
+    "scale": 1.0
+  },
+  "components": [
+    {
+      "id": "api",
+      "type": "apiGateway",
+      "position": {"x": 120.0, "y": 220.0},
+      "size": {"w": 80.0, "h": 64.0},
+      "config": {}
+    },
+    {
+      "id": "lb",
+      "type": "loadBalancer",
+      "position": {"x": 320.0, "y": 220.0},
+      "size": {"w": 80.0, "h": 64.0},
+      "config": {}
+    },
+    {
+      "id": "app",
+      "type": "appServer",
+      "position": {"x": 520.0, "y": 220.0},
+      "size": {"w": 80.0, "h": 64.0},
+      "config": {}
+    },
+    {
+      "id": "cache",
+      "type": "cache",
+      "position": {"x": 720.0, "y": 140.0},
+      "size": {"w": 80.0, "h": 64.0},
+      "config": {}
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "position": {"x": 720.0, "y": 300.0},
+      "size": {"w": 80.0, "h": 64.0},
+      "config": {}
+    }
+  ],
+  "connections": [
+    {"id": "c1", "sourceId": "api", "targetId": "lb", "type": "request", "direction": "unidirectional"},
+    {"id": "c2", "sourceId": "lb", "targetId": "app", "type": "request", "direction": "unidirectional"},
+    {"id": "c3", "sourceId": "app", "targetId": "cache", "type": "request", "direction": "unidirectional"},
+    {"id": "c4", "sourceId": "app", "targetId": "db", "type": "request", "direction": "unidirectional"}
+  ]
+}

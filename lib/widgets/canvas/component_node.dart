@@ -25,6 +25,7 @@ class ComponentNode extends ConsumerWidget {
   final bool isEditing;
   final Function(String)? onTextChange;
   final VoidCallback? onEditDone;
+  final VoidCallback? onLabelTap;
   final VoidCallback? onLongPress;
   final Function(Offset)? onDragUpdate;
 
@@ -42,7 +43,39 @@ class ComponentNode extends ConsumerWidget {
     this.isEditing = false,
     this.onTextChange,
     this.onEditDone,
+    this.onLabelTap,
   });
+
+  int _configSignature(ComponentConfig config) {
+    return Object.hashAll([
+      config.instances,
+      config.capacity,
+      config.autoScale,
+      config.minInstances,
+      config.maxInstances,
+      config.algorithm ?? '',
+      config.cacheTtlSeconds,
+      config.replication,
+      config.replicationFactor,
+      config.replicationStrategy ?? '',
+      config.sharding,
+      config.shardingStrategy ?? '',
+      config.partitionCount,
+      config.consistentHashing,
+      config.regions.join(','),
+      config.rateLimiting,
+      config.rateLimitRps ?? 0,
+      config.circuitBreaker,
+      config.retries,
+      config.dlq,
+      config.quorumRead ?? 0,
+      config.quorumWrite ?? 0,
+      config.displayMode.name,
+      config.replicationType.name,
+      config.showSchema,
+      config.dbSchema?.hashCode ?? 0,
+    ]);
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -84,25 +117,38 @@ class ComponentNode extends ConsumerWidget {
     final capacity = component.config.capacity * effectiveInstances;
     final loadRatio = capacity > 0 ? metrics.currentRps / capacity : 0.0;
     final loadThresholds = _loadThresholds(component.type);
-    final glowByLoad = loadRatio >= 0.8;
+    final sustainedHighLoad = metrics.highLoadSeconds >= 3.0;
+    final glowByLoad = sustainedHighLoad && loadRatio >= 0.8;
     final isDesignTimeFailure =
         primaryFailure != null && _isDesignTimeFailure(primaryFailure.type);
     final hasRuntimeFailure =
         primaryFailure != null && !isDesignTimeFailure && primaryFailure.severity > 0.6;
     
     // Determine visual failure states
+    final hasTraffic = metrics.currentRps > 0;
     final connectionExhaustion = metrics.connectionPoolUtilization > 0.9;
-    final hasError = metrics.errorRate > 0.05 ||
-        metrics.isCircuitOpen ||
-        metrics.isThrottled ||
+    final hasError = (hasTraffic &&
+            (metrics.errorRate > 0.05 ||
+                metrics.isCircuitOpen ||
+                metrics.isThrottled)) ||
         hasRuntimeFailure;
-    final isOverloaded = loadRatio > loadThresholds.overload ||
-        connectionExhaustion ||
-        (primaryFailure != null && _isOverloadFailure(primaryFailure.type));
+    final isOverloaded = hasTraffic &&
+        ((loadRatio > loadThresholds.overload && sustainedHighLoad) ||
+            connectionExhaustion);
     final isScaling = metrics.isScaling;
-    final isSlow = metrics.isSlow ||
-        metrics.p95LatencyMs > 1500 ||
-        (primaryFailure != null && _isLatencyFailure(primaryFailure.type));
+    final isSlow = hasTraffic &&
+        (metrics.isSlow ||
+            metrics.p95LatencyMs > 1500 ||
+            (primaryFailure != null && _isLatencyFailure(primaryFailure.type)));
+    final showDetailed = component.config.displayMode == ComponentDisplayMode.detailed;
+    final showPressureLabel = !showDetailed &&
+        _shouldShowPressureLabel(
+          isActive: isActive,
+          metrics: metrics,
+          loadRatio: loadRatio,
+          thresholds: loadThresholds,
+          componentFailures: componentFailures,
+        );
 
     // Text components are transparent and just text
 
@@ -174,29 +220,42 @@ class ComponentNode extends ConsumerWidget {
             : null,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: hasError
-              ? Colors.red.withValues(alpha: 0.7)
-              : isSlow
-                  ? Colors.amber.withValues(alpha: 0.6)
-                  : isOverloaded
-                      ? Colors.orange.withValues(alpha: 0.6)
-                      : isSelected
-                          ? AppTheme.primary
-                          : (isSketchy && (component.type == ComponentType.rectangle || 
-                                         component.type == ComponentType.circle || 
-                                         component.type == ComponentType.diamond ||
-                                         component.type == ComponentType.arrow || 
-                                         component.type == ComponentType.line))
-                              ? AppTheme.border.withValues(alpha: 0.4)
-                              : (isConnecting
-                                  ? AppTheme.secondary.withValues(alpha: 0.5)
-                                  : (isCyberpunk ? color.withValues(alpha: 0.5) : Colors.transparent)),
-          width: hasError || isSlow || isOverloaded ? 3 : (isSelected ? 2.5 : 1),
+          color: (hasError || isSlow || isOverloaded)
+              ? Colors.transparent // Hide boundary when glowing
+              : isSelected
+                  ? AppTheme.primary
+                  : (isSketchy && (component.type == ComponentType.rectangle || 
+                                 component.type == ComponentType.circle || 
+                                 component.type == ComponentType.diamond ||
+                                 component.type == ComponentType.arrow || 
+                                 component.type == ComponentType.line))
+                      ? AppTheme.border.withValues(alpha: 0.4)
+                      : (isConnecting
+                          ? AppTheme.secondary.withValues(alpha: 0.5)
+                          : (isCyberpunk ? color.withValues(alpha: 0.5) : Colors.transparent)),
+          width: hasError || isSlow || isOverloaded ? 0 : (isSelected ? 2.5 : 1),
         ),
       ),
       child: isSketchy 
           ? _buildSketchyContent()
-          : _buildStandardContent(color, isActive, metrics, hasError, isSlow, isOverloaded, isCyberpunk, showErrorsFlag, context, ref, componentFailures, primaryFailure, loadRatio, loadThresholds, cascadeUpstream),
+          : _buildStandardContent(
+              color,
+              isActive,
+              metrics,
+              hasError,
+              isSlow,
+              isOverloaded,
+              isCyberpunk,
+              showErrorsFlag,
+              context,
+              ref,
+              componentFailures,
+              primaryFailure,
+              loadRatio,
+              loadThresholds,
+              cascadeUpstream,
+              showPressureLabel,
+            ),
     );
     
     // Shaking animation - always show when errors exist
@@ -208,6 +267,53 @@ class ComponentNode extends ConsumerWidget {
       child = ScalingPulseWrapper(child: child);
     }
     
+    if (!isSketchy && component.type != ComponentType.text) {
+      final label = component.customName ?? component.type.displayName;
+      final canInlineEdit = onTextChange != null && onEditDone != null;
+      final labelGap = showPressureLabel ? 28.0 : 4.0;
+      child = Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          child,
+          SizedBox(height: labelGap),
+          GestureDetector(
+            onTap: (!isEditing && canInlineEdit) ? onLabelTap : null,
+            behavior: HitTestBehavior.translucent,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppTheme.surface.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: AppTheme.border.withValues(alpha: 0.4),
+                  width: 0.5,
+                ),
+              ),
+              child: (isEditing && canInlineEdit)
+                  ? _InlineTextEditor(
+                      initialText: label,
+                      onChange: onTextChange!,
+                      onDone: onEditDone!,
+                      isCentered: true,
+                      maxWidth: math.max(80.0, component.size.width - 20),
+                    )
+                  : Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                    ),
+            ),
+          ),
+        ],
+      );
+    }
+
     return child;
   }
 
@@ -229,6 +335,7 @@ class ComponentNode extends ConsumerWidget {
     double loadRatio,
     _LoadThresholds loadThresholds,
     String? cascadeUpstream,
+    bool showPressureLabel,
   ) {
       final config = component.config;
       final whyTooltip = _buildWhyTooltip(
@@ -242,25 +349,33 @@ class ComponentNode extends ConsumerWidget {
       // Determine if we show detailed or standard internal architecture
       final showDetailed = config.displayMode == ComponentDisplayMode.detailed;
       final showInternals = config.sharding || config.replication;
+      final configHash = _configSignature(config);
 
       if (showDetailed) {
-        return _buildDetailedView(config, color, isActive, isCyberpunk, context, ref);
+        return Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            Positioned.fill(
+              child: _buildConfigPulseOverlay(configHash, color),
+            ),
+            _buildDetailedView(config, color, isActive, isCyberpunk, context, ref),
+          ],
+        );
       }
 
       return Stack(
         clipBehavior: Clip.none,
         alignment: Alignment.center,
         children: [
+          Positioned.fill(child: _buildConfigPulseOverlay(configHash, color)),
+
           // Content
           if (showInternals)
             _buildInternalArchitecture(config, color, isActive, isCyberpunk)
           else
             _buildSimpleIcon(color, isActive),
           
-          // Strategy badges - only if showErrors is enabled
-          if (showErrorsFlag)
-            _buildStrategyBadges(config),
-
           // ... (keep load bar)
           if (isActive)
             Positioned(
@@ -283,7 +398,7 @@ class ComponentNode extends ConsumerWidget {
             ),
             
           // ... (keep pressure label)
-          if (isActive && (loadRatio > loadThresholds.warning || metrics.queueDepth > 100 || metrics.connectionPoolUtilization > 0.6 || componentFailures.isNotEmpty))
+          if (showPressureLabel)
              Positioned(
                bottom: -24, // Moved outside bottom
                child: _buildPressureLabel(metrics, primaryFailure, loadRatio, loadThresholds, cascadeUpstream),
@@ -301,20 +416,6 @@ class ComponentNode extends ConsumerWidget {
           color: color,
           size: 24,
         ),
-        const SizedBox(height: 4),
-        Flexible(
-          child: Text(
-            component.customName ?? component.type.displayName,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w500,
-              color: isActive ? AppTheme.textPrimary : AppTheme.textSecondary,
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
         // Schema View (Optional for simple view too)
         if (component.type == ComponentType.database && component.config.showSchema && component.config.dbSchema != null)
           _buildMiniSchema(),
@@ -329,10 +430,12 @@ class ComponentNode extends ConsumerWidget {
       child: component.customComponentId != null && 
              ref.read(customComponentProvider.notifier).getById(component.customComponentId!) != null
           ? _buildCustomGraph(ref.read(customComponentProvider.notifier).getById(component.customComponentId!)!, color)
-          : Column(
+          : component.type == ComponentType.database
+              ? _buildDatabaseDetailedView(config, color, isActive, isCyberpunk)
+              : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-            // Header
+            // Header (icon only)
             Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 decoration: BoxDecoration(
@@ -342,16 +445,15 @@ class ComponentNode extends ConsumerWidget {
                 child: Row(
                     children: [
                         Icon(component.type.icon, size: 14, color: color),
-                        const SizedBox(width: 6),
-                        Expanded(child: Text(
-                             component.customName?.toUpperCase() ?? component.type.displayName.toUpperCase(),
-                             style: TextStyle(
-                               fontSize: 11, 
-                               fontWeight: FontWeight.w900, 
-                               color: color, 
-                               letterSpacing: 0.8
-                             ),
-                        )),
+                        const Spacer(),
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: AppTheme.success.withValues(alpha: 0.8),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
                     ],
                 ),
             ),
@@ -447,6 +549,316 @@ class ComponentNode extends ConsumerWidget {
             ),
         ],
       )
+    );
+  }
+
+  Widget _buildDatabaseDetailedView(
+    ComponentConfig config,
+    Color color,
+    bool isActive,
+    bool isCyberpunk,
+  ) {
+    final shardConfigs = config.shardConfigs;
+    final hasShards = config.sharding || shardConfigs.isNotEmpty;
+    final shardCount = shardConfigs.isNotEmpty
+        ? shardConfigs.length
+        : math.min(4, config.partitionCount);
+
+    final replicationEnabled = config.replicationType != ReplicationType.none ||
+        (config.replication && config.replicationFactor > 1);
+    final replicaCount = replicationEnabled
+        ? math.min(5, math.max(1, config.replicationFactor))
+        : 0;
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            color.withValues(alpha: isCyberpunk ? 0.18 : 0.10),
+            Colors.black.withValues(alpha: 0.15),
+          ],
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _dbHeader(color),
+          const SizedBox(height: 8),
+          if (hasShards) ...[
+            _sectionLabel('SHARDS', color),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              alignment: WrapAlignment.center,
+              children: List.generate(shardCount, (index) {
+                final shard = shardConfigs.isNotEmpty ? shardConfigs[index] : null;
+                final label = shard?.name ?? 'Shard ${index + 1}';
+                final range = shard?.keyRange ?? 'Range ${index + 1}';
+                return _pillCard(
+                  label: label,
+                  sublabel: range,
+                  icon: Icons.pie_chart_outline,
+                  color: Colors.cyanAccent,
+                );
+              }),
+            ),
+            const SizedBox(height: 8),
+            _thinDivider(color),
+            const SizedBox(height: 8),
+          ],
+          _sectionLabel('PRIMARY', color),
+          const SizedBox(height: 6),
+          _primaryCard(config, color),
+          if (replicationEnabled) ...[
+            const SizedBox(height: 8),
+            _thinDivider(color),
+            const SizedBox(height: 8),
+            _replicationBadge(config, color),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              alignment: WrapAlignment.center,
+              children: List.generate(replicaCount, (index) {
+                return _pillCard(
+                  label: 'Replica ${index + 1}',
+                  sublabel: null,
+                  icon: Icons.copy,
+                  color: Colors.greenAccent,
+                );
+              }),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _dbHeader(Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(component.type.icon, size: 14, color: color),
+          ),
+          const SizedBox(width: 6),
+          const Spacer(),
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: AppTheme.success.withValues(alpha: 0.8),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.success.withValues(alpha: 0.4),
+                  blurRadius: 4,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionLabel(String text, Color color) {
+    return Text(
+      text,
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        fontSize: 8,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 1.0,
+        color: color.withValues(alpha: 0.8),
+      ),
+    );
+  }
+
+  Widget _thinDivider(Color color) {
+    return Center(
+      child: Container(
+        width: 120,
+        height: 1,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Colors.transparent,
+              color.withValues(alpha: 0.4),
+              Colors.transparent,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _primaryCard(ComponentConfig config, Color color) {
+    final tables = config.partitionConfigs;
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.35), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.12),
+            blurRadius: 8,
+            spreadRadius: 0.5,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'PRIMARY NODE',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 8,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.6,
+              color: color.withValues(alpha: 0.9),
+            ),
+          ),
+          const SizedBox(height: 6),
+          if (tables.isEmpty)
+            Text(
+              'No partitions configured',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 8, color: AppTheme.textMuted.withValues(alpha: 0.8)),
+            )
+          else
+            ...tables.map((p) => _tableRow(p, color)),
+        ],
+      ),
+    );
+  }
+
+  Widget _tableRow(PartitionConfig p, Color color) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.table_chart, size: 10, color: color.withValues(alpha: 0.9)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              p.tableName,
+              style: const TextStyle(fontSize: 9, color: Colors.white),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.blueAccent.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.4), width: 0.5),
+            ),
+            child: Text(
+              '${p.partitions.length} parts',
+              style: const TextStyle(fontSize: 7, color: Colors.blueAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _replicationBadge(ComponentConfig config, Color color) {
+    final label = switch (config.replicationType) {
+      ReplicationType.synchronous => 'SYNCHRONOUS',
+      ReplicationType.asynchronous => 'ASYNCHRONOUS',
+      ReplicationType.streaming => 'STREAMING',
+      _ => 'REPLICATION',
+    };
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.25),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.35)),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 7,
+            letterSpacing: 0.8,
+            fontWeight: FontWeight.w700,
+            color: color.withValues(alpha: 0.85),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _pillCard({
+    required String label,
+    String? sublabel,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 8,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (sublabel != null)
+            Text(
+              sublabel,
+              style: TextStyle(
+                fontSize: 6,
+                color: color.withValues(alpha: 0.7),
+              ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+        ],
+      ),
     );
   }
 
@@ -594,39 +1006,46 @@ class ComponentNode extends ConsumerWidget {
         ),
 
         // Grid of shards
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(partitionCount, (index) {
-            return Column(
-              children: [
-                // Incoming Data Packet (Animated)
-                Container(
-                  width: 2, height: 4, 
-                  margin: const EdgeInsets.symmetric(vertical: 1),
-                  decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(1)),
-                ).animate(onPlay: (c) => c.repeat())
-                 .slideY(begin: -2, end: 0, duration: (800 + index * 100).ms, curve: Curves.easeIn)
-                 .fade(begin: 0, end: 1),
+        SizedBox(
+          width: double.infinity,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(partitionCount, (index) {
+                return Column(
+                  children: [
+                    // Incoming Data Packet (Animated)
+                    Container(
+                      width: 2, height: 4, 
+                      margin: const EdgeInsets.symmetric(vertical: 1),
+                      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(1)),
+                    ).animate(onPlay: (c) => c.repeat())
+                     .slideY(begin: -2, end: 0, duration: (800 + index * 100).ms, curve: Curves.easeIn)
+                     .fade(begin: 0, end: 1),
 
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 2),
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: color.withValues(alpha: 0.6)),
-                    borderRadius: BorderRadius.circular(4),
-                    color: color.withValues(alpha: 0.1),
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(component.type.icon, size: 10, color: color),
-                      const SizedBox(height: 1),
-                      Text('S${index + 1}', style: const TextStyle(fontSize: 5, color: AppTheme.textMuted)),
-                    ],
-                  ),
-                ),
-              ],
-            );
-          }),
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: color.withValues(alpha: 0.6)),
+                        borderRadius: BorderRadius.circular(4),
+                        color: color.withValues(alpha: 0.1),
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(component.type.icon, size: 10, color: color),
+                          const SizedBox(height: 1),
+                          Text('S${index + 1}', style: const TextStyle(fontSize: 5, color: AppTheme.textMuted)),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              }),
+            ),
+          ),
         ),
       ],
     );
@@ -905,6 +1324,21 @@ class ComponentNode extends ConsumerWidget {
     );
   }
 
+  bool _shouldShowPressureLabel({
+    required bool isActive,
+    required ComponentMetrics metrics,
+    required double loadRatio,
+    required _LoadThresholds thresholds,
+    required List<FailureEvent> componentFailures,
+  }) {
+    if (!isActive) return false;
+    if (loadRatio > thresholds.warning) return true;
+    if (metrics.queueDepth > 100) return true;
+    if (metrics.connectionPoolUtilization > 0.6) return true;
+    if (componentFailures.isNotEmpty) return true;
+    return false;
+  }
+
   Widget _buildLoadBar(double loadRatio, _LoadThresholds thresholds) {
     // Green -> Yellow -> Red gradient based on load
     final color = loadRatio > thresholds.overload
@@ -985,34 +1419,59 @@ class ComponentNode extends ConsumerWidget {
     );
   }
 
-  Widget _buildStrategyBadges(ComponentConfig config) {
-    return Positioned(
-      right: -4,
-      top: -4,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (config.rateLimiting) _badgeItem(Icons.speed, Colors.orange),
-          if (config.circuitBreaker) _badgeItem(Icons.power_off, Colors.red),
-          if (config.retries) _badgeItem(Icons.replay, Colors.blue),
-          if (config.dlq) _badgeItem(Icons.warning_amber, Colors.redAccent),
-        ],
+  Widget _buildConfigPulseOverlay(int configHash, Color color) {
+    return IgnorePointer(
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 350),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeOut,
+        transitionBuilder: (child, animation) {
+          final scale = Tween<double>(begin: 0.98, end: 1.02).animate(animation);
+          return FadeTransition(
+            opacity: animation,
+            child: ScaleTransition(scale: scale, child: child),
+          );
+        },
+        child: Container(
+          key: ValueKey(configHash),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withValues(alpha: 0.35), width: 1.1),
+            gradient: RadialGradient(
+              radius: 0.9,
+              colors: [
+                color.withValues(alpha: 0.10),
+                Colors.transparent,
+              ],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.25),
+                blurRadius: 14,
+                spreadRadius: 0.5,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _badgeItem(IconData icon, Color color) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 2),
-      padding: const EdgeInsets.all(1.5),
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 0.5),
-      ),
-      child: Icon(icon, size: 6, color: Colors.white),
-    );
+  String _algorithmShort(String algorithm) {
+    switch (algorithm) {
+      case 'round_robin':
+        return 'RR';
+      case 'least_conn':
+        return 'LC';
+      case 'ip_hash':
+        return 'IP';
+      case 'consistent_hashing':
+        return 'CH';
+      default:
+        return algorithm.toUpperCase();
+    }
   }
+
 
   Widget _buildSketchyContent() {
     // Import definition locally or via helper
@@ -1219,6 +1678,7 @@ class ComponentNode extends ConsumerWidget {
     const connCritical = 0.9;
 
     String detail = '';
+    String fix = '';
     if (primaryFailure != null) {
       switch (primaryFailure.type) {
         case FailureType.overload:
@@ -1255,16 +1715,25 @@ class ComponentNode extends ConsumerWidget {
         default:
           detail = primaryFailure.message;
       }
-      return '${primaryFailure.type.displayName}: ${primaryFailure.message}\n$detail';
+      fix = _suggestFix(primaryFailure.type, metrics, component.config, component.type);
+      if (primaryFailure.recommendation.isNotEmpty &&
+          primaryFailure.recommendation != fix) {
+        fix = '$fix\nAlt: ${primaryFailure.recommendation}';
+      }
+      return '${primaryFailure.type.displayName}: ${primaryFailure.message}\nCause: $detail\nFix: $fix';
     }
 
+    FailureType inferredType = FailureType.overload;
     if (metrics.queueDepth > 100) {
+      inferredType = FailureType.queueOverflow;
       detail =
           'Queue ${metrics.queueDepth.round()} (lag > ${queueLagThreshold.round()}, overflow > ${queueOverflowThreshold.round()})';
     } else if (metrics.connectionPoolUtilization > connWarn) {
+      inferredType = FailureType.connectionExhaustion;
       detail =
           'Conn ${(metrics.connectionPoolUtilization * 100).round()}% (warn > ${(connWarn * 100).round()}%)';
     } else if (metrics.p95LatencyMs > slowLatencyThresholdMs) {
+      inferredType = FailureType.latencyBreach;
       detail =
           'P95 ${metrics.p95LatencyMs.round()}ms (slow > ${slowLatencyThresholdMs.round()}ms)';
     } else {
@@ -1272,7 +1741,64 @@ class ComponentNode extends ConsumerWidget {
           'Load ${(loadRatio * 100).round()}% (warn > ${(thresholds.warning * 100).round()}%)';
     }
 
-    return detail;
+    fix = _suggestFix(inferredType, metrics, component.config, component.type);
+    return 'Cause: $detail\nFix: $fix';
+  }
+
+  String _suggestFix(
+    FailureType type,
+    ComponentMetrics metrics,
+    ComponentConfig config,
+    ComponentType componentType,
+  ) {
+    final autoscaleHint = config.autoScale
+        ? 'Increase max instances or per-node capacity'
+        : 'Enable autoscaling or add instances/capacity';
+
+    switch (type) {
+      case FailureType.overload:
+      case FailureType.trafficOverflow:
+        if (componentType == ComponentType.database) {
+          return '$autoscaleHint; add read replicas or shard/partition; add cache to offload reads';
+        }
+        if (componentType == ComponentType.cache) {
+          return '$autoscaleHint; increase cache memory, tune TTL, and prewarm hot keys';
+        }
+        if (componentType == ComponentType.queue ||
+            componentType == ComponentType.pubsub ||
+            componentType == ComponentType.stream) {
+          return 'Scale consumers/workers, increase partitions, and enable backpressure';
+        }
+        return '$autoscaleHint; add a cache or queue to smooth spikes';
+      case FailureType.queueOverflow:
+      case FailureType.consumerLag:
+        return 'Scale consumers/workers, increase partitions, and add DLQ/backpressure';
+      case FailureType.latencyBreach:
+      case FailureType.upstreamTimeout:
+      case FailureType.slowNode:
+        return 'Add capacity, reduce downstream calls, add cache/CDN, and tighten timeouts';
+      case FailureType.connectionExhaustion:
+        return 'Increase connection pool size, add instances, or use pooling at callers';
+      case FailureType.circuitBreakerOpen:
+        return 'Fix upstream errors, add fallback, and reduce retry pressure';
+      case FailureType.retryStorm:
+        return 'Add jittered backoff, cap retries, and enable circuit breaker';
+      case FailureType.cacheStampede:
+        return 'Increase cache size, add jittered TTL, and prewarm hot keys';
+      case FailureType.spof:
+        return 'Add redundant node(s) behind a load balancer; enable autoscaling; use multi-AZ';
+      case FailureType.dataLoss:
+        return 'Enable replication (RF≥2), add backups/snapshots, and test restore';
+      case FailureType.scaleUpDelay:
+      case FailureType.coldStart:
+        return 'Keep min instances higher, pre-warm instances, or use warm pools';
+      case FailureType.cascadingFailure:
+        return 'Fix upstream dependency; add fallback or queue to isolate failures';
+      case FailureType.componentCrash:
+        return 'Restart/replace instance and add redundancy';
+      default:
+        return 'Add capacity or reduce load';
+    }
   }
 
   String _shortName(String value) {
@@ -1307,10 +1833,11 @@ class ComponentNode extends ConsumerWidget {
         type == FailureType.costOverrun;
   }
 
-  String _formatCompact(double value) {
-    if (value >= 1000000) return '${(value / 1000000).toStringAsFixed(1)}M';
-    if (value >= 1000) return '${(value / 1000).toStringAsFixed(1)}K';
-    return value.round().toString();
+  String _formatCompact(num value) {
+    final numVal = value.toDouble();
+    if (numVal >= 1000000) return '${(numVal / 1000000).toStringAsFixed(1)}M';
+    if (numVal >= 1000) return '${(numVal / 1000).toStringAsFixed(1)}K';
+    return numVal.round().toString();
   }
 }
 
@@ -1350,11 +1877,23 @@ class _InlineTextEditor extends StatefulWidget {
 class _InlineTextEditorState extends State<_InlineTextEditor> {
   late final TextEditingController _controller;
   final FocusNode _focusNode = FocusNode();
+  bool _didComplete = false;
+
+  void _complete() {
+    if (_didComplete) return;
+    _didComplete = true;
+    widget.onDone();
+  }
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialText);
+    _focusNode.addListener(() {
+      if (!_focusNode.hasFocus) {
+        _complete();
+      }
+    });
     // Request focus next frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusNode.requestFocus();
@@ -1399,8 +1938,8 @@ class _InlineTextEditorState extends State<_InlineTextEditor> {
             isDense: true,
           ),
           onChanged: (val) => widget.onChange(val),
-          onSubmitted: (_) => widget.onDone(),
-          onEditingComplete: () => widget.onDone(),
+          onSubmitted: (_) => _complete(),
+          onEditingComplete: _complete,
         ),
       ),
     );
