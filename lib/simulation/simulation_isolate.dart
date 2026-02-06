@@ -342,6 +342,7 @@ class _SimComponentState {
   final _AutoscaleState autoscale;
 
   int arrivals = 0;
+  int writeArrivals = 0;
   int processed = 0;
   int errors = 0;
   int inService = 0;
@@ -1432,6 +1433,7 @@ SimulationResult runSimulationTick(SimulationData data) {
 
     if (event.type == _EventType.arrival) {
       state.arrivals += 1;
+      if (token.isWrite) state.writeArrivals += 1;
 
       if (disconnected.contains(state.component.id)) {
         state.errors += 1;
@@ -1696,6 +1698,10 @@ SimulationResult runSimulationTick(SimulationData data) {
       final ttlSeconds = max(1, component.config.cacheTtlSeconds);
       final ttlFactor = (ttlSeconds / 300).clamp(0.2, 1.1);
       cacheHitRate = (cacheHitRate * ttlFactor).clamp(0.0, 1.0);
+      final writeFraction = state.arrivals > 0 ? state.writeArrivals / state.arrivals : 0.0;
+      // Writes invalidate cache: higher write ratio → lower hit rate
+      final invalidationPenalty = (writeFraction * 0.8).clamp(0.0, 0.7);
+      cacheHitRate = (cacheHitRate * (1 - invalidationPenalty)).clamp(0.0, 1.0);
       if (memoryUsage > 0.8) {
         evictionRate = (memoryUsage - 0.8) * 5000;
       }
