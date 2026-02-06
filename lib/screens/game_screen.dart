@@ -686,11 +686,7 @@ class _ProblemHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => Navigator.of(context).pop(),
-            color: AppTheme.textSecondary,
-          ),
+          // Back button removed per request
           const SizedBox(width: 8),
           Text(
             'System Architect',
