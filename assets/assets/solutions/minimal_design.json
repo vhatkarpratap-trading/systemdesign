@@ -10,11 +10,11 @@
       "position": {"x": 120.0, "y": 220.0},
       "size": {"w": 80.0, "h": 64.0},
       "config": {
-        "capacity": 40000,
-        "instances": 2,
-        "regions": ["us-east-1", "eu-west-1", "ap-south-1"],
+        "capacity": 8000,
+        "instances": 1,
+        "regions": ["us-east-1"],
         "rateLimiting": true,
-        "rateLimitRps": 30000
+        "rateLimitRps": 6000
       }
     },
     {
@@ -23,10 +23,10 @@
       "position": {"x": 320.0, "y": 220.0},
       "size": {"w": 80.0, "h": 64.0},
       "config": {
-        "capacity": 60000,
-        "instances": 2,
+        "capacity": 12000,
+        "instances": 1,
         "algorithm": "round_robin",
-        "regions": ["us-east-1", "eu-west-1", "ap-south-1"]
+        "regions": ["us-east-1"]
       }
     },
     {
@@ -35,11 +35,11 @@
       "position": {"x": 520.0, "y": 220.0},
       "size": {"w": 80.0, "h": 64.0},
       "config": {
-        "capacity": 400,
-        "instances": 2,
+        "capacity": 80,
+        "instances": 1,
         "autoScale": true,
-        "minInstances": 2,
-        "maxInstances": 8,
+        "minInstances": 1,
+        "maxInstances": 2,
         "circuitBreaker": true,
         "retries": true,
         "regions": ["us-east-1"]
@@ -51,9 +51,9 @@
       "position": {"x": 720.0, "y": 140.0},
       "size": {"w": 80.0, "h": 64.0},
       "config": {
-        "capacity": 2000,
-        "instances": 2,
-        "cacheTtlSeconds": 20,
+        "capacity": 500,
+        "instances": 1,
+        "cacheTtlSeconds": 10,
         "regions": ["us-east-1"]
       }
     },
@@ -63,15 +63,15 @@
       "position": {"x": 720.0, "y": 300.0},
       "size": {"w": 80.0, "h": 64.0},
       "config": {
-        "capacity": 300,
-        "instances": 2,
+        "capacity": 40,
+        "instances": 1,
         "replication": true,
-        "replicationFactor": 3,
+        "replicationFactor": 1,
         "replicationStrategy": "Leaderless",
         "replicationType": "asynchronous",
-        "quorumRead": 2,
-        "quorumWrite": 2,
-        "regions": ["us-east-1", "eu-west-1", "ap-south-1"]
+        "quorumRead": 1,
+        "quorumWrite": 1,
+        "regions": ["us-east-1"]
       }
     }
   ],
