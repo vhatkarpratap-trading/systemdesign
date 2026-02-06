@@ -9,35 +9,70 @@
       "type": "apiGateway",
       "position": {"x": 120.0, "y": 220.0},
       "size": {"w": 80.0, "h": 64.0},
-      "config": {}
+      "config": {
+        "capacity": 40000,
+        "instances": 2,
+        "regions": ["us-east-1", "eu-west-1", "ap-south-1"],
+        "rateLimiting": true,
+        "rateLimitRps": 30000
+      }
     },
     {
       "id": "lb",
       "type": "loadBalancer",
       "position": {"x": 320.0, "y": 220.0},
       "size": {"w": 80.0, "h": 64.0},
-      "config": {}
+      "config": {
+        "capacity": 60000,
+        "instances": 2,
+        "algorithm": "round_robin",
+        "regions": ["us-east-1", "eu-west-1", "ap-south-1"]
+      }
     },
     {
       "id": "app",
       "type": "appServer",
       "position": {"x": 520.0, "y": 220.0},
       "size": {"w": 80.0, "h": 64.0},
-      "config": {}
+      "config": {
+        "capacity": 400,
+        "instances": 2,
+        "autoScale": true,
+        "minInstances": 2,
+        "maxInstances": 8,
+        "circuitBreaker": true,
+        "retries": true,
+        "regions": ["us-east-1"]
+      }
     },
     {
       "id": "cache",
       "type": "cache",
       "position": {"x": 720.0, "y": 140.0},
       "size": {"w": 80.0, "h": 64.0},
-      "config": {}
+      "config": {
+        "capacity": 2000,
+        "instances": 2,
+        "cacheTtlSeconds": 20,
+        "regions": ["us-east-1"]
+      }
     },
     {
       "id": "db",
       "type": "database",
       "position": {"x": 720.0, "y": 300.0},
       "size": {"w": 80.0, "h": 64.0},
-      "config": {}
+      "config": {
+        "capacity": 300,
+        "instances": 2,
+        "replication": true,
+        "replicationFactor": 3,
+        "replicationStrategy": "Leaderless",
+        "replicationType": "asynchronous",
+        "quorumRead": 2,
+        "quorumWrite": 2,
+        "regions": ["us-east-1", "eu-west-1", "ap-south-1"]
+      }
     }
   ],
   "connections": [
