@@ -480,23 +480,6 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           ),
         ),
 
-        // Back button overlay (canvas-level)
-        if (Navigator.canPop(context))
-          Positioned(
-            top: 16,
-            left: 16,
-            child: Material(
-              color: AppTheme.surface.withValues(alpha: 0.9),
-              shape: const CircleBorder(),
-              elevation: 6,
-              child: IconButton(
-                icon: const Icon(Icons.arrow_back, color: AppTheme.textPrimary),
-                tooltip: 'Back',
-                onPressed: () => Navigator.of(context).maybePop(),
-              ),
-            ),
-          ),
-
         // Hints & Validation Panel
         if (_showHints && !simState.isRunning)
           Positioned(
