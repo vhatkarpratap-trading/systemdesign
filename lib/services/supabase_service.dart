@@ -172,19 +172,19 @@ class SupabaseService {
   /// Fetch recently published community designs
   Future<List<Map<String, dynamic>>> fetchCommunityDesigns({bool includePendingForAdmin = false}) async {
     try {
-      var query = client
-          .from('designs')
-          .select('*, profiles(display_name, avatar_url)') // Standard left join
-          .order('created_at', ascending: false)
-          .limit(50);
-
-      if (includePendingForAdmin && isAdmin) {
-        query = query.filter('status', 'in', '("pending","approved","rejected")');
-      } else {
-        query = query.filter('status', 'eq', 'approved').filter('is_public', 'eq', true);
-      }
-
-      final response = await query;
+      final response = includePendingForAdmin && isAdmin
+          ? await client
+              .from('designs')
+              .select('*, profiles(display_name, avatar_url)')
+              .order('created_at', ascending: false)
+              .limit(50)
+          : await client
+              .from('designs')
+              .select('*, profiles(display_name, avatar_url)')
+              .eq('status', 'approved')
+              .eq('is_public', true)
+              .order('created_at', ascending: false)
+              .limit(50);
       
       final List<Map<String, dynamic>> results = [];
       
