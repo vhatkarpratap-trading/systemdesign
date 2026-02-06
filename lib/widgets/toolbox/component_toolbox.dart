@@ -264,11 +264,6 @@ class _SidebarToolbox extends ConsumerWidget {
 
           const Divider(height: 1, color: AppTheme.border),
 
-          // My Components section
-          _MyComponentsSection(),
-
-          const Divider(height: 1, color: AppTheme.border),
-
 
 
           // Components grid (scrollable)
@@ -614,5 +609,4 @@ class ToolboxToggle extends ConsumerWidget {
     );
   }
 }
-
 
