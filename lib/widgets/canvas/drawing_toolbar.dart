@@ -24,6 +24,10 @@ class DrawingToolbar extends ConsumerWidget {
         onToolChanged!(tool);
       } else {
         ref.read(canvasToolProvider.notifier).state = tool;
+        // Ensure connection state is reset so the first arrow drag always works
+        if (tool == CanvasTool.arrow) {
+          ref.read(canvasProvider.notifier).cancelConnecting();
+        }
       }
     }
 
