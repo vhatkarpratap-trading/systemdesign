@@ -179,11 +179,11 @@ class SupabaseService {
           .limit(50);
 
       if (includePendingForAdmin && isAdmin) {
-        query = query.in_('status', ['pending', 'approved', 'rejected']);
+        query = query.filter('status', 'in', '("pending","approved","rejected")');
       } else {
-        query = query.eq('status', 'approved').eq('is_public', true);
+        query = query.filter('status', 'eq', 'approved').filter('is_public', 'eq', true);
       }
-      
+
       final response = await query;
       
       final List<Map<String, dynamic>> results = [];

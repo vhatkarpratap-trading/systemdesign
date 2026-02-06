@@ -234,7 +234,7 @@ class CommunityScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildDesignGrid(BuildContext context, WidgetRef ref, List<CommunityDesign> designs) {
+  Widget _buildDesignGrid(BuildContext context, WidgetRef ref, List<CommunityDesign> designs, bool isAdmin) {
     final width = MediaQuery.of(context).size.width;
     final isDesktop = ResponsiveLayout.isExpanded(context);
     final isTablet = ResponsiveLayout.isMedium(context);
