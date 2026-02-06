@@ -10,8 +10,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/component.dart';
 import '../../models/connection.dart';
 import '../../providers/game_provider.dart';
+import '../../models/problem.dart';
 import '../../theme/app_theme.dart';
 import 'component_node.dart';
+import 'component_hover_popover.dart';
 import 'connections_layer.dart';
 import 'traffic_layer.dart'; // Added
 import '../../models/traffic_particle.dart'; // Added
@@ -20,6 +22,7 @@ import 'package:uuid/uuid.dart';
 import '../../models/chaos_event.dart';
 import '../../models/custom_component.dart';
 import 'issue_marker.dart';
+import '../panels/db_modeling_panel.dart';
 
 /// Interactive canvas for building system architecture
 class SystemCanvas extends ConsumerStatefulWidget {
@@ -150,6 +153,7 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
     
     final activeTool = ref.watch(canvasToolProvider);
     final simState = ref.watch(simulationProvider);
+    final problem = ref.watch(currentProblemProvider);
     final isSimulating = simState.isRunning;
     final isConnecting = connectingFromId != null;
 
@@ -159,8 +163,7 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                          activeTool == CanvasTool.circle ||
                          activeTool == CanvasTool.diamond ||
                          activeTool == CanvasTool.arrow ||
-                         activeTool == CanvasTool.line ||
-                         activeTool == CanvasTool.text;
+                         activeTool == CanvasTool.line;
     final isArrowActive = activeTool == CanvasTool.arrow;
 
     // Listen for external transform changes (e.g. Zoom Buttons, Auto Layout)
@@ -435,19 +438,19 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                           },
                           onTapUp: (details) {
                              if (activeTool == CanvasTool.text) {
-                                final canvasPos = _getCanvasPosition(details.globalPosition);
-                                ref.read(canvasProvider.notifier).addComponent(
-                                  ComponentType.text,
-                                  canvasPos,
-                                );
-                                // Optional: Switch back to select tool after placing text?
-                                // ref.read(canvasToolProvider.notifier).state = CanvasTool.select;
+                                _addTextAt(details.globalPosition);
                                 return;
                              }
                           },
                           onDoubleTapDown: (details) {
                             if (isSelectionMode) {
                               _lastDoubleTapGlobalPos = details.globalPosition;
+                            }
+                          },
+                          onDoubleTap: () {
+                            if (isSelectionMode && _lastDoubleTapGlobalPos != null) {
+                              _addTextAt(_lastDoubleTapGlobalPos!);
+                              _lastDoubleTapGlobalPos = null;
                             }
                           },
                           onPanStart: isDrawingMode ? (details) {
@@ -629,23 +632,26 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                                                         ],
                                                       )
                                                     : null,
-                                                child: ComponentNode(
+                                                child: ComponentHoverPopover(
                                                   component: component,
-                                                  isSelected: isSelected,
-                                                  isConnecting: isConnectSource,
-                                                  isValidTarget: isValidTarget,
-                                                  isEditing: _editingComponentId == component.id,
-                                                  onLabelTap: () {
-                                                    ref.read(canvasProvider.notifier).selectComponent(component.id);
-                                                    setState(() => _editingComponentId = component.id);
-                                                  },
-                                                  onTextChange: (newName) {
-                                                    ref.read(canvasProvider.notifier).renameComponent(component.id, newName);
-                                                    _resizeComponentToFitText(component, newName);
-                                                  },
-                                                  onEditDone: () {
-                                                    setState(() => _editingComponentId = null);
-                                                  },
+                                                  child: ComponentNode(
+                                                    component: component,
+                                                    isSelected: isSelected,
+                                                    isConnecting: isConnectSource,
+                                                    isValidTarget: isValidTarget,
+                                                    isEditing: _editingComponentId == component.id,
+                                                    onLabelTap: () {
+                                                      ref.read(canvasProvider.notifier).selectComponent(component.id);
+                                                      setState(() => _editingComponentId = component.id);
+                                                    },
+                                                    onTextChange: (newName) {
+                                                      ref.read(canvasProvider.notifier).renameComponent(component.id, newName);
+                                                      _resizeComponentToFitText(component, newName);
+                                                    },
+                                                    onEditDone: () {
+                                                      setState(() => _editingComponentId = null);
+                                                    },
+                                                  ),
                                                 ),
                                               ),
                                             ),
@@ -765,20 +771,43 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                         ? [BoxShadow(color: AppTheme.neonMagenta.withValues(alpha: 0.4), blurRadius: 8)]
                         : [],
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.attach_money, size: 16, color: canvasState.isCyberpunkMode ? AppTheme.neonMagenta : AppTheme.success),
-                      const SizedBox(width: 4),
-                      Text(
-                        '\$${canvasState.totalCostPerHour.toStringAsFixed(2)}/hr',
-                        style: GoogleFonts.firaCode(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: AppTheme.textPrimary,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () => _showBudgetDialog(problem),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.attach_money, size: 16, color: canvasState.isCyberpunkMode ? AppTheme.neonMagenta : AppTheme.success),
+                        const SizedBox(width: 6),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '\$${(simState.globalMetrics.totalCostPerHour > 0
+                                      ? simState.globalMetrics.totalCostPerHour
+                                      : canvasState.totalCostPerHour)
+                                  .toStringAsFixed(2)}/hr',
+                              style: GoogleFonts.firaCode(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Spent ${simState.globalMetrics.costSpentString} · Budget \$${_formatBudget(problem.constraints.budgetPerMonth)}/mo',
+                              style: GoogleFonts.firaCode(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500,
+                                color: AppTheme.textSecondary,
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 6),
+                        Icon(Icons.edit, size: 14, color: AppTheme.textSecondary),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -1131,7 +1160,7 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
     double paddingY = 32.0; // Extra for shape
 
     if (component.type == ComponentType.text) {
-        minW = 20; minH = 20; paddingX = 24; paddingY = 8;
+        minW = 20; minH = 20; paddingX = 24; paddingY = 12;
     }
 
     final newW = math.max(minW, textPainter.width + paddingX);
@@ -1338,6 +1367,66 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
       default:
         return SystemMouseCursors.precise; 
     }
+  }
+
+  String _formatBudget(int budgetPerMonth) {
+    if (budgetPerMonth >= 1000000) {
+      return '${(budgetPerMonth / 1000000).toStringAsFixed(1)}M';
+    }
+    if (budgetPerMonth >= 1000) {
+      return '${(budgetPerMonth / 1000).toStringAsFixed(1)}K';
+    }
+    return budgetPerMonth.toString();
+  }
+
+  Future<void> _showBudgetDialog(Problem problem) async {
+    final controller = TextEditingController(
+      text: problem.constraints.budgetPerMonth.toString(),
+    );
+
+    final result = await showDialog<int?>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Text(
+          'Set Monthly Budget',
+          style: TextStyle(color: AppTheme.textPrimary, fontSize: 16),
+        ),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          style: const TextStyle(color: AppTheme.textPrimary),
+          decoration: const InputDecoration(
+            hintText: 'e.g. 50000',
+            prefixText: '\$',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CANCEL'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final raw = controller.text.replaceAll(RegExp(r'[^0-9]'), '');
+              final parsed = int.tryParse(raw);
+              if (parsed == null || parsed <= 0) {
+                Navigator.pop(context);
+                return;
+              }
+              Navigator.pop(context, parsed);
+            },
+            child: const Text('SAVE'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || result == null) return;
+    ref.read(currentProblemProvider.notifier).state = problem.copyWith(
+      constraints: problem.constraints.copyWith(budgetPerMonth: result),
+    );
   }
 }
 
@@ -2141,6 +2230,10 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
                      ),
                    ],
                  ),
+               ),
+               const SizedBox(height: 12),
+               DbModelingPanel(
+                 embedded: true,
                ),
                const SizedBox(height: 12),
             ],

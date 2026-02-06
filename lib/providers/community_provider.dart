@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/community_design.dart';
 import '../data/community_repository.dart';
 
+enum CommunitySort { newest, upvotes, complexity }
+
 final communityRepositoryProvider = Provider((ref) => CommunityRepository());
 
 final communityDesignsProvider = AsyncNotifierProvider<CommunityDesignsNotifier, List<CommunityDesign>>(() {
@@ -53,17 +55,39 @@ class CommunityDesignsNotifier extends AsyncNotifier<List<CommunityDesign>> {
 // Search provider
 final communitySearchQueryProvider = StateProvider<String>((ref) => '');
 
+// Sort provider
+final communitySortProvider = StateProvider<CommunitySort>((ref) => CommunitySort.newest);
+
 // Filtered designs
 final filteredCommunityDesignsProvider = Provider<AsyncValue<List<CommunityDesign>>>((ref) {
   final designsAsync = ref.watch(communityDesignsProvider);
   final query = ref.watch(communitySearchQueryProvider).toLowerCase();
+  final sort = ref.watch(communitySortProvider);
 
   return designsAsync.whenData((designs) {
-    if (query.isEmpty) return designs;
-    return designs.where((d) => 
+    var result = designs;
+
+    if (query.isNotEmpty) {
+      result = result.where((d) => 
       d.title.toLowerCase().contains(query) || 
       d.description.toLowerCase().contains(query) ||
       d.category.toLowerCase().contains(query)
-    ).toList();
+      ).toList();
+    }
+
+    result = [...result]; // copy before sort
+    switch (sort) {
+      case CommunitySort.newest:
+        result.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        break;
+      case CommunitySort.upvotes:
+        result.sort((a, b) => b.upvotes.compareTo(a.upvotes));
+        break;
+      case CommunitySort.complexity:
+        result.sort((a, b) => b.complexity.compareTo(a.complexity));
+        break;
+    }
+
+    return result;
   });
 });

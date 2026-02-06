@@ -150,6 +150,54 @@ class ComponentNode extends ConsumerWidget {
           componentFailures: componentFailures,
         );
 
+    if (component.type == ComponentType.text) {
+      final label = component.customName ?? 'Text';
+      final canInlineEdit = onTextChange != null && onEditDone != null;
+
+      return SizedBox(
+        width: component.size.width,
+        height: component.size.height,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.transparent,
+              border: isSelected
+                  ? Border.all(color: AppTheme.primary.withValues(alpha: 0.6), width: 1.5)
+                  : null,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: (isEditing && canInlineEdit)
+                ? _InlineTextEditor(
+                    initialText: label,
+                    onChange: onTextChange!,
+                    onDone: onEditDone!,
+                    isCentered: false,
+                    maxWidth: math.max(40.0, component.size.width - 16),
+                  )
+                : GestureDetector(
+                    onTap: (!isEditing && canInlineEdit) ? onLabelTap : null,
+                    behavior: HitTestBehavior.translucent,
+                    child: Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: AppTheme.textPrimary,
+                        height: 1.2,
+                      ),
+                      textHeightBehavior: const TextHeightBehavior(
+                        applyHeightToFirstAscent: false,
+                        applyHeightToLastDescent: true,
+                      ),
+                    ),
+                  ),
+          ),
+        ),
+      );
+    }
+
     // Text components are transparent and just text
 
     Widget child = AnimatedContainer(
@@ -1053,56 +1101,60 @@ class ComponentNode extends ConsumerWidget {
 
   Widget _buildReplicatedView(ComponentConfig config, Color color) {
     // Explicit Leader -> Follower Wiring
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        // LEADER
-        Container(
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: color, width: 2),
-            color: color.withValues(alpha: 0.2),
-            boxShadow: [BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 6)]
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // LEADER
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: color, width: 2),
+              color: color.withValues(alpha: 0.2),
+              boxShadow: [BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 6)]
+            ),
+            child: Icon(component.type.icon, size: 16, color: color),
           ),
-          child: Icon(component.type.icon, size: 16, color: color),
-        ),
-        
-        // Connection Lines (Leader to Followers)
-        SizedBox(
-          height: 16,
-          width: 60,
-          child: Stack(
-            alignment: Alignment.center,
+          
+          // Connection Lines (Leader to Followers)
+          SizedBox(
+            height: 16,
+            width: 60,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                 // Central Down Line
+                 Container(width: 1, height: 16, color: color.withValues(alpha: 0.5)),
+                 // Horizontal Bracket
+                 Positioned(
+                   bottom: 0,
+                   child: Container(width: 40, height: 1, color: color.withValues(alpha: 0.5)),
+                 ),
+                 // Animated Packet - flowing down
+                  Container(width: 3, height: 3, decoration: BoxDecoration(color: color, shape: BoxShape.circle))
+                    .animate(onPlay: (c) => c.repeat())
+                    .slideY(begin: -2.5, end: 2.5, duration: 1000.ms),
+              ],
+            ),
+          ),
+
+          // FOLLOWERS
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-               // Central Down Line
-               Container(width: 1, height: 16, color: color.withValues(alpha: 0.5)),
-               // Horizontal Bracket
-               Positioned(
-                 bottom: 0,
-                 child: Container(width: 40, height: 1, color: color.withValues(alpha: 0.5)),
-               ),
-               // Animated Packet - flowing down
-                Container(width: 3, height: 3, decoration: BoxDecoration(color: color, shape: BoxShape.circle))
-                  .animate(onPlay: (c) => c.repeat())
-                  .slideY(begin: -2.5, end: 2.5, duration: 1000.ms),
+               // Follower 1
+               _buildFollowerNode(color),
+               const SizedBox(width: 12),
+               // Follower 2 (or more stacked)
+               _buildFollowerNode(color, count: config.replicationFactor > 2 ? config.replicationFactor - 1 : 1),
             ],
           ),
-        ),
-
-        // FOLLOWERS
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-             // Follower 1
-             _buildFollowerNode(color),
-             const SizedBox(width: 12),
-             // Follower 2 (or more stacked)
-             _buildFollowerNode(color, count: config.replicationFactor > 2 ? config.replicationFactor - 1 : 1),
-          ],
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1266,6 +1318,10 @@ class ComponentNode extends ConsumerWidget {
         case FailureType.circuitBreakerOpen:
           label = 'CB';
           value = 'open';
+          break;
+        case FailureType.quorumNotMet:
+          label = 'QUORUM';
+          value = 'not met';
           break;
         default:
           label = 'LOAD';
@@ -1733,6 +1789,9 @@ class ComponentNode extends ConsumerWidget {
         case FailureType.circuitBreakerOpen:
           detail = 'Circuit opened after repeated failures';
           break;
+        case FailureType.quorumNotMet:
+          detail = 'Quorum requirement exceeds available replicas or partitioned';
+          break;
         default:
           detail = primaryFailure.message;
       }
@@ -1817,6 +1876,12 @@ class ComponentNode extends ConsumerWidget {
         return 'Fix upstream dependency; add fallback or queue to isolate failures';
       case FailureType.componentCrash:
         return 'Restart/replace instance and add redundancy';
+      case FailureType.networkPartition:
+        return 'Enable multi-region failover, retries with backoff, and circuit breakers';
+      case FailureType.dnsFailure:
+        return 'Add DNS failover/health checks and reduce TTLs';
+      case FailureType.quorumNotMet:
+        return 'Lower quorum, increase replication factor, or add regions/replicas';
       default:
         return 'Add capacity or reduce load';
     }
@@ -1947,15 +2012,22 @@ class _InlineTextEditorState extends State<_InlineTextEditor> {
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
                 color: AppTheme.textPrimary,
+                height: 1.2,
               )
             : const TextStyle(
                 fontSize: 16,
                 color: AppTheme.textPrimary,
                 fontWeight: FontWeight.w500,
+                height: 1.2,
               ),
+          strutStyle: const StrutStyle(
+            height: 1.2,
+            forceStrutHeight: true,
+          ),
+          textAlignVertical: TextAlignVertical.center,
           decoration: const InputDecoration(
             border: InputBorder.none,
-            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             isDense: true,
           ),
           onChanged: (val) => widget.onChange(val),

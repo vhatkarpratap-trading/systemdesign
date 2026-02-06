@@ -81,18 +81,28 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
   }
 
   /// Initialize with a problem (existing logic modified to set _currentProblemId)
-  void initializeWithProblem(String problemId) async {
+  void initializeWithProblem(String problemId, {bool forceTestDesign = false}) async {
     _currentProblemId = problemId;
     _currentDesignId = null;
     _currentDesignName = null;
-    final loadedState = await _repository.loadProgress(problemId);
-    if (loadedState != null) {
-      state = loadedState;
-    } else {
+    if (forceTestDesign) {
       final loadedSample = await _loadDesignFromAsset('assets/solutions/minimal_design.json');
       if (!loadedSample) {
         state = const CanvasState();
       }
+      _save();
+      return;
+    }
+
+    final loadedState = await _repository.loadProgress(problemId);
+    if (loadedState != null) {
+      state = loadedState;
+      return;
+    }
+
+    final loadedSample = await _loadDesignFromAsset('assets/solutions/minimal_design.json');
+    if (!loadedSample) {
+      state = const CanvasState();
     }
   }
 
@@ -1008,6 +1018,7 @@ class SimulationNotifier extends StateNotifier<SimulationState> {
       visibleFailures: [],
       tickCount: 0,
       lastConnectionTraffic: {},
+      globalMetrics: const GlobalMetrics(),
     );
   }
 

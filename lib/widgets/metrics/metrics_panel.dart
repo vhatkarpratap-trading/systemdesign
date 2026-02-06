@@ -1,5 +1,7 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../models/component.dart';
 import '../../providers/game_provider.dart';
 import '../../theme/app_theme.dart';
 
@@ -12,6 +14,23 @@ class MetricsPanel extends ConsumerWidget {
     final simState = ref.watch(simulationProvider);
     final metrics = simState.globalMetrics;
     final problem = ref.watch(currentProblemProvider);
+    final components = ref.watch(canvasProvider.select((s) => s.components));
+    final componentMetrics = ref.watch(simulationMetricsProvider);
+    final queueingTarget = _selectQueueingTarget(components, componentMetrics);
+    final queueingStatsMm1 = queueingTarget == null
+        ? null
+        : _computeQueueingStats(
+            lambda: queueingTarget.lambda,
+            mu: queueingTarget.mu,
+            servers: 1,
+          );
+    final queueingStatsMmc = queueingTarget == null
+        ? null
+        : _computeQueueingStats(
+            lambda: queueingTarget.lambda,
+            mu: queueingTarget.mu,
+            servers: queueingTarget.servers,
+          );
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -80,6 +99,18 @@ class MetricsPanel extends ConsumerWidget {
                     problem.constraints.availabilityTarget,
                   ),
                 ),
+                _MetricTile(
+                  label: 'Error Budget',
+                  value: '${(metrics.errorBudgetRemaining * 100).clamp(0, 100).toStringAsFixed(0)}%',
+                  target: '>20% remaining',
+                  status: _getErrorBudgetStatus(metrics.errorBudgetRemaining),
+                ),
+                _MetricTile(
+                  label: 'Burn Rate',
+                  value: '${metrics.errorBudgetBurnRate.toStringAsFixed(1)}×',
+                  target: '<1.0×',
+                  status: _getBurnRateStatus(metrics.errorBudgetBurnRate),
+                ),
                 // The original instruction seems to be for a different context or widget,
                 // as 'widget.component' is not available here and '_MetricRow' is not defined.
                 // Assuming the intent was to add these as new _MetricTile entries if applicable
@@ -111,8 +142,35 @@ class MetricsPanel extends ConsumerWidget {
                     problem.constraints.budgetPerMonth.toDouble(),
                   ),
                 ),
+                if (queueingStatsMm1 != null)
+                  _MetricTile(
+                    label: 'M/M/1',
+                    value: _formatQueueingValue(queueingStatsMm1),
+                    target: 'ρ<0.7',
+                    status: _getQueueingStatus(queueingStatsMm1),
+                  ),
+                if (queueingStatsMmc != null)
+                  _MetricTile(
+                    label: 'M/M/c',
+                    value: _formatQueueingValue(queueingStatsMmc),
+                    target: 'ρ<0.7',
+                    status: _getQueueingStatus(queueingStatsMmc),
+                  ),
               ],
             ),
+            if (queueingTarget != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Queueing model uses ${queueingTarget.label} '
+                '(λ ${queueingTarget.lambda.toStringAsFixed(0)} rps, '
+                'μ ${queueingTarget.mu.toStringAsFixed(0)} rps, '
+                'c ${queueingTarget.servers})',
+                style: const TextStyle(
+                  fontSize: 10,
+                  color: AppTheme.textMuted,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -150,14 +208,182 @@ class MetricsPanel extends ConsumerWidget {
     return MetricStatus.critical;
   }
 
+  MetricStatus _getErrorBudgetStatus(double remaining) {
+    if (remaining >= 0.5) return MetricStatus.good;
+    if (remaining >= 0.2) return MetricStatus.warning;
+    return MetricStatus.critical;
+  }
+
+  MetricStatus _getBurnRateStatus(double burnRate) {
+    if (burnRate <= 1.0) return MetricStatus.good;
+    if (burnRate <= 2.0) return MetricStatus.warning;
+    return MetricStatus.critical;
+  }
+
   MetricStatus _getCostStatus(double current, double budget) {
     if (current <= budget) return MetricStatus.good;
     if (current <= budget * 1.2) return MetricStatus.warning;
     return MetricStatus.critical;
   }
+
+  MetricStatus _getQueueingStatus(_QueueingStats stats) {
+    if (!stats.isStable) return MetricStatus.critical;
+    if (stats.rho > 0.85) return MetricStatus.warning;
+    return MetricStatus.good;
+  }
+
+  String _formatQueueingValue(_QueueingStats stats) {
+    if (!stats.isStable) {
+      return 'Unstable (ρ ${stats.rho.toStringAsFixed(2)})';
+    }
+    final latencyMs = stats.waitMs;
+    final formatted = latencyMs >= 1000
+        ? '${(latencyMs / 1000).toStringAsFixed(2)}s'
+        : '${latencyMs.toStringAsFixed(0)}ms';
+    return '$formatted (ρ ${stats.rho.toStringAsFixed(2)})';
+  }
+
+  _QueueingTarget? _selectQueueingTarget(
+    List<SystemComponent> components,
+    Map<String, ComponentMetrics> metricsMap,
+  ) {
+    _QueueingTarget? best;
+    double bestRho = -1;
+
+    for (final component in components) {
+      if (!_isQueueingCandidate(component.type)) continue;
+      final metrics = metricsMap[component.id];
+      if (metrics == null || metrics.currentRps <= 0) continue;
+
+      final effectiveInstances =
+          metrics.readyInstances + (metrics.coldStartingInstances * 0.5);
+      final servers = max(1, effectiveInstances.round());
+      final mu = component.config.capacity.toDouble();
+      final capacity = mu * servers;
+      if (capacity <= 0) continue;
+
+      final rho = metrics.currentRps / capacity;
+      if (rho > bestRho) {
+        bestRho = rho;
+        best = _QueueingTarget(
+          label: component.customName ?? component.type.displayName,
+          lambda: metrics.currentRps.toDouble(),
+          mu: mu,
+          servers: servers,
+          rho: rho,
+        );
+      }
+    }
+
+    return best;
+  }
+
+  bool _isQueueingCandidate(ComponentType type) {
+    return switch (type) {
+      ComponentType.appServer ||
+      ComponentType.customService ||
+      ComponentType.authService ||
+      ComponentType.notificationService ||
+      ComponentType.searchService ||
+      ComponentType.analyticsService ||
+      ComponentType.scheduler ||
+      ComponentType.serviceDiscovery ||
+      ComponentType.configService ||
+      ComponentType.secretsManager ||
+      ComponentType.featureFlag ||
+      ComponentType.cache ||
+      ComponentType.database ||
+      ComponentType.keyValueStore ||
+      ComponentType.timeSeriesDb ||
+      ComponentType.graphDb ||
+      ComponentType.vectorDb ||
+      ComponentType.searchIndex ||
+      ComponentType.dataWarehouse ||
+      ComponentType.dataLake => true,
+      _ => false,
+    };
+  }
+
+  _QueueingStats? _computeQueueingStats({
+    required double lambda,
+    required double mu,
+    required int servers,
+  }) {
+    if (lambda <= 0 || mu <= 0 || servers <= 0) return null;
+    final rho = lambda / (mu * servers);
+    if (!rho.isFinite) return null;
+    if (rho >= 1) {
+      return _QueueingStats(
+        rho: rho,
+        waitMs: double.infinity,
+        isStable: false,
+        servers: servers,
+      );
+    }
+
+    if (servers == 1) {
+      final w = 1 / (mu - lambda);
+      return _QueueingStats(
+        rho: rho,
+        waitMs: w * 1000,
+        isStable: true,
+        servers: servers,
+      );
+    }
+
+    final a = lambda / mu;
+    double sum = 1.0;
+    double term = 1.0;
+    for (int n = 1; n < servers; n++) {
+      term *= a / n;
+      sum += term;
+    }
+
+    final numerator = (term * a / servers) / (1 - rho);
+    final pWait = numerator / (sum + numerator);
+    final wq = pWait / (mu * servers - lambda);
+    final w = wq + (1 / mu);
+
+    return _QueueingStats(
+      rho: rho,
+      waitMs: w * 1000,
+      isStable: true,
+      servers: servers,
+    );
+  }
 }
 
 enum MetricStatus { good, warning, critical }
+
+class _QueueingTarget {
+  final String label;
+  final double lambda;
+  final double mu;
+  final int servers;
+  final double rho;
+
+  const _QueueingTarget({
+    required this.label,
+    required this.lambda,
+    required this.mu,
+    required this.servers,
+    required this.rho,
+  });
+}
+
+class _QueueingStats {
+  final double rho;
+  final double waitMs;
+  final bool isStable;
+  final int servers;
+
+  const _QueueingStats({
+    required this.rho,
+    required this.waitMs,
+    required this.isStable,
+    required this.servers,
+  });
+}
 
 /// Individual metric tile
 class _MetricTile extends StatelessWidget {

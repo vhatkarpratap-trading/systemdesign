@@ -10,7 +10,10 @@ class GlobalMetrics {
   final double evictionRate; // Evictions per second (for caches)
   final double errorRate;
   final double availability;
+  final double errorBudgetRemaining; // 0.0-1.0 (1.0 = full budget)
+  final double errorBudgetBurnRate; // >1.0 = burning faster than allowed
   final double totalCostPerHour;
+  final double costSpent; // Accumulated during the current simulation run
   final int totalRequests;
   final int successfulRequests;
   final int failedRequests;
@@ -24,7 +27,10 @@ class GlobalMetrics {
     this.evictionRate = 0.0,
     this.errorRate = 0.0,
     this.availability = 1.0,
+    this.errorBudgetRemaining = 1.0,
+    this.errorBudgetBurnRate = 0.0,
     this.totalCostPerHour = 0.0,
+    this.costSpent = 0.0,
     this.totalRequests = 0,
     this.successfulRequests = 0,
     this.failedRequests = 0,
@@ -38,7 +44,10 @@ class GlobalMetrics {
     double? p99LatencyMs,
     double? errorRate,
     double? availability,
+    double? errorBudgetRemaining,
+    double? errorBudgetBurnRate,
     double? totalCostPerHour,
+    double? costSpent,
     int? totalRequests,
     int? successfulRequests,
     int? failedRequests,
@@ -51,7 +60,10 @@ class GlobalMetrics {
       p99LatencyMs: p99LatencyMs ?? this.p99LatencyMs,
       errorRate: errorRate ?? this.errorRate,
       availability: availability ?? this.availability,
+      errorBudgetRemaining: errorBudgetRemaining ?? this.errorBudgetRemaining,
+      errorBudgetBurnRate: errorBudgetBurnRate ?? this.errorBudgetBurnRate,
       totalCostPerHour: totalCostPerHour ?? this.totalCostPerHour,
+      costSpent: costSpent ?? this.costSpent,
       totalRequests: totalRequests ?? this.totalRequests,
       successfulRequests: successfulRequests ?? this.successfulRequests,
       failedRequests: failedRequests ?? this.failedRequests,
@@ -81,6 +93,16 @@ class GlobalMetrics {
       return '\$${(monthlyCost / 1000).toStringAsFixed(1)}K/mo';
     }
     return '\$${monthlyCost.toStringAsFixed(0)}/mo';
+  }
+
+  String get costSpentString {
+    if (costSpent >= 1000000) {
+      return '\$${(costSpent / 1000000).toStringAsFixed(1)}M';
+    }
+    if (costSpent >= 1000) {
+      return '\$${(costSpent / 1000).toStringAsFixed(1)}K';
+    }
+    return '\$${costSpent.toStringAsFixed(2)}';
   }
 }
 
@@ -203,6 +225,7 @@ enum FailureType {
   readAfterWriteFailure('Read-After-Write Failed', 'Cannot read own write'),
   duplicateDelivery('Duplicate Message', 'At-least-once delivery side effect'),
   replicationLag('Replication Lag', 'Replica falling behind primary'),
+  quorumNotMet('Quorum Not Met', 'Read/write quorum not satisfied'),
   
   // Operational
   badDeployment('Bad Deployment', 'Recent deploy introduced errors'),

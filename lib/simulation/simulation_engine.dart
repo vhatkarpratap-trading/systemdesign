@@ -184,7 +184,14 @@ class SimulationEngine {
       // Update failures (replace entire list to reflect resolved issues)
       simNotifier.setFailures(result.failures);
 
-      simNotifier.updateMetrics(result.globalMetrics);
+      final enrichedGlobalMetrics = _applySloTracking(
+        latest: result.globalMetrics,
+        previous: simState.globalMetrics,
+        availabilityTarget: problem.constraints.availabilityTarget,
+        tickSeconds: _tickDurationSeconds,
+      );
+
+      simNotifier.updateMetrics(enrichedGlobalMetrics);
 
       // Auto-complete after 60 minutes (36000 ticks) - effectively infinite for user session
       // This solves the issue where users feel they need to restart because the sim ended.
@@ -206,6 +213,38 @@ class SimulationEngine {
 
   // Track component count to detect valid hot-reloading
   int _lastComponentCount = 0;
+
+  GlobalMetrics _applySloTracking({
+    required GlobalMetrics latest,
+    required GlobalMetrics previous,
+    required double availabilityTarget,
+    required double tickSeconds,
+  }) {
+    final budget = (1.0 - availabilityTarget).clamp(0.0, 1.0);
+    final deltaRequests = (latest.totalRps * tickSeconds).round();
+    final deltaFailed = (latest.errorRate * deltaRequests).round();
+
+    final totalRequests = previous.totalRequests + deltaRequests;
+    final failedRequests = previous.failedRequests + deltaFailed;
+    final successfulRequests = totalRequests - failedRequests;
+
+    final allowedErrors = budget > 0 ? (totalRequests * budget) : 0.0;
+    final remaining = allowedErrors <= 0
+        ? (failedRequests == 0 ? 1.0 : 0.0)
+        : ((allowedErrors - failedRequests) / allowedErrors).clamp(0.0, 1.0);
+    final burnRate = budget > 0 ? (latest.errorRate / budget) : 0.0;
+    final deltaCost = (latest.totalCostPerHour * tickSeconds) / 3600.0;
+    final spentSoFar = (previous.costSpent + deltaCost).clamp(0.0, double.infinity);
+
+    return latest.copyWith(
+      totalRequests: totalRequests,
+      failedRequests: failedRequests,
+      successfulRequests: successfulRequests,
+      errorBudgetRemaining: remaining,
+      errorBudgetBurnRate: burnRate,
+      costSpent: spentSoFar,
+    );
+  }
 
   /// Calculate final score (Now static for Isolate support)
   static Score _calculateScoreIsolate(_ScoreData data) {

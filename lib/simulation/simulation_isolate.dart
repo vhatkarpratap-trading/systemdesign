@@ -4,6 +4,7 @@ import '../models/component.dart';
 import '../models/connection.dart';
 import '../models/metrics.dart';
 import '../models/problem.dart';
+import '../utils/cost_model.dart';
 
 import '../models/chaos_event.dart';
 
@@ -55,6 +56,104 @@ const int _minSampleEvents = 120;
 const int _maxSampleEvents = 2000;
 
 enum _EventType { arrival, completion }
+
+const Map<String, Map<String, double>> _regionLatencyMatrixMs = {
+  'us-east-1': {
+    'us-west-2': 70,
+    'eu-west-1': 80,
+    'eu-central-1': 95,
+    'ap-south-1': 210,
+    'ap-northeast-1': 170,
+    'ap-southeast-1': 200,
+    'sa-east-1': 120,
+  },
+  'us-west-2': {
+    'eu-west-1': 130,
+    'eu-central-1': 150,
+    'ap-south-1': 220,
+    'ap-northeast-1': 140,
+    'ap-southeast-1': 160,
+    'sa-east-1': 180,
+  },
+  'eu-west-1': {
+    'eu-central-1': 25,
+    'ap-south-1': 160,
+    'ap-northeast-1': 210,
+    'ap-southeast-1': 220,
+    'sa-east-1': 190,
+  },
+  'eu-central-1': {
+    'ap-south-1': 170,
+    'ap-northeast-1': 220,
+    'ap-southeast-1': 230,
+    'sa-east-1': 200,
+  },
+  'ap-south-1': {
+    'ap-northeast-1': 120,
+    'ap-southeast-1': 80,
+    'sa-east-1': 250,
+  },
+  'ap-northeast-1': {
+    'ap-southeast-1': 110,
+    'sa-east-1': 260,
+  },
+  'ap-southeast-1': {
+    'sa-east-1': 270,
+  },
+};
+
+const Map<String, String> _regionGroups = {
+  'us-east-1': 'na',
+  'us-west-2': 'na',
+  'eu-west-1': 'eu',
+  'eu-central-1': 'eu',
+  'ap-south-1': 'ap',
+  'ap-northeast-1': 'ap',
+  'ap-southeast-1': 'ap',
+  'sa-east-1': 'sa',
+};
+
+String _normalizeRegion(String? region) {
+  if (region == null || region.isEmpty) return 'us-east-1';
+  return region;
+}
+
+double _baseRegionLatencyMs(String from, String to) {
+  final source = _normalizeRegion(from);
+  final target = _normalizeRegion(to);
+  if (source == target) return 4.0;
+  final direct = _regionLatencyMatrixMs[source]?[target] ??
+      _regionLatencyMatrixMs[target]?[source];
+  if (direct != null) return direct;
+  final sourceGroup = _regionGroups[source];
+  final targetGroup = _regionGroups[target];
+  if (sourceGroup != null && targetGroup != null) {
+    if (sourceGroup == targetGroup) return 45.0;
+    final pair = {sourceGroup, targetGroup};
+    if (pair.contains('na') && pair.contains('eu')) return 95.0;
+    if (pair.contains('na') && pair.contains('sa')) return 140.0;
+    if (pair.contains('eu') && pair.contains('ap')) return 180.0;
+    if (pair.contains('na') && pair.contains('ap')) return 190.0;
+  }
+  return 140.0;
+}
+
+String _pickRegionForComponent(SystemComponent component, String currentRegion) {
+  final regions = component.config.regions;
+  final normalized = _normalizeRegion(currentRegion);
+  if (regions.isEmpty) return normalized;
+  if (regions.contains(normalized)) return normalized;
+  var best = regions.first;
+  var bestLatency = _baseRegionLatencyMs(normalized, best);
+  for (final region in regions.skip(1)) {
+    final latency = _baseRegionLatencyMs(normalized, region);
+    if (latency < bestLatency) {
+      bestLatency = latency;
+      best = region;
+    }
+  }
+  return best;
+}
 
 double _chaosSeverity(ChaosEvent event) {
   final raw = event.parameters['severity'];
@@ -375,6 +474,7 @@ SimulationResult runSimulationTick(SimulationData data) {
     connections,
     componentMetrics,
     data.tickCount,
+    data.activeChaosEvents,
   );
   
   // Check for cascading failures
@@ -472,39 +572,75 @@ SimulationResult runSimulationTick(SimulationData data) {
     return (next * alpha) + (prev * (1 - alpha));
   }
 
-  _AutoscaleState computeAutoscaleState(SystemComponent component, double estimatedRps) {
-    var effectiveInstances = component.config.instances;
-    var targetInstances = effectiveInstances;
-    var readyInstances = effectiveInstances;
+  _AutoscaleState computeAutoscaleState(
+    SystemComponent component,
+    double estimatedRps,
+    ComponentMetrics? prev,
+  ) {
+    final config = component.config;
+    final minInstances = config.autoScale ? max(1, config.minInstances) : max(1, config.instances);
+
+    var currentInstances = prev?.readyInstances ?? config.instances;
+    currentInstances = max(minInstances, currentInstances);
+
+    var targetInstances = currentInstances;
+    var readyInstances = currentInstances;
     var coldStartingInstances = 0;
     var isScaling = false;
 
-    final baseCapacity = component.config.capacity * component.config.instances;
+    final baseCapacity = config.capacity * max(1, currentInstances);
     final load = baseCapacity > 0 ? (estimatedRps / baseCapacity) : 1.0;
 
-    if (component.config.autoScale && load > 0.7) {
-      targetInstances = (effectiveInstances * 1.5).ceil().clamp(
-        component.config.minInstances,
-        component.config.maxInstances,
-      );
-      if (targetInstances > effectiveInstances) {
-        isScaling = true;
-        coldStartingInstances = targetInstances - effectiveInstances;
-        // Cold instances are half capacity initially
-        effectiveInstances = readyInstances + (coldStartingInstances * 0.5).ceil();
+    if (config.autoScale) {
+      if (load > 0.7) {
+        targetInstances = (currentInstances * 1.5)
+            .ceil()
+            .clamp(minInstances, config.maxInstances);
+      } else if (load < 0.35) {
+        targetInstances = (currentInstances * 0.7)
+            .floor()
+            .clamp(minInstances, config.maxInstances);
       }
     }
 
+    if (targetInstances > currentInstances) {
+      isScaling = true;
+      coldStartingInstances = targetInstances - currentInstances;
+      // Cold instances are half capacity initially
+      final warmGain = (coldStartingInstances * 0.5).ceil();
+      readyInstances = currentInstances;
+      final effectiveInstances = readyInstances + warmGain;
+      return _AutoscaleState(
+        effectiveInstances: effectiveInstances,
+        isScaling: isScaling,
+        targetInstances: targetInstances,
+        readyInstances: readyInstances,
+        coldStartingInstances: coldStartingInstances,
+      );
+    }
+
+    if (targetInstances < currentInstances) {
+      isScaling = true;
+      readyInstances = targetInstances;
+      return _AutoscaleState(
+        effectiveInstances: targetInstances,
+        isScaling: isScaling,
+        targetInstances: targetInstances,
+        readyInstances: readyInstances,
+        coldStartingInstances: 0,
+      );
+    }
+
     return _AutoscaleState(
-      effectiveInstances: effectiveInstances,
-      isScaling: isScaling,
-      targetInstances: targetInstances,
-      readyInstances: readyInstances,
-      coldStartingInstances: coldStartingInstances,
+      effectiveInstances: currentInstances,
+      isScaling: false,
+      targetInstances: currentInstances,
+      readyInstances: currentInstances,
+      coldStartingInstances: 0,
     );
   }
 
-  double sampleServiceTimeMs(_SimComponentState state) {
+  double sampleServiceTimeMs(_SimComponentState state, _Token token) {
     var mean = max(state.baseLatencyMs, 1.0);
     final prevCpu = state.prevMetrics?.cpuUsage ?? 0.0;
     final contention = 1.0 + (prevCpu * 0.6);
@@ -530,15 +666,85 @@ SimulationResult runSimulationTick(SimulationData data) {
       }
     }
 
+    if (_isDatabaseLike(state.component.type)) {
+      final component = state.component;
+      final config = component.config;
+      final localRegion = _pickRegionForComponent(component, token.region);
+      final replicaRegions = config.regions.where((r) => r != localRegion).toList();
+      final latencies =
+          replicaRegions.map((r) => _baseRegionLatencyMs(localRegion, r)).toList()
+            ..sort();
+
+      final isWrite = token.isWrite;
+      final requiredQuorum =
+          isWrite ? (config.quorumWrite ?? 1) : (config.quorumRead ?? 1);
+      if (requiredQuorum > 1) {
+        final remoteNeeded = max(0, requiredQuorum - 1);
+        double quorumLatency = 0.0;
+        if (remoteNeeded > 0) {
+          if (latencies.isNotEmpty) {
+            final index = min(remoteNeeded - 1, latencies.length - 1);
+            quorumLatency = latencies[index];
+          } else {
+            quorumLatency = _baseRegionLatencyMs(localRegion, localRegion);
+          }
+        }
+        final quorumFactor = isWrite ? 0.7 : 0.5;
+        mean += quorumLatency * quorumFactor;
+      }
+
+      if (isWrite &&
+          config.replication &&
+          config.replicationFactor > 1 &&
+          config.replicationType != ReplicationType.none) {
+        final factor = max(1, config.replicationFactor - 1);
+        final maxLatency = latencies.isNotEmpty ? latencies.last : 4.0;
+        final avgLatency = latencies.isNotEmpty
+            ? latencies.reduce((a, b) => a + b) / latencies.length
+            : 4.0;
+        final strategy = (config.replicationStrategy ?? '').toLowerCase();
+        double replicationPenalty = 0.0;
+        switch (config.replicationType) {
+          case ReplicationType.synchronous:
+            replicationPenalty = (maxLatency * 0.6) + (2.0 * factor);
+            break;
+          case ReplicationType.streaming:
+            replicationPenalty = (avgLatency * 0.35) + (1.5 * min(3, factor));
+            break;
+          case ReplicationType.asynchronous:
+            replicationPenalty = (avgLatency * 0.15) + (0.5 * min(2, factor));
+            break;
+          case ReplicationType.none:
+            replicationPenalty = 0.0;
+            break;
+        }
+        if (strategy.contains('leaderless')) {
+          replicationPenalty *= 1.2;
+        } else if (strategy.contains('multi')) {
+          replicationPenalty *= 1.1;
+        }
+        mean += replicationPenalty;
+      }
+    }
+
     final sigma = 0.35 + (prevCpu * 0.4);
     return sampleLogNormal(mean, sigma).clamp(0.5, 60000.0);
   }
 
-  double sampleNetworkLatencyMs(SystemComponent source, SystemComponent target) {
-    final sourceRegion = source.config.regions.isNotEmpty ? source.config.regions.first : 'us-east-1';
-    final targetRegion = target.config.regions.isNotEmpty ? target.config.regions.first : 'us-east-1';
-    final sameRegion = sourceRegion == targetRegion;
-    var base = sameRegion ? 2.0 + random.nextDouble() * 4.0 : 40.0 + random.nextDouble() * 90.0;
+  double sampleNetworkLatencyMs(
+    SystemComponent source,
+    SystemComponent target,
+    String sourceRegion,
+    String targetRegion,
+  ) {
+    final normalizedSource = _normalizeRegion(sourceRegion);
+    final normalizedTarget = _normalizeRegion(targetRegion);
+    final sameRegion = normalizedSource == normalizedTarget;
+    final baseLatency = _baseRegionLatencyMs(normalizedSource, normalizedTarget);
+    var base = baseLatency +
+        (sameRegion
+            ? random.nextDouble() * 3.0
+            : random.nextDouble() * (baseLatency * 0.25 + 6.0));
 
     for (final event in activeChaosEvents) {
       if (event.type == ChaosType.networkLatency &&
@@ -548,7 +754,7 @@ SimulationResult runSimulationTick(SimulationData data) {
       }
     }
 
-    final jitter = base * (0.1 + random.nextDouble() * 0.3);
+    final jitter = base * (0.08 + random.nextDouble() * 0.25);
     return base + jitter;
   }
 
@@ -588,7 +794,7 @@ SimulationResult runSimulationTick(SimulationData data) {
         ? (incomingRps / entryCount)
         : (prev?.currentRps ?? 0);
 
-    final autoscale = computeAutoscaleState(component, estimatedRps.toDouble());
+    final autoscale = computeAutoscaleState(component, estimatedRps.toDouble(), prev);
     final effectiveInstances = max(1, autoscale.effectiveInstances);
 
     bool isCrashed = false;
@@ -1118,7 +1324,8 @@ SimulationResult runSimulationTick(SimulationData data) {
     final isPremium = random.nextDouble() < 0.1;
     final isCanary = random.nextDouble() < 0.05;
     final isHotKey = random.nextDouble() < 0.02;
-    final region = regionPool[random.nextInt(regionPool.length)];
+    final clientRegion = regionPool[random.nextInt(regionPool.length)];
+    final entryRegion = _pickRegionForComponent(entry, clientRegion);
     events.add(_Event(
       time: time,
       type: _EventType.arrival,
@@ -1128,7 +1335,7 @@ SimulationResult runSimulationTick(SimulationData data) {
         arrivedAt: time,
         clientId: clientId,
         keyId: keyId,
-        region: region,
+        region: entryRegion,
         isWrite: isWrite,
         requiresAuth: requiresAuth,
         featureEnabled: featureEnabled,
@@ -1159,7 +1366,7 @@ SimulationResult runSimulationTick(SimulationData data) {
 
   void startService(_SimComponentState state, double time, _Token token) {
     state.inService += 1;
-    final serviceMs = sampleServiceTimeMs(state);
+    final serviceMs = sampleServiceTimeMs(state, token);
     events.add(_Event(
       time: time + (serviceMs / 1000.0),
       type: _EventType.completion,
@@ -1199,10 +1406,17 @@ SimulationResult runSimulationTick(SimulationData data) {
     if (random.nextDouble() > retryChance) return;
     final backoffMs = 50.0 * pow(2, token.retryCount).toDouble();
     final jitterMs = backoffMs * (0.2 + random.nextDouble() * 0.4);
+    final targetState = states[targetComponentId];
+    final targetRegion = targetState != null
+        ? _pickRegionForComponent(targetState.component, token.region)
+        : token.region;
     scheduleArrival(
       time: time + ((backoffMs + jitterMs) / 1000.0),
       componentId: targetComponentId,
-      token: token.copyWith(retryCount: token.retryCount + 1),
+      token: token.copyWith(
+        retryCount: token.retryCount + 1,
+        region: targetRegion,
+      ),
     );
   }
 
@@ -1211,6 +1425,10 @@ SimulationResult runSimulationTick(SimulationData data) {
     if (event.time > simWindowSeconds) break;
     final state = states[event.componentId];
     if (state == null) continue;
+    final resolvedRegion = _pickRegionForComponent(state.component, event.token.region);
+    final token = resolvedRegion == event.token.region
+        ? event.token
+        : event.token.copyWith(region: resolvedRegion);
 
     if (event.type == _EventType.arrival) {
       state.arrivals += 1;
@@ -1218,7 +1436,7 @@ SimulationResult runSimulationTick(SimulationData data) {
       if (disconnected.contains(state.component.id)) {
         state.errors += 1;
         maybeRetry(
-          token: event.token,
+          token: token,
           targetComponentId: state.component.id,
           time: event.time,
         );
@@ -1229,7 +1447,7 @@ SimulationResult runSimulationTick(SimulationData data) {
       if (state.circuitOpen || state.isCrashed) {
         state.errors += 1;
         maybeRetry(
-          token: event.token,
+          token: token,
           targetComponentId: state.component.id,
           time: event.time,
         );
@@ -1250,15 +1468,15 @@ SimulationResult runSimulationTick(SimulationData data) {
       }
 
       if (state.inService < state.servers) {
-        startService(state, event.time, event.token);
+        startService(state, event.time, token);
       } else {
-        state.queue.add(event.token);
+        state.queue.add(token);
       }
     } else {
       // Completion
       if (state.inService > 0) state.inService -= 1;
       state.processed += 1;
-      final latencyMs = (event.time - event.token.arrivedAt) * 1000.0;
+      final latencyMs = (event.time - token.arrivedAt) * 1000.0;
       state.totalLatencyMs += latencyMs;
 
       if (state.latencySamples.length < 200) {
@@ -1274,6 +1492,37 @@ SimulationResult runSimulationTick(SimulationData data) {
         startService(state, event.time, nextToken);
       }
 
+      // Enforce quorum requirements for database-like components
+      if (_isDatabaseLike(state.component.type)) {
+        final config = state.component.config;
+        final requiredQuorum =
+            token.isWrite ? (config.quorumWrite ?? 1) : (config.quorumRead ?? 1);
+        if (requiredQuorum > 1) {
+          int availableReplicas = config.replication && config.replicationFactor > 0
+              ? config.replicationFactor
+              : 1;
+          if (config.regions.isNotEmpty) {
+            availableReplicas = min(availableReplicas, config.regions.length);
+          }
+          final partitioned = activeChaosEvents.any((event) =>
+              event.type == ChaosType.networkPartition &&
+              _chaosIntensity(event) > 0 &&
+              _affectsComponent(event, state.component));
+          if (partitioned && availableReplicas > 1) {
+            availableReplicas = max(1, (availableReplicas * 0.6).floor());
+          }
+          if (requiredQuorum > availableReplicas) {
+            state.errors += 1;
+            maybeRetry(
+              token: token,
+              targetComponentId: state.component.id,
+              time: event.time,
+            );
+            continue;
+          }
+        }
+      }
+
       // Simulate component-level failure probability (pressure + timeouts)
       final pressure = state.utilization;
       final overloadProb = pressure > 1.1 ? (pressure - 1.0) * 0.25 : 0.0;
@@ -1286,7 +1535,7 @@ SimulationResult runSimulationTick(SimulationData data) {
       if (isError) {
         state.errors += 1;
         maybeRetry(
-          token: event.token,
+          token: token,
           targetComponentId: state.component.id,
           time: event.time,
         );
@@ -1321,7 +1570,7 @@ SimulationResult runSimulationTick(SimulationData data) {
             : selectTargetConnection(
                 source: state.component,
                 candidates: selectableTargets,
-                token: event.token,
+                token: token,
               );
         fanoutTargets.add(chosen);
       }
@@ -1340,7 +1589,7 @@ SimulationResult runSimulationTick(SimulationData data) {
         if (disconnected.contains(conn.targetId)) {
           state.errors += 1;
           maybeRetry(
-            token: event.token,
+            token: token,
             targetComponentId: conn.targetId,
             time: event.time,
           );
@@ -1359,7 +1608,7 @@ SimulationResult runSimulationTick(SimulationData data) {
             if (random.nextDouble() < dropProb) {
               state.errors += 1;
               maybeRetry(
-                token: event.token,
+                token: token,
                 targetComponentId: conn.targetId,
                 time: event.time,
               );
@@ -1368,17 +1617,27 @@ SimulationResult runSimulationTick(SimulationData data) {
           }
         }
 
-        final networkMs = sampleNetworkLatencyMs(state.component, targetState.component);
+        final sourceRegion = token.region;
+        final targetRegion = _pickRegionForComponent(targetState.component, sourceRegion);
+        final networkMs = sampleNetworkLatencyMs(
+          state.component,
+          targetState.component,
+          sourceRegion,
+          targetRegion,
+        );
         final arrivalTime = event.time + ((networkMs + extraDelayMs) / 1000.0);
 
         connectionTrafficRps[conn.id] =
-            (connectionTrafficRps[conn.id] ?? 0.0) + event.token.weight;
+            (connectionTrafficRps[conn.id] ?? 0.0) + token.weight;
 
         scheduleArrival(
           time: arrivalTime,
           componentId: conn.targetId,
           connectionId: conn.id,
-          token: event.token.copyWith(callerId: state.component.id),
+          token: token.copyWith(
+            callerId: state.component.id,
+            region: targetRegion,
+          ),
         );
       }
     }
@@ -1434,8 +1693,14 @@ SimulationResult runSimulationTick(SimulationData data) {
     double evictionRate = 0.0;
     if (component.type == ComponentType.cache) {
       cacheHitRate = (0.9 - effectiveLoad * 0.3).clamp(0.0, 1.0);
+      final ttlSeconds = max(1, component.config.cacheTtlSeconds);
+      final ttlFactor = (ttlSeconds / 300).clamp(0.2, 1.1);
+      cacheHitRate = (cacheHitRate * ttlFactor).clamp(0.0, 1.0);
       if (memoryUsage > 0.8) {
         evictionRate = (memoryUsage - 0.8) * 5000;
+      }
+      if (ttlSeconds <= 30 && effectiveLoad > 0.8) {
+        evictionRate += (0.3 + (0.2 * random.nextDouble())) * 1200;
       }
       for (final event in activeChaosEvents) {
         if (event.type == ChaosType.cacheMissStorm &&
@@ -2135,6 +2400,40 @@ List<FailureEvent> _checkFailures(
     ));
   }
 
+  // NEW: 6b. Disk I/O Saturation (primarily stateful storage)
+  if (_isDatabaseLike(component.type) && metrics.currentRps > 0) {
+    final ioPressure = (metrics.queueDepth / 2000).clamp(0.0, 2.0);
+    if (ioPressure > 0.9 && metrics.p95LatencyMs > 250) {
+      failures.add(FailureEvent(
+        timestamp: DateTime.now(),
+        componentId: component.id,
+        type: FailureType.diskIoSaturation,
+        message: 'Disk I/O saturation - requests are queuing on storage',
+        recommendation: 'Increase IOPS, add replicas, or shard hot data',
+        severity: (ioPressure / 2.0).clamp(0.6, 0.9),
+        userVisible: true,
+        fixType: FixType.increaseReplicas,
+      ));
+    }
+  }
+
+  // NEW: 6c. Thread Starvation (CPU-bound services under heavy load)
+  if (_isServiceLike(component.type) && metrics.currentRps > 0) {
+    final pressure = metrics.cpuUsage;
+    if (pressure > 0.9 && metrics.queueDepth > 1200) {
+      failures.add(FailureEvent(
+        timestamp: DateTime.now(),
+        componentId: component.id,
+        type: FailureType.threadStarvation,
+        message: 'Thread starvation - all workers are busy',
+        recommendation: 'Increase worker pool or add instances',
+        severity: (pressure).clamp(0.6, 0.9),
+        userVisible: true,
+        fixType: FixType.increaseReplicas,
+      ));
+    }
+  }
+
   // NEW: 7. Slow Node Detection (Runtime error - only when processing)
   if (metrics.currentRps > 0 && metrics.isSlow) {
     failures.add(FailureEvent(
@@ -2188,6 +2487,25 @@ List<FailureEvent> _checkFailures(
       fixType: FixType.increaseReplicas, // Effectively adds more total memory
     ));
   }
+
+  // NEW: 10. Thundering Herd (low TTL + high load causes synchronized misses)
+  if (component.type == ComponentType.cache && metrics.currentRps > 0) {
+    final ttlSeconds = component.config.cacheTtlSeconds;
+    if (ttlSeconds <= 30 &&
+        metrics.currentRps > 1500 &&
+        metrics.cacheHitRate < 0.45) {
+      failures.add(FailureEvent(
+        timestamp: DateTime.now(),
+        componentId: component.id,
+        type: FailureType.thunderingHerd,
+        message: 'Thundering herd: low TTL and high traffic causing synchronized cache misses',
+        recommendation: 'Use request coalescing, jittered TTL, or stale-while-revalidate',
+        severity: 0.7,
+        userVisible: true,
+        fixType: FixType.increaseReplicas,
+      ));
+    }
+  }
   
   return failures;
 }
@@ -2206,6 +2524,8 @@ GlobalMetrics _calculateGlobalMetrics(
   double maxP95Latency = 0;
   double totalErrorRate = 0;
   double totalCost = 0;
+  final storageCount = components.where((c) => CostModel.isStorageComponentType(c.type)).length;
+  final dbCount = components.where((c) => CostModel.isDatabaseComponentType(c.type)).length;
 
   // We'll calculate a weighted average for latency based on component types
   // and their relative importance in the path.
@@ -2226,7 +2546,13 @@ GlobalMetrics _calculateGlobalMetrics(
       // So totalErrorRate = 1 - (1-e1)*(1-e2)*...
       totalErrorRate = totalErrorRate + metrics.errorRate - (totalErrorRate * metrics.errorRate);
     }
-    totalCost += component.hourlyCost;
+    totalCost += CostModel.estimateComponentHourlyCost(
+      component: component,
+      problem: problem,
+      storageComponentCount: storageCount,
+      dbComponentCount: dbCount,
+      metrics: metrics,
+    ).total;
   }
 
   final availability = (1 - totalErrorRate).clamp(0.0, 1.0);
@@ -2359,49 +2685,143 @@ List<FailureEvent> _checkConsistencyIssues(
   List<Connection> connections,
   Map<String, ComponentMetrics> componentMetrics,
   int tickCount,
+  List<ChaosEvent> activeChaosEvents,
 ) {
   // Import consistency validator logic inline to avoid import issues in isolate
   final issues = <FailureEvent>[];
   final random = Random(tickCount);
+  final hasPartition = activeChaosEvents.any(
+    (event) => event.type == ChaosType.networkPartition && _chaosIntensity(event) > 0,
+  );
   
   // Check database replication lag
   for (final db in components.where((c) => _isDatabaseLike(c.type))) {
-    if (db.config.replication && db.config.replicationFactor > 1) {
-      final metrics = componentMetrics[db.id];
-      if (metrics == null) continue;
-      
+    final metrics = componentMetrics[db.id];
+    if (metrics == null) continue;
+    final config = db.config;
+    final strategy = (config.replicationStrategy ?? '').toLowerCase();
+    final replicationEnabled = config.replication && config.replicationFactor > 1;
+    final quorumRead = config.quorumRead ?? 1;
+    final quorumWrite = config.quorumWrite ?? 1;
+
+    int availableReplicas = replicationEnabled ? config.replicationFactor : 1;
+    if (config.regions.isNotEmpty) {
+      availableReplicas = min(availableReplicas, config.regions.length);
+    }
+    final partitioned = activeChaosEvents.any((event) =>
+        event.type == ChaosType.networkPartition &&
+        _chaosIntensity(event) > 0 &&
+        _affectsComponent(event, db));
+    final effectiveReplicas =
+        partitioned ? max(1, (availableReplicas * 0.6).floor()) : availableReplicas;
+
+    if (quorumRead > effectiveReplicas || quorumWrite > effectiveReplicas) {
+      issues.add(FailureEvent(
+        timestamp: DateTime.now(),
+        componentId: db.id,
+        type: FailureType.quorumNotMet,
+        message: 'Quorum (${max(quorumRead, quorumWrite)}) exceeds available replicas ($effectiveReplicas)',
+        recommendation: 'Increase replication factor or lower quorum requirements',
+        severity: 0.85,
+        userVisible: true,
+        fixType: FixType.increaseReplicas,
+      ));
+    }
+
+    if (replicationEnabled && config.replicationType != ReplicationType.none) {
       final load = metrics.cpuUsage;
-      final lagMs = (50 + load * 2000).toInt();
-      
-      if (lagMs > 500) {
+      final regionPenalty = max(0, config.regions.length - 1) * 35;
+      double baseLagMs;
+      double loadScale;
+      switch (config.replicationType) {
+        case ReplicationType.synchronous:
+          baseLagMs = 20;
+          loadScale = 900;
+          break;
+        case ReplicationType.streaming:
+          baseLagMs = 60;
+          loadScale = 1500;
+          break;
+        case ReplicationType.asynchronous:
+          baseLagMs = 120;
+          loadScale = 2300;
+          break;
+        case ReplicationType.none:
+          baseLagMs = 0;
+          loadScale = 0;
+          break;
+      }
+
+      final lagMs = (baseLagMs + (load * loadScale) + regionPenalty).toInt();
+      if (lagMs > 400) {
         issues.add(FailureEvent(
           timestamp: DateTime.now(),
           componentId: db.id,
           type: FailureType.replicationLag,
           message: 'Replication lag ${lagMs}ms - users may see stale data',
           recommendation: 'Use read-your-writes consistency or strong reads',
-          severity: (lagMs / 2000).clamp(0.3, 0.7),
+          severity: (lagMs / 2200).clamp(0.3, 0.8),
           userVisible: true,
           fixType: FixType.increaseReplicas,
         ));
       }
+
+      if (config.replicationType != ReplicationType.synchronous && lagMs > 700) {
+        issues.add(FailureEvent(
+          timestamp: DateTime.now(),
+          componentId: db.id,
+          type: FailureType.staleRead,
+          message: 'High replication lag causing stale reads',
+          recommendation: 'Route critical reads to primary or enable session consistency',
+          severity: 0.6,
+          userVisible: true,
+        ));
+      }
+
+      if (config.replicationType == ReplicationType.asynchronous &&
+          metrics.currentRps > 500 &&
+          random.nextDouble() < 0.03) {
+        issues.add(FailureEvent(
+          timestamp: DateTime.now(),
+          componentId: db.id,
+          type: FailureType.readAfterWriteFailure,
+          message: 'Read-after-write not guaranteed under async replication',
+          recommendation: 'Use read-your-writes consistency or synchronous replication',
+          severity: 0.7,
+          userVisible: true,
+        ));
+      }
     }
-    
-    // Check for lost updates
-    final metrics = componentMetrics[db.id];
-    if (metrics != null && metrics.currentRps > 100) {
-      final hasQuorum = db.config.quorumWrite != null && db.config.quorumWrite! > 1;
-      if (!hasQuorum && random.nextDouble() < 0.02) {
+
+    // Check for lost updates (leaderless without quorum)
+    if (metrics.currentRps > 100) {
+      final hasQuorum = config.quorumWrite != null && config.quorumWrite! > 1;
+      final isLeaderless = strategy.contains('leaderless');
+      if ((!hasQuorum && isLeaderless) && random.nextDouble() < 0.03) {
         issues.add(FailureEvent(
           timestamp: DateTime.now(),
           componentId: db.id,
           type: FailureType.lostUpdate,
-          message: 'Concurrent write conflict detected',
-          recommendation: 'Use optimistic locking or quorum writes',
+          message: 'Leaderless writes without quorum can lose updates',
+          recommendation: 'Enable quorum writes or add conflict resolution',
           severity: 0.8,
           userVisible: true,
         ));
       }
+    }
+
+    if (hasPartition &&
+        replicationEnabled &&
+        (strategy.contains('multi') || strategy.contains('leaderless'))) {
+      issues.add(FailureEvent(
+        timestamp: DateTime.now(),
+        componentId: db.id,
+        type: FailureType.networkPartition,
+        message: 'Split-brain risk under network partition with multi-writer replication',
+        recommendation: 'Use quorum writes, leader election, or conflict resolution',
+        severity: 0.9,
+        userVisible: true,
+      ));
     }
   }
   
@@ -2553,40 +2973,75 @@ List<FailureEvent> _buildChaosFailures(
   final failures = <FailureEvent>[];
 
   for (final event in activeChaosEvents) {
-    if (event.type != ChaosType.networkPartition) continue;
-    if (_chaosIntensity(event) <= 0) continue;
+    final intensity = _chaosIntensity(event);
+    if (intensity <= 0) continue;
 
-    final affected = components
-        .where((c) => _affectsComponent(event, c))
-        .map((c) => c.id)
-        .toList();
+    if (event.type == ChaosType.networkPartition ||
+        event.type == ChaosType.networkLatency) {
+      final affectedComponents = components
+          .where((c) => _affectsComponent(event, c))
+          .where((c) =>
+              c.type != ComponentType.text &&
+              c.type != ComponentType.rectangle &&
+              c.type != ComponentType.circle &&
+              c.type != ComponentType.diamond &&
+              c.type != ComponentType.arrow &&
+              c.type != ComponentType.line)
+          .toList();
 
-    if (affected.isEmpty) continue;
+      if (affectedComponents.isEmpty) continue;
 
-    final targetId = _eventTargetId(event);
-    final region = _eventRegion(event);
-    String scope = 'network partition';
-    if (targetId != null) {
-      final targetName = components
-          .firstWhere((c) => c.id == targetId, orElse: () => components.first)
-          .type
-          .displayName;
-      scope = '$targetName isolated';
-    } else if (region != null) {
-      scope = '$region isolated';
+      final affectedIds = affectedComponents.map((c) => c.id).toList();
+      final targetId = _eventTargetId(event);
+      final region = _eventRegion(event);
+      String scope = 'network';
+      if (targetId != null) {
+        final targetName = components
+            .firstWhere((c) => c.id == targetId, orElse: () => components.first)
+            .type
+            .displayName;
+        scope = '$targetName';
+      } else if (region != null) {
+        scope = region;
+      }
+
+      if (event.type == ChaosType.networkPartition) {
+        for (final component in affectedComponents) {
+          failures.add(FailureEvent(
+            timestamp: DateTime.now(),
+            componentId: component.id,
+            type: FailureType.networkPartition,
+            message: 'Network partition: $scope isolated',
+            recommendation: 'Enable multi-region failover, retries, and circuit breakers',
+            severity: 0.9,
+            affectedComponents: affectedIds,
+            expectedRecoveryTime: event.duration,
+            userVisible: true,
+          ));
+        }
+      } else if (event.type == ChaosType.networkLatency) {
+        final latencyMs =
+            (event.parameters['latencyMs'] as num?)?.toDouble() ?? 300.0;
+        final addedMs = (latencyMs * intensity).round();
+        if (addedMs <= 0) continue;
+        final severity = (0.4 + (addedMs / 1000.0)).clamp(0.4, 0.9);
+
+        for (final component in affectedComponents) {
+          failures.add(FailureEvent(
+            timestamp: DateTime.now(),
+            componentId: component.id,
+            type: FailureType.latencyBreach,
+            message: 'Network lag +${addedMs}ms (${scope})',
+            recommendation:
+                'Co-locate services, reduce cross-region calls, add caching/edge, and tune timeouts',
+            severity: severity,
+            affectedComponents: affectedIds,
+            expectedRecoveryTime: event.duration,
+            userVisible: true,
+          ));
+        }
+      }
     }
-
-    failures.add(FailureEvent(
-      timestamp: DateTime.now(),
-      componentId: 'infrastructure',
-      type: FailureType.networkPartition,
-      message: 'Network partition: $scope',
-      recommendation: 'Enable multi-region failover and circuit breakers',
-      severity: 0.9,
-      affectedComponents: affected,
-      expectedRecoveryTime: event.duration,
-      userVisible: true,
-    ));
   }
 
   return failures;

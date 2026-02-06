@@ -202,8 +202,8 @@ class SupabaseService {
     }
   }
 
-  /// Publish a design
-  Future<void> publishDesign({
+  /// Publish a design. Returns the design id.
+  Future<String> publishDesign({
     required String title,
     required String description,
     required Map<String, dynamic> canvasData,
@@ -228,12 +228,93 @@ class SupabaseService {
     try {
       if (designId != null) {
         await client.from('designs').update(data).eq('id', designId);
+        return designId;
       } else {
-        await client.from('designs').insert(data);
+        final response = await client.from('designs').insert(data).select('id').single();
+        return (response['id'] as String);
       }
     } catch (e) {
       debugPrint('Error publishing design: $e');
       rethrow;
     }
+  }
+
+  /// Save a private design under the current user; returns id
+  Future<String> savePrivateDesign({
+    required String title,
+    required String description,
+    required Map<String, dynamic> canvasData,
+    required String? designId,
+  }) async {
+    final user = currentUser;
+    if (user == null) throw Exception('Must be logged in to save');
+
+    // Upload blueprint to storage for durability
+    final blueprintPath = await _uploadBlueprint(user.id, title, canvasData);
+
+    final data = {
+      'user_id': user.id,
+      'title': title,
+      'description': description,
+      'canvas_data': canvasData,
+      'blueprint_path': blueprintPath,
+      'is_public': false,
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+
+    try {
+      if (designId != null) {
+        await client.from('designs').update(data).eq('id', designId).eq('user_id', user.id);
+        return designId;
+      } else {
+        final response = await client.from('designs').insert(data).select('id').single();
+        return (response['id'] as String);
+      }
+    } catch (e) {
+      debugPrint('Error saving private design: $e');
+      rethrow;
+    }
+  }
+
+  /// Fetch private designs for the current user (lightweight)
+  Future<List<Map<String, dynamic>>> fetchMyDesigns() async {
+    final user = currentUser;
+    if (user == null) throw Exception('Must be logged in');
+    try {
+      final resp = await client
+          .from('designs')
+          .select('id, title, description, updated_at, created_at, blueprint_path, canvas_data')
+          .eq('user_id', user.id)
+          .eq('is_public', false)
+          .order('updated_at', ascending: false)
+          .limit(50);
+      return List<Map<String, dynamic>>.from(resp);
+    } catch (e) {
+      debugPrint('fetchMyDesigns error: $e');
+      return [];
+    }
+  }
+
+  /// Fetch a shared design by id; returns canvas data map or null.
+  Future<Map<String, dynamic>?> fetchDesignById(String id) async {
+    try {
+      final resp = await client
+          .from('designs')
+          .select('canvas_data, blueprint_path')
+          .eq('id', id)
+          .single();
+
+      if (resp['canvas_data'] != null) {
+        return Map<String, dynamic>.from(resp['canvas_data'] as Map);
+      }
+
+      if (resp['blueprint_path'] != null) {
+        final blueprint = await downloadBlueprint(resp['blueprint_path']);
+        if (blueprint != null) return blueprint;
+      }
+    } catch (e) {
+      debugPrint('fetchDesignById error: $e');
+    }
+    return null;
   }
 }

@@ -21,6 +21,15 @@ class CommunityScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final designsAsync = ref.watch(filteredCommunityDesignsProvider);
     final isDesktop = ResponsiveLayout.isExpanded(context) || ResponsiveLayout.isMedium(context);
+    final designCount = designsAsync.maybeWhen(data: (d) => d.length, orElse: () => 0);
+    final avgComplexity = designsAsync.maybeWhen(
+      data: (d) => d.isEmpty ? 0.0 : d.map((e) => e.complexity).reduce((a, b) => a + b) / d.length,
+      orElse: () => 0.0,
+    );
+    final avgUpvotes = designsAsync.maybeWhen(
+      data: (d) => d.isEmpty ? 0.0 : d.map((e) => e.upvotes).reduce((a, b) => a + b) / d.length,
+      orElse: () => 0.0,
+    );
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -35,7 +44,7 @@ class CommunityScreen extends ConsumerWidget {
           Expanded(
             child: Column(
               children: [
-                _buildDynamicHeader(context, ref, isDesktop),
+                _buildDynamicHeader(context, ref, isDesktop, designCount, avgComplexity, avgUpvotes),
                 
                 // Mobile Category Chips
                 if (!isDesktop)
@@ -72,7 +81,7 @@ class CommunityScreen extends ConsumerWidget {
   );
 }
 
-  Widget _buildDynamicHeader(BuildContext context, WidgetRef ref, bool isDesktop) {
+  Widget _buildDynamicHeader(BuildContext context, WidgetRef ref, bool isDesktop, int designCount, double avgComplexity, double avgUpvotes) {
     return Container(
       padding: EdgeInsets.fromLTRB(
         isDesktop ? 32 : 16, 
@@ -149,6 +158,35 @@ class CommunityScreen extends ConsumerWidget {
             const SizedBox(height: 24),
             SizedBox(height: 48, child: _buildSearchField(ref)),
           ],
+          const SizedBox(height: 24),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _pillStat(Icons.grid_view_rounded, '$designCount designs'),
+              _pillStat(Icons.trending_up_rounded, 'Avg upvotes: ${avgUpvotes.toStringAsFixed(1)}'),
+              _pillStat(Icons.layers_rounded, 'Avg complexity: ${avgComplexity.toStringAsFixed(1)}/5'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _pillStat(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.border.withOpacity(0.6)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: AppTheme.primary),
+          const SizedBox(width: 8),
+          Text(label, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -203,24 +241,76 @@ class CommunityScreen extends ConsumerWidget {
       crossAxisCount = 2;
     }
 
-    return GridView.builder(
-      padding: const EdgeInsets.all(24),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: crossAxisCount,
-        crossAxisSpacing: 24,
-        mainAxisSpacing: 24,
-        childAspectRatio: isDesktop ? 0.85 : (isTablet ? 0.95 : 1.1),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+          child: Row(
+            children: [
+              _chipFilter(ref, CommunitySort.newest, 'Newest', Icons.fiber_new),
+              const SizedBox(width: 8),
+              _chipFilter(ref, CommunitySort.upvotes, 'Top Rated', Icons.favorite),
+              const SizedBox(width: 8),
+              _chipFilter(ref, CommunitySort.complexity, 'Complexity', Icons.layers),
+              const Spacer(),
+              IconButton(
+                onPressed: () => ref.invalidate(communityDesignsProvider),
+                icon: const Icon(Icons.refresh, color: AppTheme.textSecondary),
+                tooltip: 'Refresh',
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: GridView.builder(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              crossAxisSpacing: 24,
+              mainAxisSpacing: 24,
+              childAspectRatio: isDesktop ? 0.85 : (isTablet ? 0.95 : 1.1),
+            ),
+            itemCount: designs.length,
+            itemBuilder: (context, index) {
+              final design = designs[index];
+              return DesignCard(
+                design: design,
+                onTap: () => _showDesignDetails(context, design),
+                onUpvote: () => ref.read(communityDesignsProvider.notifier).upvote(design.id),
+                onSimulate: () => _simulateDesign(context, ref, design),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _chipFilter(WidgetRef ref, CommunitySort sort, String label, IconData icon) {
+    final current = ref.watch(communitySortProvider);
+    final selected = current == sort;
+    return ChoiceChip(
+      selected: selected,
+      onSelected: (_) => ref.read(communitySortProvider.notifier).state = sort,
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: selected ? Colors.white : AppTheme.textSecondary),
+          const SizedBox(width: 6),
+          Text(label),
+        ],
       ),
-      itemCount: designs.length,
-      itemBuilder: (context, index) {
-        final design = designs[index];
-        return DesignCard(
-          design: design,
-          onTap: () => _showDesignDetails(context, design),
-          onUpvote: () => ref.read(communityDesignsProvider.notifier).upvote(design.id),
-          onSimulate: () => _simulateDesign(context, ref, design),
-        );
-      },
+      labelStyle: TextStyle(
+        color: selected ? Colors.white : AppTheme.textSecondary,
+        fontWeight: FontWeight.w600,
+      ),
+      selectedColor: AppTheme.primary,
+      backgroundColor: AppTheme.surface,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: selected ? AppTheme.primary : AppTheme.border),
+      ),
     );
   }
 
@@ -574,7 +664,8 @@ class CommunityScreen extends ConsumerWidget {
         context,
         MaterialPageRoute(
           builder: (context) => GameScreen(
-            initialCommunityDesign: design.toMap(),
+            initialCommunityDesign: design.canvasData,
+            sharedDesignId: design.id,
           ),
         ),
       );

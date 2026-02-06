@@ -22,32 +22,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
-  Future<void> _handleGoogleSignIn() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    try {
-      final error = await SupabaseService().signInWithGoogle();
-      if (error == null) {
-        if (mounted) {
-          ref.read(guestModeProvider.notifier).state = false;
-          if (Navigator.of(context).canPop()) {
-            Navigator.of(context).pop(true);
-          }
-        }
-        return;
-      } else {
-        setState(() => _errorMessage = error);
-      }
-    } catch (e) {
-      setState(() => _errorMessage = e.toString());
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
   Future<void> _handleEmailAuth() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -146,7 +120,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           margin: const EdgeInsets.symmetric(horizontal: 20),
           padding: const EdgeInsets.all(32),
           decoration: BoxDecoration(
-            color: AppTheme.surface.withOpacity(0.95),
+            color: AppTheme.surface.withOpacity(0.92),
             borderRadius: BorderRadius.circular(28),
             border: Border.all(color: AppTheme.border.withOpacity(0.5)),
             boxShadow: [
@@ -220,42 +194,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.primary,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      minimumSize: const Size(double.infinity, 48),
-                    ),
-                    child: _isLoading 
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : Text(_isLogin ? 'Log In' : 'Sign Up', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                  
-                  const SizedBox(height: 16),
-                  const Row(children: [Expanded(child: Divider(color: Colors.white24)), Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text('OR', style: TextStyle(color: Colors.white24, fontSize: 12))), Expanded(child: Divider(color: Colors.white24))]),
-                  const SizedBox(height: 16),
-
-                  OutlinedButton(
-                    onPressed: _isLoading ? null : _handleGoogleSignIn,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      side: BorderSide(color: Colors.white.withOpacity(0.1)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      minimumSize: const Size(double.infinity, 48),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Image.network(
-                          'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1200px-Google_%22G%22_logo.svg.png',
-                          height: 20,
-                          errorBuilder: (context, error, stackTrace) => const Icon(Icons.g_mobiledata, size: 24, color: Colors.white),
-                        ),
-                        const SizedBox(width: 12),
-                        const Text('Continue with Google'),
-                      ],
-                    ),
-                  ),
-
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          minimumSize: const Size(double.infinity, 48),
+        ),
+        child: _isLoading 
+          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+          : Text(_isLogin ? 'Log In' : 'Sign Up', style: const TextStyle(fontWeight: FontWeight.bold)),
+      ),
+      
                   const SizedBox(height: 24),
                   
                   GestureDetector(
@@ -278,20 +225,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const Divider(color: Colors.white10),
                   const SizedBox(height: 16),
 
-                  TextButton(
-                    onPressed: _isLoading ? null : () {
-                      ref.read(guestModeProvider.notifier).state = true;
-                    },
-                    child: Text(
-                      'CONTINUE AS GUEST',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.5),
-                        fontSize: 12,
-                        letterSpacing: 1.2,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
+                  // Guest option removed per requirements
                 ],
               ),
             ),

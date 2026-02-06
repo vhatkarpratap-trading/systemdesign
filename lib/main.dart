@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'theme/app_theme.dart';
 import 'screens/game_screen.dart';
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,13 +44,34 @@ class SystemDesignSimulatorApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    Map<String, dynamic>? initialDesign;
+    String? initialDesignId;
+    if (kIsWeb) {
+      final encoded = Uri.base.queryParameters['design'];
+      if (encoded != null && encoded.isNotEmpty) {
+        try {
+          final jsonStr = utf8.decode(base64Url.decode(encoded));
+          initialDesign = jsonDecode(jsonStr) as Map<String, dynamic>;
+        } catch (_) {
+          initialDesign = null;
+        }
+      }
+      final idParam = Uri.base.queryParameters['designId'];
+      if (idParam != null && idParam.isNotEmpty) {
+        initialDesignId = idParam;
+      }
+    }
+
     return MaterialApp(
       title: 'System Design Simulator',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.dark,
-      home: const GameScreen(),
+      home: GameScreen(
+        initialCommunityDesign: initialDesign,
+        sharedDesignId: initialDesignId,
+      ),
     );
   }
 }
