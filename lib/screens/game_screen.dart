@@ -174,7 +174,11 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           event: PostgresChangeEvent.update,
           schema: 'public',
           table: 'designs',
-          filter: PostgresChangeFilter.eq('user_id', user.id),
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: user.id,
+          ),
           callback: (payload) {
             final newStatus = payload.newRecord['status'] as String?;
             final oldStatus = payload.oldRecord?['status'] as String?;
