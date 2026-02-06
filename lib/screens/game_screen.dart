@@ -33,6 +33,7 @@ import '../widgets/simulation/chaos_controls_panel.dart';
 import '../widgets/simulation/disaster_toolkit.dart';
 import 'dart:ui';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:async';
 
 class GameScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic>? initialCommunityDesign;
@@ -66,6 +67,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   RealtimeChannel? _statusChannel;
   String? _statusListeningUserId;
   ProviderSubscription<User?>? _authListener;
+  Timer? _statusPollTimer;
+  final Map<String, String> _statusCache = {};
 
   @override
   void initState() {
@@ -74,9 +77,11 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     _authListener = ref.listenManual<User?>(currentUserProvider, (prev, next) {
       if (next != null && next.id != _statusListeningUserId) {
         _setupDesignStatusListener(next);
+        _startStatusPolling(next);
       }
       if (next == null) {
         _disposeStatusListener();
+        _stopStatusPolling();
       }
     });
     
@@ -163,6 +168,33 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     _trafficInitialized = true;
   }
 
+  void _startStatusPolling(User user) {
+    _stopStatusPolling();
+    _statusPollTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+      try {
+        final designs = await SupabaseService().fetchMyDesigns();
+        for (final d in designs) {
+          final id = d['id'] as String?;
+          final status = d['status'] as String?;
+          if (id == null || status == null) continue;
+          final prev = _statusCache[id];
+          if (prev != null && prev != status) {
+            _showStatusSnack(status, d['rejection_reason'] as String?);
+          }
+          _statusCache[id] = status;
+        }
+      } catch (_) {
+        // ignore poll errors
+      }
+    });
+  }
+
+  void _stopStatusPolling() {
+    _statusPollTimer?.cancel();
+    _statusPollTimer = null;
+    _statusCache.clear();
+  }
+
   void _setupDesignStatusListener(User user) {
     if (_statusChannel != null && _statusListeningUserId == user.id) return;
     _disposeStatusListener();
@@ -185,33 +217,37 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             final oldStatus = payload.oldRecord?['status'] as String?;
             if (newStatus == null || newStatus == oldStatus) return;
             final reason = payload.newRecord['rejection_reason'] as String?;
-            if (!mounted) return;
-            Color bg;
-            String text;
-            switch (newStatus) {
-              case 'approved':
-                bg = AppTheme.success;
-                text = 'Your design was approved and published!';
-                break;
-              case 'rejected':
-                bg = AppTheme.error;
-                text = reason != null && reason.isNotEmpty
-                    ? 'Design rejected: $reason'
-                    : 'Design rejected by moderator.';
-                break;
-              default:
-                return;
-            }
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(text),
-                backgroundColor: bg.withValues(alpha: 0.9),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
+            _showStatusSnack(newStatus, reason);
           },
         )
         .subscribe();
+  }
+
+  void _showStatusSnack(String status, String? reason) {
+    if (!mounted) return;
+    Color bg;
+    String text;
+    switch (status) {
+      case 'approved':
+        bg = AppTheme.success;
+        text = 'Your design was approved and published!';
+        break;
+      case 'rejected':
+        bg = AppTheme.error;
+        text = (reason != null && reason.isNotEmpty)
+            ? 'Design rejected: $reason'
+            : 'Design rejected by moderator.';
+        break;
+      default:
+        return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(text),
+        backgroundColor: bg.withValues(alpha: 0.9),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   void _disposeStatusListener() {
@@ -751,6 +787,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   void dispose() {
     _disposeStatusListener();
     _authListener?.close();
+    _stopStatusPolling();
     super.dispose();
   }
 }

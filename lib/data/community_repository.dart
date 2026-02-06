@@ -6,9 +6,9 @@ import '../services/supabase_service.dart';
 class CommunityRepository {
   final SupabaseService _supabase = SupabaseService();
   
-  Future<List<CommunityDesign>> loadDesigns() async {
+  Future<List<CommunityDesign>> loadDesigns({bool includePendingForAdmin = false}) async {
     try {
-      final data = await _supabase.fetchCommunityDesigns();
+      final data = await _supabase.fetchCommunityDesigns(includePendingForAdmin: includePendingForAdmin);
       
       return data.map((json) {
         // Map Supabase JSON to CommunityDesign
