@@ -122,6 +122,7 @@ class _PublishDesignDialogState extends ConsumerState<PublishDesignDialog> {
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         title: _titleController.text,
         description: _descriptionController.text,
+        blogMarkdown: _descriptionController.text,
         author: 'You', // In a real app, this would be the logged-in user's name
         canvasData: canvasData,
         category: _category,

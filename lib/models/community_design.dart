@@ -4,6 +4,7 @@ class CommunityDesign {
   final String id;
   final String title;
   final String description;
+  final String blogMarkdown;
   final String author;
   final Map<String, dynamic> canvasData; // Changed from String blueprintJson
   final String? blueprintPath; // Added for storage reference
@@ -13,11 +14,14 @@ class CommunityDesign {
   final int complexity; // 1-5
   final double efficiency; // 0.0-1.0
   final List<DesignComment> comments;
+  final String status;
+  final String? rejectionReason;
 
   CommunityDesign({
     required this.id,
     required this.title,
     required this.description,
+    required this.blogMarkdown,
     required this.author,
     required this.canvasData,
     this.blueprintPath,
@@ -27,12 +31,15 @@ class CommunityDesign {
     this.complexity = 3,
     this.efficiency = 0.8,
     this.comments = const [],
+    this.status = 'approved',
+    this.rejectionReason,
   });
 
   Map<String, dynamic> toJson() => {
     'id': id,
     'title': title,
     'description': description,
+    'blog_markdown': blogMarkdown,
     'author': author,
     'canvas_data': canvasData,
     'blueprint_path': blueprintPath,
@@ -42,6 +49,8 @@ class CommunityDesign {
     'efficiency': efficiency,
     'createdAt': createdAt.toIso8601String(),
     'comments': comments.map((c) => c.toJson()).toList(),
+    'status': status,
+    'rejection_reason': rejectionReason,
   };
 
   Map<String, dynamic> toMap() => toJson();
@@ -61,6 +70,7 @@ class CommunityDesign {
       id: json['id'],
       title: json['title'],
       description: json['description'] ?? '',
+      blogMarkdown: json['blog_markdown'] ?? json['description'] ?? '',
       author: json['profiles']?['display_name'] ?? 'Unknown Architect',
       canvasData: data,
       blueprintPath: json['blueprint_path'],
@@ -72,20 +82,26 @@ class CommunityDesign {
       comments: (json['comments'] as List<dynamic>?)
           ?.map((e) => DesignComment.fromJson(e as Map<String, dynamic>))
           .toList() ?? [],
+      status: json['status'] ?? 'approved',
+      rejectionReason: json['rejection_reason'],
     );
   }
 
   CommunityDesign copyWith({
     String? title,
     String? description,
+    String? blogMarkdown,
     int? upvotes,
     List<DesignComment>? comments,
     Map<String, dynamic>? canvasData,
+    String? status,
+    String? rejectionReason,
   }) {
     return CommunityDesign(
       id: id,
       title: title ?? this.title,
       description: description ?? this.description,
+      blogMarkdown: blogMarkdown ?? this.blogMarkdown,
       author: author,
       canvasData: canvasData ?? this.canvasData,
       blueprintPath: blueprintPath,
@@ -95,6 +111,8 @@ class CommunityDesign {
       efficiency: this.efficiency,
       createdAt: createdAt,
       comments: comments ?? this.comments,
+      status: status ?? this.status,
+      rejectionReason: rejectionReason ?? this.rejectionReason,
     );
   }
 }

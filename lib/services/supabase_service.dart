@@ -9,6 +9,8 @@ class SupabaseService {
   factory SupabaseService() => _instance;
   SupabaseService._internal();
 
+  static const String adminEmail = 'pratapvhatkar1989@gmail.com';
+
   SupabaseClient get client => Supabase.instance.client;
 
   bool get _isSafe => kDebugMode || !kReleaseMode; // Simple proxy for potential test environment if we can't check init
@@ -41,6 +43,11 @@ class SupabaseService {
   User? get currentUser {
     if (!isInitialized) return null;
     return client.auth.currentUser;
+  }
+
+  bool get isAdmin {
+    final email = currentUser?.email?.toLowerCase();
+    return email == adminEmail;
   }
 
   /// Sign in with Google
@@ -163,14 +170,21 @@ class SupabaseService {
   }
 
   /// Fetch recently published community designs
-  Future<List<Map<String, dynamic>>> fetchCommunityDesigns() async {
+  Future<List<Map<String, dynamic>>> fetchCommunityDesigns({bool includePendingForAdmin = false}) async {
     try {
-      final response = await client
+      var query = client
           .from('designs')
           .select('*, profiles(display_name, avatar_url)') // Standard left join
-          .eq('is_public', true) 
           .order('created_at', ascending: false)
           .limit(50);
+
+      if (includePendingForAdmin && isAdmin) {
+        query = query.in_('status', ['pending', 'approved', 'rejected']);
+      } else {
+        query = query.eq('status', 'approved').eq('is_public', true);
+      }
+      
+      final response = await query;
       
       final List<Map<String, dynamic>> results = [];
       
@@ -206,6 +220,7 @@ class SupabaseService {
   Future<String> publishDesign({
     required String title,
     required String description,
+    String? blogMarkdown,
     required Map<String, dynamic> canvasData,
     required String? designId,
   }) async {
@@ -219,9 +234,11 @@ class SupabaseService {
       'user_id': user.id,
       'title': title,
       'description': description,
+      'blog_markdown': blogMarkdown ?? description,
       'canvas_data': canvasData, // Keep for backup/search if needed
       'blueprint_path': blueprintPath,
-      'is_public': true,
+      'is_public': false, // only goes public after approval
+      'status': 'pending',
       'updated_at': DateTime.now().toIso8601String(),
     };
 
@@ -283,9 +300,8 @@ class SupabaseService {
     try {
       final resp = await client
           .from('designs')
-          .select('id, title, description, updated_at, created_at, blueprint_path, canvas_data')
+          .select('id, title, description, blog_markdown, status, rejection_reason, updated_at, created_at, blueprint_path, canvas_data, is_public')
           .eq('user_id', user.id)
-          .eq('is_public', false)
           .order('updated_at', ascending: false)
           .limit(50);
       return List<Map<String, dynamic>>.from(resp);
@@ -293,6 +309,48 @@ class SupabaseService {
       debugPrint('fetchMyDesigns error: $e');
       return [];
     }
+  }
+
+  /// Fetch pending designs (admin only)
+  Future<List<Map<String, dynamic>>> fetchPendingDesigns() async {
+    if (!isAdmin) throw Exception('Admin only');
+    try {
+      final resp = await client
+          .from('designs')
+          .select('*, profiles(display_name, avatar_url)')
+          .eq('status', 'pending')
+          .order('created_at', ascending: false);
+      return List<Map<String, dynamic>>.from(resp);
+    } catch (e) {
+      debugPrint('fetchPendingDesigns error: $e');
+      return [];
+    }
+  }
+
+  Future<void> approveDesign(String id) async {
+    if (!isAdmin) throw Exception('Admin only');
+    await client.from('designs').update({
+      'status': 'approved',
+      'is_public': true,
+      'rejection_reason': null,
+      'approved_at': DateTime.now().toIso8601String(),
+    }).eq('id', id);
+  }
+
+  Future<void> rejectDesign(String id, {String? reason}) async {
+    if (!isAdmin) throw Exception('Admin only');
+    await client.from('designs').update({
+      'status': 'rejected',
+      'is_public': false,
+      'rejection_reason': reason ?? 'Not approved by moderator',
+    }).eq('id', id);
+  }
+
+  Future<void> deleteDesign(String id) async {
+    final user = currentUser;
+    if (user == null) throw Exception('Must be logged in');
+    // RLS will enforce ownership or admin privileges
+    await client.from('designs').delete().eq('id', id);
   }
 
   /// Fetch a shared design by id; returns canvas data map or null.

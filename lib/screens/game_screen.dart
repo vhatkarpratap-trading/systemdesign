@@ -269,9 +269,17 @@ class _GameScreenState extends ConsumerState<GameScreen> {
               final item = designs[index];
               final title = item['title'] ?? 'Untitled';
               final updated = item['updated_at'] ?? item['created_at'] ?? '';
+              final status = (item['status'] ?? 'pending').toString();
+              final rejection = item['rejection_reason'];
+              final statusLabel = rejection != null && status == 'rejected'
+                  ? 'Status: $status • $rejection'
+                  : 'Status: $status';
               return ListTile(
                 title: Text(title, style: const TextStyle(color: AppTheme.textPrimary)),
-                subtitle: Text(updated.toString(), style: const TextStyle(color: AppTheme.textMuted)),
+                subtitle: Text(
+                  '$updated\n$statusLabel',
+                  style: const TextStyle(color: AppTheme.textMuted),
+                ),
                 onTap: () async {
                   Navigator.pop(context);
                   final data = item['canvas_data'] as Map<String, dynamic>?;

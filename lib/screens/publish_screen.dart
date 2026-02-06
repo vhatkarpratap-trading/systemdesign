@@ -53,6 +53,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
       await SupabaseService().publishDesign(
         title: title,
         description: description,
+        blogMarkdown: description,
         canvasData: widget.canvasData,
         designId: null, // Always new for now
       );
@@ -60,8 +61,8 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Design published successfully!'),
-            backgroundColor: AppTheme.success,
+            content: Text('Submitted for review. We will publish once approved.'),
+            backgroundColor: AppTheme.warning,
           ),
         );
         Navigator.pop(context); // Return to GameScreen
@@ -127,7 +128,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Share with the Community',
+                              'Submit for Review',
                               style: GoogleFonts.outfit(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -136,7 +137,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Your design will be visible to other architects. Make sure to describe your solution well!',
+                              'An admin will review and approve before it goes live in the library. Add a detailed blog to speed up approval.',
                               style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
                             ),
                           ],

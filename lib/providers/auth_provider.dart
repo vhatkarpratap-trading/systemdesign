@@ -26,3 +26,9 @@ final profileProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
   
   return SupabaseService().getCurrentProfile();
 });
+
+final isAdminProvider = Provider<bool>((ref) {
+  final user = ref.watch(currentUserProvider);
+  final email = user?.email?.toLowerCase();
+  return email == SupabaseService.adminEmail;
+});

@@ -16,6 +16,9 @@ class CommunityRepository {
           id: json['id'],
           title: json['title'],
           description: json['description'] ?? '',
+          blogMarkdown: json['blog_markdown'] ?? json['description'] ?? '',
+          status: json['status'] ?? 'approved',
+          rejectionReason: json['rejection_reason'],
           author: json['profiles']?['display_name'] ?? 'Anonymous',
           canvasData: json['canvas_data'] is String ? jsonDecode(json['canvas_data']) : json['canvas_data'],
           category: 'General', // TODO: Add category to DB
@@ -29,12 +32,22 @@ class CommunityRepository {
     }
   }
 
+  Future<List<CommunityDesign>> loadPendingDesigns() async {
+    try {
+      final data = await _supabase.fetchPendingDesigns();
+      return data.map((json) => CommunityDesign.fromJson(json)).toList();
+    } catch (e) {
+      return [];
+    }
+  }
+
   // Publish is now handled directly by the UI calling SupabaseService
   // But we can keep this for compatibility if needed, or remove it.
   Future<void> publishDesign(CommunityDesign design) async {
     await _supabase.publishDesign(
       title: design.title,
       description: design.description,
+      blogMarkdown: design.blogMarkdown,
       canvasData: design.canvasData,
       designId: null, // Always new for now, or handle updates if design.id exists in DB
     );
@@ -54,6 +67,7 @@ class CommunityRepository {
         id: 'feat_1',
         title: 'Scalable Social Feed',
         description: 'A fan-out on write architecture for real-time social updates with Redis caching.',
+        blogMarkdown: 'A fan-out on write architecture for real-time social updates with Redis caching.',
         author: 'SystemMaster',
         category: 'Social Media',
         upvotes: 156,
@@ -81,6 +95,7 @@ class CommunityRepository {
         id: 'feat_2',
         title: 'High-Availability E-Commerce',
         description: 'Multi-region deployment with SQL read replicas and global CDN.',
+        blogMarkdown: 'Multi-region deployment with SQL read replicas and global CDN.',
         author: 'CloudArchitect',
         category: 'E-Commerce',
         upvotes: 89,
@@ -106,6 +121,7 @@ class CommunityRepository {
         id: 'feat_3',
         title: 'Global Microservices',
         description: 'Complex architecture with multiple services, API gateway, and cross-service communication.',
+        blogMarkdown: 'Complex architecture with multiple services, API gateway, and cross-service communication.',
         author: 'UberEngineer',
         category: 'Backend',
         upvotes: 212,
@@ -145,6 +161,7 @@ class CommunityRepository {
         id: 'feat_4',
         title: 'Real-time Analytics Pipeline',
         description: 'Streaming architecture for processing millions of events per second with persistent storage.',
+        blogMarkdown: 'Streaming architecture for processing millions of events per second with persistent storage.',
         author: 'DataWizard',
         category: 'Data Engineering',
         upvotes: 145,

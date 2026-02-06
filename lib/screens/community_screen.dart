@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../providers/community_provider.dart';
 import '../providers/game_provider.dart';
+import '../providers/auth_provider.dart';
 import '../services/supabase_service.dart';
 import '../models/community_design.dart';
 import '../models/problem.dart';
@@ -20,6 +21,8 @@ class CommunityScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final designsAsync = ref.watch(filteredCommunityDesignsProvider);
+    final pendingAsync = ref.watch(pendingDesignsProvider);
+    final isAdmin = ref.watch(isAdminProvider);
     final isDesktop = ResponsiveLayout.isExpanded(context) || ResponsiveLayout.isMedium(context);
     final designCount = designsAsync.maybeWhen(data: (d) => d.length, orElse: () => 0);
     final avgComplexity = designsAsync.maybeWhen(
@@ -59,15 +62,17 @@ class CommunityScreen extends ConsumerWidget {
                         _buildCategoryChip('FinTech', false),
                         _buildCategoryChip('Real-time', false),
                       ],
-                    ),
                   ),
-                
+                ),
+                if (isAdmin)
+                  _PendingStrip(pendingAsync: pendingAsync, onTapDesign: (design) => _showDesignDetails(context, ref, design), onApprove: (id) => _moderateDesign(context, ref, id, approve: true), onReject: (id) => _promptReject(context, ref, id)),
+
                 // Design Feed
                 Expanded(
                   child: designsAsync.when(
                     data: (designs) => designs.isEmpty 
                       ? _buildEmptyState()
-                      : _buildDesignGrid(context, ref, designs),
+                      : _buildDesignGrid(context, ref, designs, isAdmin),
                     loading: () => const Center(child: CircularProgressIndicator()),
                     error: (err, _) => Center(child: Text('Error loading community: $err')),
                   ),
@@ -275,7 +280,7 @@ class CommunityScreen extends ConsumerWidget {
               final design = designs[index];
               return DesignCard(
                 design: design,
-                onTap: () => _showDesignDetails(context, design),
+                onTap: () => _showDesignDetails(context, ref, design),
                 onUpvote: () => ref.read(communityDesignsProvider.notifier).upvote(design.id),
                 onSimulate: () => _simulateDesign(context, ref, design),
               );
@@ -364,7 +369,8 @@ class CommunityScreen extends ConsumerWidget {
     );
   }
 
-  void _showDesignDetails(BuildContext context, CommunityDesign design) {
+  void _showDesignDetails(BuildContext context, WidgetRef ref, CommunityDesign design) {
+    final isAdmin = ref.read(isAdminProvider);
     showModalBottomSheet(
       context: context,
       backgroundColor: AppTheme.background,
@@ -414,6 +420,8 @@ class CommunityScreen extends ConsumerWidget {
                           'Conceptualized by ${design.author}',
                           style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w600, fontSize: 14),
                         ),
+                        const SizedBox(height: 8),
+                        _StatusBadge(status: design.status, rejectionReason: design.rejectionReason),
                       ],
                     ),
                   ),
@@ -429,6 +437,14 @@ class CommunityScreen extends ConsumerWidget {
               Text(
                 design.description,
                 style: TextStyle(color: AppTheme.textSecondary, fontSize: 16, height: 1.6),
+              ),
+
+              const SizedBox(height: 28),
+              _buildSectionTitle('Blog / Deep Dive'),
+              const SizedBox(height: 12),
+              Text(
+                design.blogMarkdown,
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 15, height: 1.6),
               ),
               
               const SizedBox(height: 40),
@@ -464,11 +480,72 @@ class CommunityScreen extends ConsumerWidget {
               const SizedBox(height: 32),
               _CommentArea(designId: design.id),
               const SizedBox(height: 40),
+              if (isAdmin)
+                _AdminActions(
+                  design: design,
+                  onApprove: () => _moderateDesign(context, ref, design.id, approve: true),
+                  onReject: () => _promptReject(context, ref, design.id),
+                  onDelete: () => _deleteDesign(context, ref, design.id),
+                ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  void _moderateDesign(BuildContext context, WidgetRef ref, String id, {required bool approve, String? reason}) async {
+    final service = SupabaseService();
+    try {
+      if (approve) {
+        await service.approveDesign(id);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Design approved and published')));
+      } else {
+        await service.rejectDesign(id, reason: reason);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Design rejected and author notified')));
+      }
+      ref.invalidate(communityDesignsProvider);
+      ref.invalidate(pendingDesignsProvider);
+      if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Action failed: $e')));
+    }
+  }
+
+  void _promptReject(BuildContext context, WidgetRef ref, String id) async {
+    final controller = TextEditingController(text: 'Needs more detail on scaling and failure modes.');
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reject design'),
+        content: TextField(
+          controller: controller,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            hintText: 'Why is this rejected?',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('Reject')),
+        ],
+      ),
+    );
+    if (reason != null && reason.isNotEmpty) {
+      _moderateDesign(context, ref, id, approve: false, reason: reason);
+    }
+  }
+
+  void _deleteDesign(BuildContext context, WidgetRef ref, String id) async {
+    try {
+      await SupabaseService().deleteDesign(id);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Design deleted')));
+      ref.invalidate(communityDesignsProvider);
+      ref.invalidate(pendingDesignsProvider);
+      if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+    }
   }
 
   Widget _buildCategoryBadge(String label) {
@@ -672,6 +749,212 @@ class CommunityScreen extends ConsumerWidget {
     } catch (e) {
        debugPrint('Error loading design: $e');
     }
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  final String status;
+  final String? rejectionReason;
+  const _StatusBadge({required this.status, this.rejectionReason});
+
+  @override
+  Widget build(BuildContext context) {
+    Color color;
+    String label;
+    switch (status) {
+      case 'pending':
+        color = AppTheme.warning;
+        label = 'Pending review';
+        break;
+      case 'rejected':
+        color = AppTheme.error;
+        label = 'Rejected';
+        break;
+      default:
+        color = AppTheme.success;
+        label = 'Approved';
+    }
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: color.withValues(alpha: 0.4)),
+          ),
+          child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12)),
+        ),
+        if (status == 'rejected' && rejectionReason != null) ...[
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              rejectionReason!,
+              style: const TextStyle(color: AppTheme.textMuted, fontSize: 11),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _AdminActions extends StatelessWidget {
+  final CommunityDesign design;
+  final VoidCallback onApprove;
+  final VoidCallback onReject;
+  final VoidCallback onDelete;
+
+  const _AdminActions({
+    required this.design,
+    required this.onApprove,
+    required this.onReject,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Divider(height: 32),
+        Row(
+          children: [
+            const Icon(Icons.admin_panel_settings, color: AppTheme.textMuted, size: 18),
+            const SizedBox(width: 8),
+            const Text('Admin moderation', style: TextStyle(color: AppTheme.textMuted, fontWeight: FontWeight.w700)),
+            const Spacer(),
+            Text(design.status.toUpperCase(), style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            ElevatedButton.icon(
+              onPressed: design.status == 'approved' ? null : onApprove,
+              icon: const Icon(Icons.check),
+              label: const Text('Approve & Publish'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.success,
+                foregroundColor: Colors.white,
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: onReject,
+              icon: const Icon(Icons.close, color: AppTheme.error),
+              label: const Text('Reject'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.error,
+                side: const BorderSide(color: AppTheme.error),
+              ),
+            ),
+            TextButton.icon(
+              onPressed: onDelete,
+              icon: const Icon(Icons.delete_outline, color: AppTheme.error),
+              label: const Text('Delete', style: TextStyle(color: AppTheme.error)),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _PendingStrip extends StatelessWidget {
+  final AsyncValue<List<CommunityDesign>> pendingAsync;
+  final void Function(CommunityDesign) onTapDesign;
+  final void Function(String) onApprove;
+  final void Function(String) onReject;
+
+  const _PendingStrip({
+    required this.pendingAsync,
+    required this.onTapDesign,
+    required this.onApprove,
+    required this.onReject,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return pendingAsync.when(
+      data: (designs) {
+        if (designs.isEmpty) return const SizedBox.shrink();
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppTheme.warning.withValues(alpha: 0.08),
+            border: Border(
+              bottom: BorderSide(color: AppTheme.warning.withValues(alpha: 0.3)),
+              top: BorderSide(color: AppTheme.warning.withValues(alpha: 0.3)),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.pending_actions, color: AppTheme.warning),
+                  const SizedBox(width: 8),
+                  Text('Pending approvals (${designs.length})', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w700)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 120,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: designs.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 12),
+                  itemBuilder: (context, index) {
+                    final d = designs[index];
+                    return Container(
+                      width: 260,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppTheme.surface,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.border),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(d.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 4),
+                          Text(d.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+                          const Spacer(),
+                          Row(
+                            children: [
+                              TextButton(onPressed: () => onTapDesign(d), child: const Text('View')),
+                              const Spacer(),
+                              IconButton(
+                                icon: const Icon(Icons.check_circle, color: AppTheme.success),
+                                tooltip: 'Approve',
+                                onPressed: () => onApprove(d.id),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.cancel, color: AppTheme.error),
+                                tooltip: 'Reject',
+                                onPressed: () => onReject(d.id),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+      loading: () => const LinearProgressIndicator(minHeight: 2),
+      error: (e, _) => const SizedBox.shrink(),
+    );
   }
 }
 

@@ -30,7 +30,12 @@ create table public.designs (
   user_id uuid references public.profiles(id) not null,
   title text not null,
   description text,
+  blog_markdown text,
   canvas_data jsonb not null,
+  status text default 'pending', -- pending | approved | rejected
+  rejection_reason text,
+  approved_at timestamp with time zone,
+  updated_at timestamp with time zone default timezone('utc'::text, now()),
   is_public boolean default true,
   upvotes int default 0,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
@@ -43,6 +48,14 @@ create policy "Public designs are viewable by everyone."
   on designs for select
   using ( is_public = true );
 
+create policy "Users can view their own designs."
+  on designs for select
+  using ( auth.uid() = user_id );
+
+create policy "Admin can view all designs."
+  on designs for select
+  using ( auth.jwt() ->> 'email' = 'pratapvhatkar1989@gmail.com' );
+
 create policy "Users can insert their own designs."
   on designs for insert
   with check ( auth.uid() = user_id );
@@ -50,6 +63,18 @@ create policy "Users can insert their own designs."
 create policy "Users can update their own designs."
   on designs for update
   using ( auth.uid() = user_id );
+
+create policy "Admin can update any design."
+  on designs for update
+  using ( auth.jwt() ->> 'email' = 'pratapvhatkar1989@gmail.com' );
+
+create policy "Users can delete their own designs."
+  on designs for delete
+  using ( auth.uid() = user_id );
+
+create policy "Admin can delete any design."
+  on designs for delete
+  using ( auth.jwt() ->> 'email' = 'pratapvhatkar1989@gmail.com' );
 
 -- Optional: Comments table (if we want to go fully production ready for comments too)
 create table public.comments (

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/community_design.dart';
 import '../data/community_repository.dart';
+import 'auth_provider.dart';
 
 enum CommunitySort { newest, upvotes, complexity }
 
@@ -90,4 +91,11 @@ final filteredCommunityDesignsProvider = Provider<AsyncValue<List<CommunityDesig
 
     return result;
   });
+});
+
+final pendingDesignsProvider = FutureProvider<List<CommunityDesign>>((ref) async {
+  final isAdmin = ref.watch(isAdminProvider);
+  if (!isAdmin) return [];
+  final repo = ref.watch(communityRepositoryProvider);
+  return repo.loadPendingDesigns();
 });
