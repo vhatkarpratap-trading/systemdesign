@@ -65,12 +65,13 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   bool _toolbarInitialized = false;
   RealtimeChannel? _statusChannel;
   String? _statusListeningUserId;
+  ProviderSubscription<User?>? _authListener;
 
   @override
   void initState() {
     super.initState();
     debugPrint('GameScreen Initialized');
-    ref.listen<User?>(currentUserProvider, (prev, next) {
+    _authListener = ref.listenManual<User?>(currentUserProvider, (prev, next) {
       if (next != null && next.id != _statusListeningUserId) {
         _setupDesignStatusListener(next);
       }
@@ -749,6 +750,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   @override
   void dispose() {
     _disposeStatusListener();
+    _authListener?.close();
     super.dispose();
   }
 }
