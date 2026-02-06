@@ -35,7 +35,7 @@
       "position": {"x": 520.0, "y": 220.0},
       "size": {"w": 80.0, "h": 64.0},
       "config": {
-        "capacity": 80,
+        "capacity": 1000,
         "instances": 1,
         "autoScale": true,
         "minInstances": 1,
@@ -51,7 +51,7 @@
       "position": {"x": 720.0, "y": 140.0},
       "size": {"w": 80.0, "h": 64.0},
       "config": {
-        "capacity": 500,
+        "capacity": 1600,
         "instances": 1,
         "cacheTtlSeconds": 10,
         "regions": ["us-east-1"]
@@ -63,7 +63,7 @@
       "position": {"x": 720.0, "y": 300.0},
       "size": {"w": 80.0, "h": 64.0},
       "config": {
-        "capacity": 40,
+        "capacity": 1600,
         "instances": 1,
         "replication": true,
         "replicationFactor": 1,
