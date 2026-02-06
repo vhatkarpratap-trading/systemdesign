@@ -57,6 +57,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   String? _privateDesignId;
   String? _privateDesignTitle;
   bool _authPromptShown = false;
+  bool _trafficInitialized = false;
   final GlobalKey _toolbarKey = GlobalKey();
   Offset _toolbarOffset = const Offset(0, 20);
   Size? _toolbarSize;
@@ -92,6 +93,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         );
       }
       _maybePromptAuth();
+      _maybeSetDefaultTraffic();
     });
   }
 
@@ -137,6 +139,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         child: LoginScreen(),
       ),
     );
+  }
+
+  void _maybeSetDefaultTraffic() {
+    if (_trafficInitialized) return;
+    ref.read(canvasProvider.notifier).setTrafficLevel(0.4);
+    _trafficInitialized = true;
   }
 
   Future<void> _handlePublishDesign() async {
