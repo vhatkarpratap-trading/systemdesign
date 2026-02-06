@@ -32,6 +32,7 @@ import '../widgets/simulation/error_fix_dialog.dart';
 import '../widgets/simulation/chaos_controls_panel.dart';
 import '../widgets/simulation/disaster_toolkit.dart';
 import 'dart:ui';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class GameScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic>? initialCommunityDesign;
@@ -62,11 +63,21 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   Offset _toolbarOffset = const Offset(0, 20);
   Size? _toolbarSize;
   bool _toolbarInitialized = false;
+  RealtimeChannel? _statusChannel;
+  String? _statusListeningUserId;
 
   @override
   void initState() {
     super.initState();
     debugPrint('GameScreen Initialized');
+    ref.listen<User?>(currentUserProvider, (prev, next) {
+      if (next != null && next.id != _statusListeningUserId) {
+        _setupDesignStatusListener(next);
+      }
+      if (next == null) {
+        _disposeStatusListener();
+      }
+    });
     
     if (widget.initialCommunityDesign != null) {
       // If payload is wrapped under 'canvas_data', unwrap it
@@ -94,6 +105,10 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       }
       _maybePromptAuth();
       _maybeSetDefaultTraffic();
+      final user = SupabaseService().currentUser;
+      if (user != null) {
+        _setupDesignStatusListener(user);
+      }
     });
   }
 
@@ -145,6 +160,59 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     if (_trafficInitialized) return;
     ref.read(canvasProvider.notifier).setTrafficLevel(0.4);
     _trafficInitialized = true;
+  }
+
+  void _setupDesignStatusListener(User user) {
+    if (_statusChannel != null && _statusListeningUserId == user.id) return;
+    _disposeStatusListener();
+    _statusListeningUserId = user.id;
+
+    _statusChannel = SupabaseService()
+        .client
+        .channel('design-status-${user.id}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'designs',
+          filter: PostgresChangeFilter.eq('user_id', user.id),
+          callback: (payload) {
+            final newStatus = payload.newRecord['status'] as String?;
+            final oldStatus = payload.oldRecord?['status'] as String?;
+            if (newStatus == null || newStatus == oldStatus) return;
+            final reason = payload.newRecord['rejection_reason'] as String?;
+            if (!mounted) return;
+            Color bg;
+            String text;
+            switch (newStatus) {
+              case 'approved':
+                bg = AppTheme.success;
+                text = 'Your design was approved and published!';
+                break;
+              case 'rejected':
+                bg = AppTheme.error;
+                text = reason != null && reason.isNotEmpty
+                    ? 'Design rejected: $reason'
+                    : 'Design rejected by moderator.';
+                break;
+              default:
+                return;
+            }
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(text),
+                backgroundColor: bg.withValues(alpha: 0.9),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          },
+        )
+        .subscribe();
+  }
+
+  void _disposeStatusListener() {
+    _statusChannel?.unsubscribe();
+    _statusChannel = null;
+    _statusListeningUserId = null;
   }
 
   Future<void> _handlePublishDesign() async {
@@ -672,6 +740,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _disposeStatusListener();
+    super.dispose();
   }
 }
 
