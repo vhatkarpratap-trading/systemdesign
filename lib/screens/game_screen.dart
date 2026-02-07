@@ -36,6 +36,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
 import 'dart:convert';
 import '../utils/blueprint_exporter.dart';
+import 'admin_screen.dart';
 
 class GameScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic>? initialCommunityDesign;
@@ -817,6 +818,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     final hasComponents = ref.watch(canvasProvider.select((s) => s.components.isNotEmpty));
     final problem = ref.watch(currentProblemProvider);
     final profile = ref.watch(profileProvider);
+    final isAdmin = ref.watch(isAdminProvider);
     final readOnly = ref.watch(canvasReadOnlyProvider);
 
     final canvasState = ref.watch(canvasProvider);
@@ -842,6 +844,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             onShareTap: _handleShareLink,
             onLoadMyDesignsTap: _handleLoadMyDesigns,
             profile: profile,
+            isAdmin: isAdmin,
+            onAdminTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminScreen())),
           ),
                   if (simState.isRunning) const MetricsBar(),
                   Expanded(
@@ -911,6 +915,8 @@ class _ProblemHeader extends StatelessWidget {
   final VoidCallback onShareTap;
   final VoidCallback onLoadMyDesignsTap;
   final AsyncValue<Map<String, dynamic>?> profile;
+  final bool isAdmin;
+  final VoidCallback? onAdminTap;
 
   const _ProblemHeader({
     required this.onPublishTap, 
@@ -919,6 +925,8 @@ class _ProblemHeader extends StatelessWidget {
     required this.onShareTap,
     required this.onLoadMyDesignsTap,
     required this.profile,
+    this.isAdmin = false,
+    this.onAdminTap,
   });
 
   @override
@@ -967,6 +975,16 @@ class _ProblemHeader extends StatelessWidget {
             },
             style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
           ),
+          
+          if (isAdmin && onAdminTap != null) ...[
+            const SizedBox(width: 8),
+            TextButton.icon(
+              icon: const Icon(Icons.admin_panel_settings, size: 18),
+              label: const Text('ADMIN'),
+              onPressed: onAdminTap,
+              style: TextButton.styleFrom(foregroundColor: AppTheme.warning),
+            ),
+          ],
           
           const SizedBox(width: 16),
           
