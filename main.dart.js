@@ -108787,7 +108787,7 @@ o=q.a+p.a/2-(s.a+r.a/2)
 n=q.b+p.b/2-(s.b+r.b/2)
 m=Math.sqrt(o*o+n*n)
 if(m===0)return B.f
-return new A.f(-n/m,o/m).af(0,(c-(d-1)/2)*14)}}
+return new A.f(-n/m,o/m).af(0,(c-(d-1)/2)*24)}}
 A.aCK.prototype={
 $1(a4){var s,r,q,p,o,n,m,l,k,j,i,h,g,f,e,d,c,b,a,a0,a1,a2=a4.b,a3=A.n(t.N,t.h0)
 for(s=this.a,r=J.aN(s.a.c.b);r.u();){q=r.gK()
@@ -108880,7 +108880,7 @@ o=q.a+p.a/2-(s.a+r.a/2)
 n=q.b+p.b/2-(s.b+r.b/2)
 m=Math.sqrt(o*o+n*n)
 if(m===0)return B.f
-return new A.f(-n/m,o/m).af(0,(c-(d-1)/2)*14)},
+return new A.f(-n/m,o/m).af(0,(c-(d-1)/2)*24)},
 ahC(a,b,c,d,e){var s,r,q,p,o,n,m,l,k,j=null,i=c.w
 if(i==null||i.length===0)return
 s=A.P(new A.u2(new A.u1(b,!1,A.b([],t.sp))),t.EX.i("t.E"))
