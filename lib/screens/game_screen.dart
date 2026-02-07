@@ -34,6 +34,8 @@ import '../widgets/simulation/disaster_toolkit.dart';
 import 'dart:ui';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
+import 'dart:convert';
+import '../utils/blueprint_exporter.dart';
 
 class GameScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic>? initialCommunityDesign;
@@ -65,6 +67,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   bool _authPromptShown = false;
   bool _trafficInitialized = false;
   String? _designOwnerId;
+  String? _designOwnerEmail;
   final GlobalKey _toolbarKey = GlobalKey();
   Offset _toolbarOffset = const Offset(0, 20);
   Size? _toolbarSize;
@@ -99,6 +102,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         _activeCommunityDesign = widget.initialCommunityDesign;
       }
       _designOwnerId = widget.designOwnerId ?? widget.initialCommunityDesign!['__owner_id'] as String?;
+      _designOwnerEmail = widget.initialCommunityDesign!['__owner_email'] as String?;
     }
     _sharedDesignId = widget.sharedDesignId;
     if (_designOwnerId == null) {
@@ -139,6 +143,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         _privateDesignId = designId;
         _privateDesignTitle = data['title'] as String?;
         _designOwnerId = data['__owner_id'] as String?;
+        _designOwnerEmail = data['__owner_email'] as String?;
         _setReadOnlyFlag();
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -185,6 +190,39 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     final user = SupabaseService().currentUser;
     final isOwner = user != null && _designOwnerId != null && user.id == _designOwnerId;
     ref.read(canvasReadOnlyProvider.notifier).state = widget.readOnly || !isOwner && _designOwnerId != null;
+  }
+
+  Future<void> _copyToMyDesigns() async {
+    final user = SupabaseService().currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please login to copy this design')),
+      );
+      return;
+    }
+    try {
+      final canvasState = ref.read(canvasProvider);
+      final problem = ref.read(currentProblemProvider);
+      final exported = BlueprintExporter.exportToJson(canvasState, problem);
+      final newTitle = '${_privateDesignTitle ?? problem.title} (copy)';
+      final id = await SupabaseService().savePrivateDesign(
+        title: newTitle,
+        description: problem.description,
+        canvasData: jsonDecode(exported),
+        designId: null,
+      );
+      _privateDesignId = id;
+      _privateDesignTitle = newTitle;
+      _designOwnerId = user.id;
+      ref.read(canvasReadOnlyProvider.notifier).state = false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Copied. You can now edit this design.')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Copy failed: $e')),
+      );
+    }
   }
 
   void _startStatusPolling(User user) {
@@ -728,6 +766,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     final hasComponents = ref.watch(canvasProvider.select((s) => s.components.isNotEmpty));
     final problem = ref.watch(currentProblemProvider);
     final profile = ref.watch(profileProvider);
+    final readOnly = ref.watch(canvasReadOnlyProvider);
 
     final canvasState = ref.watch(canvasProvider);
     final validation = DesignValidator.validate(
@@ -797,6 +836,9 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                  ref.read(simulationEngineProvider).stop();
                },
              ),
+          if (readOnly)
+            _ReadOnlyBadge(onCopy: _copyToMyDesigns, ownerEmail: _designOwnerEmail),
+          if (readOnly) _ReadOnlyBadge(onCopy: _copyToMyDesigns, ownerEmail: _designOwnerEmail),
         ],
       ),
     );
