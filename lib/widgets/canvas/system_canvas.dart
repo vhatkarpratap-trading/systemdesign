@@ -1372,6 +1372,9 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
         onProtocolChanged: (protocol) {
           ref.read(canvasProvider.notifier).updateConnectionProtocol(connection.id, protocol);
         },
+        onLabelSaved: (label) {
+          ref.read(canvasProvider.notifier).updateConnectionLabel(connection.id, label);
+        },
       ),
     );
   }
@@ -1802,16 +1805,19 @@ class _ConnectionOptionsSheet extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback onToggleDirection;
   final ValueChanged<ConnectionProtocol> onProtocolChanged;
+  final ValueChanged<String?> onLabelSaved;
 
   const _ConnectionOptionsSheet({
     required this.connection,
     required this.onDelete,
     required this.onToggleDirection,
     required this.onProtocolChanged,
+    required this.onLabelSaved,
   });
 
   @override
   Widget build(BuildContext context) {
+    final controller = TextEditingController(text: connection.label ?? '');
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -1826,6 +1832,28 @@ class _ConnectionOptionsSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
+          TextField(
+            controller: controller,
+            textInputAction: TextInputAction.done,
+            onSubmitted: onLabelSaved,
+            decoration: const InputDecoration(
+              labelText: 'Connection label (optional)',
+              hintText: 'e.g., Orders REST, gRPC stream',
+            ),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: ElevatedButton(
+              onPressed: () => onLabelSaved(controller.text),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+              child: const Text('Save label'),
+            ),
+          ),
+          const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerLeft,
             child: Text(

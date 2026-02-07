@@ -153,7 +153,7 @@ class _ConnectionsLayerState extends State<ConnectionsLayer>
     final len = math.sqrt(dx * dx + dy * dy);
     if (len == 0) return Offset.zero;
     final normal = Offset(-dy / len, dx / len);
-    const spread = 10.0;
+    const spread = 14.0;
     final offsetAmount = (index - (total - 1) / 2) * spread;
     return normal * offsetAmount;
   }
@@ -263,8 +263,8 @@ class _ConnectionsPainter extends CustomPainter {
       }
     }
 
-    // 5. Label (protocol + mini stats)
-    _drawLabel(canvas, path, connection.protocol, lineColor, traffic, protocolCount);
+    // 5. Label (user-defined pill only)
+    _drawLabel(canvas, path, connection, lineColor, protocolCount);
 
     // 4. Draw Traffic Packets (Legacy removed in favor of TrafficLayer)
     // if (traffic > 0) {
@@ -389,12 +389,14 @@ class _ConnectionsPainter extends CustomPainter {
     final len = math.sqrt(dx * dx + dy * dy);
     if (len == 0) return Offset.zero;
     final normal = Offset(-dy / len, dx / len);
-    const spread = 10.0;
+    const spread = 14.0;
     final offsetAmount = (index - (total - 1) / 2) * spread;
     return normal * offsetAmount;
   }
 
-  void _drawLabel(Canvas canvas, Path path, ConnectionProtocol protocol, Color color, double traffic, int protocolCount) {
+  void _drawLabel(Canvas canvas, Path path, Connection connection, Color color, int protocolCount) {
+    final label = connection.label;
+    if (label == null || label.isEmpty) return; // Only show if user added one
     final metrics = path.computeMetrics().toList();
     if (metrics.isEmpty) return;
     final metric = metrics.first;
@@ -402,21 +404,20 @@ class _ConnectionsPainter extends CustomPainter {
     if (midTangent == null) return;
 
     final countPart = protocolCount > 1 ? ' • ${protocolCount} APIs' : '';
-    final trafficPart = traffic > 0 ? ' • ${(traffic * 100).round()}%' : '';
-    final text = '${protocol.label}$countPart$trafficPart';
+    final text = '$label$countPart';
     final painter = TextPainter(
       text: TextSpan(
         text: text,
         style: const TextStyle(
           color: Colors.white,
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: FontWeight.w600,
         ),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
 
-    final padding = const EdgeInsets.symmetric(horizontal: 8, vertical: 4);
+    final padding = const EdgeInsets.symmetric(horizontal: 6, vertical: 2);
     final size = painter.size + Offset(padding.horizontal, padding.vertical);
     final rect = Rect.fromCenter(
       center: midTangent.position,
@@ -424,7 +425,7 @@ class _ConnectionsPainter extends CustomPainter {
       height: size.height,
     );
 
-    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(12));
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(10));
     final bgPaint = Paint()..color = color.withValues(alpha: 0.9);
     canvas.drawRRect(rrect, bgPaint);
     painter.paint(canvas, rect.topLeft + Offset(padding.left, padding.top));

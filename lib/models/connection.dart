@@ -7,6 +7,7 @@ class Connection {
   final ConnectionDirection direction;
   final ConnectionProtocol protocol;
   final double trafficFlow; // Current traffic through connection (0.0-1.0)
+  final String? label; // Optional user-defined pill label
   final bool isActive;
 
   const Connection({
@@ -17,6 +18,7 @@ class Connection {
     this.direction = ConnectionDirection.unidirectional,
     this.protocol = ConnectionProtocol.http,
     this.trafficFlow = 0.0,
+    this.label,
     this.isActive = true,
   });
 
@@ -28,6 +30,7 @@ class Connection {
     ConnectionDirection? direction,
     ConnectionProtocol? protocol,
     double? trafficFlow,
+    String? label,
     bool? isActive,
   }) {
     return Connection(
@@ -38,6 +41,7 @@ class Connection {
       direction: direction ?? this.direction,
       protocol: protocol ?? this.protocol,
       trafficFlow: trafficFlow ?? this.trafficFlow,
+      label: label ?? this.label,
       isActive: isActive ?? this.isActive,
     );
   }
@@ -60,6 +64,7 @@ class Connection {
         orElse: () => ConnectionProtocol.http,
       ),
       trafficFlow: (json['trafficFlow'] as num?)?.toDouble() ?? 0.0,
+      label: json['label'] as String?,
       isActive: json['isActive'] as bool? ?? true,
     );
   }
@@ -72,6 +77,7 @@ class Connection {
         'direction': direction.name,
         'protocol': protocol.name,
         'trafficFlow': trafficFlow,
+        'label': label,
         'isActive': isActive,
       };
 }

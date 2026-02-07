@@ -514,6 +514,19 @@ String addComponentTemplate(SystemComponent template, Offset position) {
     _save();
   }
 
+  /// Update connection label (pill)
+  void updateConnectionLabel(String id, String? label) {
+    state = state.copyWith(
+      connections: state.connections.map((c) {
+        if (c.id == id) {
+          return c.copyWith(label: (label ?? '').trim().isEmpty ? null : label!.trim());
+        }
+        return c;
+      }).toList(),
+    );
+    _save();
+  }
+
   /// Update component metrics (from simulation)
   void updateMetrics(Map<String, ComponentMetrics> metrics) {
     state = state.copyWith(
