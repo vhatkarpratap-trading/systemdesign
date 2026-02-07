@@ -47,6 +47,7 @@ class _ConnectionsLayerState extends State<ConnectionsLayer>
     return GestureDetector(
       onTapUp: (details) {
         final tapPos = details.localPosition;
+        final anchors = computeAnchors(widget.canvasState);
         // Group to mirror painter offsets
         final Map<String, List<Connection>> groups = {};
         for (final c in widget.canvasState.connections) {
