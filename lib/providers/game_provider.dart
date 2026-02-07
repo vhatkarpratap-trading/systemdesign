@@ -292,16 +292,15 @@ String addComponentTemplate(SystemComponent template, Offset position) {
 
   /// Complete connection to another component
   /// Returns null if successful, or an error message if invalid
-  String? connectTo(String toId, {ConnectionDirection direction = ConnectionDirection.unidirectional, String? fromIdOverride}) {
+  String? connectTo(
+    String toId, {
+    ConnectionDirection direction = ConnectionDirection.unidirectional,
+    ConnectionProtocol protocol = ConnectionProtocol.http,
+    String? fromIdOverride,
+  }) {
     final fromId = fromIdOverride ?? state.connectingFromId;
     if (fromId == null) return null;
     if (fromId == toId) {
-      state = state.copyWith(clearConnecting: true);
-      return null;
-    }
-
-    // Check if already connected
-    if (state.areConnected(fromId, toId)) {
       state = state.copyWith(clearConnecting: true);
       return null;
     }
@@ -325,6 +324,7 @@ String addComponentTemplate(SystemComponent template, Offset position) {
       sourceId: fromId,
       targetId: toId,
       direction: direction,
+      protocol: protocol,
     );
 
     state = state.copyWith(
@@ -494,6 +494,19 @@ String addComponentTemplate(SystemComponent template, Offset position) {
       connections: state.connections.map((c) {
         if (c.id == id) {
           return c.copyWith(direction: direction);
+        }
+        return c;
+      }).toList(),
+    );
+    _save();
+  }
+
+  /// Update connection protocol (HTTP/gRPC/etc.)
+  void updateConnectionProtocol(String id, ConnectionProtocol protocol) {
+    state = state.copyWith(
+      connections: state.connections.map((c) {
+        if (c.id == id) {
+          return c.copyWith(protocol: protocol);
         }
         return c;
       }).toList(),

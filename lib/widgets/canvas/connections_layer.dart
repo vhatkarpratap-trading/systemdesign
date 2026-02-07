@@ -47,13 +47,20 @@ class _ConnectionsLayerState extends State<ConnectionsLayer>
     return GestureDetector(
       onTapUp: (details) {
         final tapPos = details.localPosition;
-        
-        // Find tapped connection
-        for (final connection in widget.canvasState.connections) {
-           final source = widget.canvasState.getComponent(connection.sourceId);
-           final target = widget.canvasState.getComponent(connection.targetId);
+        // Group to mirror painter offsets
+        final Map<String, List<Connection>> groups = {};
+        for (final c in widget.canvasState.connections) {
+          final key = '${c.sourceId}->${c.targetId}';
+          groups.putIfAbsent(key, () => []).add(c);
+        }
 
-           if (source == null || target == null) continue;
+        for (final entry in groups.entries) {
+          final list = entry.value;
+          for (int i = 0; i < list.length; i++) {
+            final connection = list[i];
+            final source = widget.canvasState.getComponent(connection.sourceId);
+            final target = widget.canvasState.getComponent(connection.targetId);
+            if (source == null || target == null) continue;
 
             // Smart Anchors Logic (Mirrored for Hit Testing)
             final sourceCenter = Offset(source.position.dx + 40, source.position.dy + 32);
@@ -87,11 +94,17 @@ class _ConnectionsLayerState extends State<ConnectionsLayer>
                 end = Offset(target.position.dx + 40, target.position.dy + 64);
               }
             }
+
+            // Apply same parallel offset as painter
+            final offset = _offsetForPair(source, target, i, list.length);
+            start += offset;
+            end += offset;
            
            if (_isPointNearLine(tapPos, start, end)) {
              widget.onTap(connection);
              return;
            }
+        }
         }
       },
       child: AnimatedBuilder(
@@ -130,6 +143,20 @@ class _ConnectionsLayerState extends State<ConnectionsLayer>
     
     return (point - projection).distance < threshold;
   }
+
+  Offset _offsetForPair(SystemComponent source, SystemComponent target, int index, int total) {
+    if (total <= 1) return Offset.zero;
+    final srcCenter = Offset(source.position.dx + source.size.width / 2, source.position.dy + source.size.height / 2);
+    final tgtCenter = Offset(target.position.dx + target.size.width / 2, target.position.dy + target.size.height / 2);
+    final dx = tgtCenter.dx - srcCenter.dx;
+    final dy = tgtCenter.dy - srcCenter.dy;
+    final len = math.sqrt(dx * dx + dy * dy);
+    if (len == 0) return Offset.zero;
+    final normal = Offset(-dy / len, dx / len);
+    const spread = 10.0;
+    final offsetAmount = (index - (total - 1) / 2) * spread;
+    return normal * offsetAmount;
+  }
 }
 
 class _ConnectionsPainter extends CustomPainter {
@@ -143,13 +170,32 @@ class _ConnectionsPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    for (final connection in canvasState.connections) {
-      final source = canvasState.getComponent(connection.sourceId);
-      final target = canvasState.getComponent(connection.targetId);
+    // Group connections by oriented pair to offset parallels
+    final Map<String, List<Connection>> groups = {};
+    for (final c in canvasState.connections) {
+      final key = '${c.sourceId}->${c.targetId}';
+      groups.putIfAbsent(key, () => []).add(c);
+    }
 
-      if (source == null || target == null) continue;
+    groups.forEach((_, list) {
+      final sorted = List<Connection>.from(list)
+        ..sort((a, b) => a.protocol.index.compareTo(b.protocol.index));
 
-      _paintConnection(canvas, source, target, connection);
+      for (int i = 0; i < sorted.length; i++) {
+        final connection = sorted[i];
+        final source = canvasState.getComponent(connection.sourceId);
+        final target = canvasState.getComponent(connection.targetId);
+        if (source == null || target == null) continue;
+
+        _paintConnection(
+          canvas,
+          source,
+          target,
+          connection,
+          index: i,
+          total: sorted.length,
+        );
+      }
     }
   }
 
@@ -157,26 +203,16 @@ class _ConnectionsPainter extends CustomPainter {
     Canvas canvas, 
     SystemComponent source, 
     SystemComponent target, 
-    Connection connection
+    Connection connection, {
+    required int index,
+    required int total,
+  }
   ) {
     // 1. Determine Color & Style
     final traffic = connection.trafficFlow;
-    Color lineColor;
-    double strokeWidth;
-
-    if (traffic > 0.8) {
-      lineColor = AppTheme.error;
-      strokeWidth = 3.0;
-    } else if (traffic > 0.5) {
-      lineColor = AppTheme.warning;
-      strokeWidth = 2.5;
-    } else if (traffic > 0) {
-      lineColor = AppTheme.primary;
-      strokeWidth = 2.0;
-    } else {
-      lineColor = AppTheme.textSecondary;
-      strokeWidth = 2.5;
-    }
+    final protocolColor = _colorForProtocol(connection.protocol);
+    final lineColor = _colorAdjustedForTraffic(protocolColor, traffic);
+    double strokeWidth = traffic > 0.5 ? 3.0 : 2.4;
 
     final paint = Paint()
       ..color = lineColor
@@ -184,7 +220,13 @@ class _ConnectionsPainter extends CustomPainter {
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round;
 
-    final path = ConnectionPathUtils.getPathForConnection(source, target, connection.type);
+    Path path = ConnectionPathUtils.getPathForConnection(source, target, connection.type);
+
+    // Offset parallel lines so multiple protocols are visible
+    final offset = _offsetForPair(source, target, index, total);
+    if (offset != Offset.zero) {
+      path = path.shift(offset);
+    }
 
     // 2. Draw Line (Dashed/Solid)
     if (connection.type == ConnectionType.async || 
@@ -213,6 +255,9 @@ class _ConnectionsPainter extends CustomPainter {
         }
       }
     }
+
+    // 5. Label (protocol + mini stats)
+    _drawLabel(canvas, path, connection.protocol, lineColor, traffic);
 
     // 4. Draw Traffic Packets (Legacy removed in favor of TrafficLayer)
     // if (traffic > 0) {
@@ -301,5 +346,78 @@ class _ConnectionsPainter extends CustomPainter {
   bool shouldRepaint(covariant _ConnectionsPainter oldDelegate) {
     return oldDelegate.animationValue != animationValue ||
            oldDelegate.canvasState != canvasState;
+  }
+
+  Color _colorForProtocol(ConnectionProtocol protocol) {
+    switch (protocol) {
+      case ConnectionProtocol.http:
+        return AppTheme.primary;
+      case ConnectionProtocol.grpc:
+        return AppTheme.success;
+      case ConnectionProtocol.websocket:
+        return AppTheme.warning;
+      case ConnectionProtocol.tcp:
+        return AppTheme.textSecondary;
+      case ConnectionProtocol.udp:
+        return AppTheme.neonCyan;
+      case ConnectionProtocol.custom:
+      default:
+        return AppTheme.neonMagenta;
+    }
+  }
+
+  Color _colorAdjustedForTraffic(Color base, double traffic) {
+    if (traffic <= 0.0) return base.withValues(alpha: 0.55);
+    if (traffic > 0.8) return AppTheme.error;
+    if (traffic > 0.6) return AppTheme.warning;
+    return base;
+  }
+
+  Offset _offsetForPair(SystemComponent source, SystemComponent target, int index, int total) {
+    if (total <= 1) return Offset.zero;
+    final srcCenter = Offset(source.position.dx + source.size.width / 2, source.position.dy + source.size.height / 2);
+    final tgtCenter = Offset(target.position.dx + target.size.width / 2, target.position.dy + target.size.height / 2);
+    final dx = tgtCenter.dx - srcCenter.dx;
+    final dy = tgtCenter.dy - srcCenter.dy;
+    final len = math.sqrt(dx * dx + dy * dy);
+    if (len == 0) return Offset.zero;
+    final normal = Offset(-dy / len, dx / len);
+    const spread = 10.0;
+    final offsetAmount = (index - (total - 1) / 2) * spread;
+    return normal * offsetAmount;
+  }
+
+  void _drawLabel(Canvas canvas, Path path, ConnectionProtocol protocol, Color color, double traffic) {
+    final metrics = path.computeMetrics().toList();
+    if (metrics.isEmpty) return;
+    final metric = metrics.first;
+    final midTangent = metric.getTangentForOffset(metric.length / 2);
+    if (midTangent == null) return;
+
+    final text = protocol.label + (traffic > 0 ? ' • ${(traffic * 100).round()}%' : '');
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+
+    final padding = const EdgeInsets.symmetric(horizontal: 8, vertical: 4);
+    final size = painter.size + Offset(padding.horizontal, padding.vertical);
+    final rect = Rect.fromCenter(
+      center: midTangent.position,
+      width: size.width,
+      height: size.height,
+    );
+
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(12));
+    final bgPaint = Paint()..color = color.withValues(alpha: 0.9);
+    canvas.drawRRect(rrect, bgPaint);
+    painter.paint(canvas, rect.topLeft + Offset(padding.left, padding.top));
   }
 }

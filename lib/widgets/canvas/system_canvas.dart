@@ -1369,6 +1369,9 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
           ref.read(canvasProvider.notifier).updateConnectionDirection(connection.id, newDirection);
           Navigator.pop(context);
         },
+        onProtocolChanged: (protocol) {
+          ref.read(canvasProvider.notifier).updateConnectionProtocol(connection.id, protocol);
+        },
       ),
     );
   }
@@ -1798,11 +1801,13 @@ class _ConnectionOptionsSheet extends StatelessWidget {
   final Connection connection;
   final VoidCallback onDelete;
   final VoidCallback onToggleDirection;
+  final ValueChanged<ConnectionProtocol> onProtocolChanged;
 
   const _ConnectionOptionsSheet({
     required this.connection,
     required this.onDelete,
     required this.onToggleDirection,
+    required this.onProtocolChanged,
   });
 
   @override
@@ -1819,6 +1824,35 @@ class _ConnectionOptionsSheet extends StatelessWidget {
               fontSize: 15,
               fontWeight: FontWeight.w500,
             ),
+          ),
+          const SizedBox(height: 16),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Protocol',
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: ConnectionProtocol.values.map((p) {
+              final selected = p == connection.protocol;
+              return ChoiceChip(
+                label: Text(p.label),
+                selected: selected,
+                onSelected: (_) => onProtocolChanged(p),
+                selectedColor: AppTheme.primary.withValues(alpha: 0.15),
+                labelStyle: TextStyle(
+                  color: selected ? AppTheme.primary : AppTheme.textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              );
+            }).toList(),
           ),
           const SizedBox(height: 16),
           ListTile(

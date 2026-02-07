@@ -5,6 +5,7 @@ class Connection {
   final String targetId;
   final ConnectionType type;
   final ConnectionDirection direction;
+  final ConnectionProtocol protocol;
   final double trafficFlow; // Current traffic through connection (0.0-1.0)
   final bool isActive;
 
@@ -14,6 +15,7 @@ class Connection {
     required this.targetId,
     this.type = ConnectionType.request,
     this.direction = ConnectionDirection.unidirectional,
+    this.protocol = ConnectionProtocol.http,
     this.trafficFlow = 0.0,
     this.isActive = true,
   });
@@ -24,6 +26,7 @@ class Connection {
     String? targetId,
     ConnectionType? type,
     ConnectionDirection? direction,
+    ConnectionProtocol? protocol,
     double? trafficFlow,
     bool? isActive,
   }) {
@@ -33,6 +36,7 @@ class Connection {
       targetId: targetId ?? this.targetId,
       type: type ?? this.type,
       direction: direction ?? this.direction,
+      protocol: protocol ?? this.protocol,
       trafficFlow: trafficFlow ?? this.trafficFlow,
       isActive: isActive ?? this.isActive,
     );
@@ -51,6 +55,10 @@ class Connection {
         (e) => e.name == json['direction'],
         orElse: () => ConnectionDirection.unidirectional,
       ),
+      protocol: ConnectionProtocol.values.firstWhere(
+        (e) => e.name == (json['protocol'] as String?),
+        orElse: () => ConnectionProtocol.http,
+      ),
       trafficFlow: (json['trafficFlow'] as num?)?.toDouble() ?? 0.0,
       isActive: json['isActive'] as bool? ?? true,
     );
@@ -62,6 +70,7 @@ class Connection {
         'targetId': targetId,
         'type': type.name,
         'direction': direction.name,
+        'protocol': protocol.name,
         'trafficFlow': trafficFlow,
         'isActive': isActive,
       };
@@ -89,4 +98,17 @@ enum ConnectionDirection {
   final String symbol;
 
   const ConnectionDirection(this.displayName, this.symbol);
+}
+
+/// Transport / protocol for the connection
+enum ConnectionProtocol {
+  http('HTTP'),
+  grpc('gRPC'),
+  websocket('WebSocket'),
+  tcp('TCP'),
+  udp('UDP'),
+  custom('Custom');
+
+  final String label;
+  const ConnectionProtocol(this.label);
 }
