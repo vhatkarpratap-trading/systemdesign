@@ -11,9 +11,11 @@ import '../theme/app_theme.dart';
 import '../widgets/community/design_card.dart';
 import '../widgets/community/community_sidebar.dart';
 import '../utils/blueprint_importer.dart';
+import '../utils/blueprint_exporter.dart';
 import '../utils/responsive_layout.dart';
 import '../data/problems.dart';
 import 'game_screen.dart';
+import 'dart:convert';
 
 class CommunityScreen extends ConsumerWidget {
   const CommunityScreen({super.key});
