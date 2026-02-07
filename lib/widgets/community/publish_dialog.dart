@@ -120,6 +120,7 @@ class _PublishDesignDialogState extends ConsumerState<PublishDesignDialog> {
       
       final design = CommunityDesign(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
+        userId: 'local',
         title: _titleController.text,
         description: _descriptionController.text,
         blogMarkdown: _descriptionController.text,

@@ -77,6 +77,7 @@ class CommunityRepository {
     return [
       CommunityDesign(
         id: 'feat_1',
+        userId: 'featured',
         title: 'Scalable Social Feed',
         description: 'A fan-out on write architecture for real-time social updates with Redis caching.',
         blogMarkdown: 'A fan-out on write architecture for real-time social updates with Redis caching.',
@@ -105,6 +106,7 @@ class CommunityRepository {
       ),
       CommunityDesign(
         id: 'feat_2',
+        userId: 'featured',
         title: 'High-Availability E-Commerce',
         description: 'Multi-region deployment with SQL read replicas and global CDN.',
         blogMarkdown: 'Multi-region deployment with SQL read replicas and global CDN.',
@@ -131,6 +133,7 @@ class CommunityRepository {
       ),
       CommunityDesign(
         id: 'feat_3',
+        userId: 'featured',
         title: 'Global Microservices',
         description: 'Complex architecture with multiple services, API gateway, and cross-service communication.',
         blogMarkdown: 'Complex architecture with multiple services, API gateway, and cross-service communication.',
@@ -171,6 +174,7 @@ class CommunityRepository {
       ),
       CommunityDesign(
         id: 'feat_4',
+        userId: 'featured',
         title: 'Real-time Analytics Pipeline',
         description: 'Streaming architecture for processing millions of events per second with persistent storage.',
         blogMarkdown: 'Streaming architecture for processing millions of events per second with persistent storage.',
