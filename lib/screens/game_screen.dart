@@ -55,6 +55,57 @@ class GameScreen extends ConsumerStatefulWidget {
   ConsumerState<GameScreen> createState() => _GameScreenState();
 }
 
+class _ReadOnlyBadge extends StatelessWidget {
+  final VoidCallback onCopy;
+  final String? ownerEmail;
+  const _ReadOnlyBadge({required this.onCopy, this.ownerEmail});
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      top: 76,
+      right: 16,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppTheme.surface.withValues(alpha: 0.95),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.border),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.15),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.lock_outline, size: 18, color: AppTheme.textMuted),
+            const SizedBox(width: 8),
+            Text(
+              ownerEmail != null ? 'Read-only (by $ownerEmail)' : 'Read-only',
+              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(width: 10),
+            TextButton.icon(
+              onPressed: onCopy,
+              icon: const Icon(Icons.copy_all_rounded, size: 16),
+              label: const Text('Copy to My Designs'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                minimumSize: Size.zero,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _GameScreenState extends ConsumerState<GameScreen> {
   bool _showHints = false;
   bool _showGuide = false;
