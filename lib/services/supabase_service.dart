@@ -175,12 +175,12 @@ class SupabaseService {
       final response = includePendingForAdmin && isAdmin
           ? await client
               .from('designs')
-              .select('id, user_id, title, description, blog_markdown, canvas_data, blueprint_path, is_public, status, rejection_reason, upvotes, created_at, profiles(display_name, avatar_url)')
+              .select('id, user_id, title, description, blog_markdown, canvas_data, blueprint_path, is_public, status, rejection_reason, upvotes, created_at, profiles(display_name, email, avatar_url)')
               .order('created_at', ascending: false)
               .limit(50)
           : await client
               .from('designs')
-              .select('id, user_id, title, description, blog_markdown, canvas_data, blueprint_path, is_public, status, rejection_reason, upvotes, created_at, profiles(display_name, avatar_url)')
+              .select('id, user_id, title, description, blog_markdown, canvas_data, blueprint_path, is_public, status, rejection_reason, upvotes, created_at, profiles(display_name, email, avatar_url)')
               .eq('status', 'approved')
               .eq('is_public', true)
               .order('created_at', ascending: false)
@@ -220,7 +220,7 @@ class SupabaseService {
   Future<List<Map<String, dynamic>>> fetchComments(String designId) async {
     final resp = await client
         .from('comments')
-        .select('id, content, parent_id, created_at, profiles(display_name)')
+        .select('id, content, parent_id, created_at, profiles(display_name, email)')
         .eq('design_id', designId)
         .order('created_at');
     return List<Map<String, dynamic>>.from(resp.map((e) => {
@@ -228,7 +228,7 @@ class SupabaseService {
           'content': e['content'],
           'parent_id': e['parent_id'],
           'createdAt': e['created_at'],
-          'author': e['profiles']?['display_name'] ?? 'Anonymous',
+          'author': e['profiles']?['display_name'] ?? e['profiles']?['email'] ?? 'Architect',
         }));
   }
 
@@ -348,7 +348,7 @@ class SupabaseService {
     try {
       final resp = await client
           .from('designs')
-          .select('*, profiles(display_name, avatar_url)')
+          .select('*, profiles(display_name, email, avatar_url)')
           .eq('status', 'pending')
           .order('created_at', ascending: false);
       return List<Map<String, dynamic>>.from(resp);

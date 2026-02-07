@@ -20,7 +20,7 @@ class CommunityRepository {
           blogMarkdown: json['blog_markdown'] ?? json['description'] ?? '',
           status: json['status'] ?? 'approved',
           rejectionReason: json['rejection_reason'],
-          author: json['profiles']?['display_name'] ?? 'Anonymous',
+          author: json['profiles']?['display_name'] ?? json['profiles']?['email'] ?? 'Architect',
           canvasData: json['canvas_data'] is String ? jsonDecode(json['canvas_data']) : json['canvas_data'],
           category: 'General', // TODO: Add category to DB
           upvotes: json['upvotes'] ?? 0,

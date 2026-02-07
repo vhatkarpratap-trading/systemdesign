@@ -16,7 +16,7 @@ class DesignDetailsPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = design['title'] ?? 'Untitled Design';
     final description = design['description'] ?? 'No description provided.';
-    final author = design['profiles']?['display_name'] ?? 'Anonymous Architect';
+    final author = design['profiles']?['display_name'] ?? design['profiles']?['email'] ?? 'Architect';
     final date = DateTime.tryParse(design['created_at'].toString()) ?? DateTime.now();
     
     // Formatting date (Simple)
