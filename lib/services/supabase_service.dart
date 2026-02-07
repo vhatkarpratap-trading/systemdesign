@@ -169,27 +169,59 @@ class SupabaseService {
     }
   }
 
-  /// Fetch recently published community designs
-  Future<List<Map<String, dynamic>>> fetchCommunityDesigns({bool includePendingForAdmin = false}) async {
+  /// Fetch community designs. By default returns approved+public.
+  /// If includePendingForAdmin, admin sees all statuses.
+  /// If includeMineUserId is provided, that user's designs are included regardless of status/visibility.
+  Future<List<Map<String, dynamic>>> fetchCommunityDesigns({
+    bool includePendingForAdmin = false,
+    String? includeMineUserId,
+  }) async {
     try {
-      final response = includePendingForAdmin && isAdmin
-          ? await client
+      final List<Map<String, dynamic>> combined = [];
+
+      if (includePendingForAdmin && isAdmin) {
+        final resp = await client
+            .from('designs')
+            .select('id, user_id, title, description, blog_markdown, canvas_data, blueprint_path, is_public, status, rejection_reason, upvotes, created_at, profiles(display_name, email, avatar_url)')
+            .order('created_at', ascending: false)
+            .limit(100);
+        combined.addAll(List<Map<String, dynamic>>.from(resp));
+      } else {
+        final publicResp = await client
+            .from('designs')
+            .select('id, user_id, title, description, blog_markdown, canvas_data, blueprint_path, is_public, status, rejection_reason, upvotes, created_at, profiles(display_name, email, avatar_url)')
+            .eq('is_public', true)
+            .or('status.eq.approved,status.is.null')
+            .order('created_at', ascending: false)
+            .limit(100);
+        combined.addAll(List<Map<String, dynamic>>.from(publicResp));
+
+        if (includeMineUserId != null) {
+          final mineResp = await client
               .from('designs')
               .select('id, user_id, title, description, blog_markdown, canvas_data, blueprint_path, is_public, status, rejection_reason, upvotes, created_at, profiles(display_name, email, avatar_url)')
+              .eq('user_id', includeMineUserId)
               .order('created_at', ascending: false)
-              .limit(50)
-          : await client
-              .from('designs')
-              .select('id, user_id, title, description, blog_markdown, canvas_data, blueprint_path, is_public, status, rejection_reason, upvotes, created_at, profiles(display_name, email, avatar_url)')
-              .eq('is_public', true)
-              .or('status.eq.approved,status.is.null')
-              .order('created_at', ascending: false)
-              .limit(50);
+              .limit(100);
+          combined.addAll(List<Map<String, dynamic>>.from(mineResp));
+        }
+      }
+
+      // Deduplicate by id
+      final seen = <String>{};
+      final deduped = <Map<String, dynamic>>[];
+      for (final item in combined) {
+        final id = item['id'] as String?;
+        if (id == null) continue;
+        if (seen.add(id)) {
+          deduped.add(item);
+        }
+      }
       
       final List<Map<String, dynamic>> results = [];
       
       // Hydrate with storage data if path exists
-      for (final item in response) {
+      for (final item in deduped) {
         final design = Map<String, dynamic>.from(item);
         
         // Handle missing profile data safely

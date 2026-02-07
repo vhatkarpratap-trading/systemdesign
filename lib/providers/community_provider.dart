@@ -16,7 +16,8 @@ class CommunityDesignsNotifier extends AsyncNotifier<List<CommunityDesign>> {
   Future<List<CommunityDesign>> build() async {
     final repo = ref.watch(communityRepositoryProvider);
     final isAdmin = ref.watch(isAdminProvider);
-    return repo.loadDesigns(includePendingForAdmin: isAdmin);
+    final userId = ref.watch(currentUserProvider)?.id;
+    return repo.loadDesigns(includePendingForAdmin: isAdmin, includeMineUserId: userId);
   }
 
   Future<void> publish(CommunityDesign design) async {
