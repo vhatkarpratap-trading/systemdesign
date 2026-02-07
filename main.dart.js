@@ -103915,8 +103915,8 @@ c2=d9.f.ha(h)
 c3=c2==null?null:c2.d.b
 if(c3==null)c3=64
 c0.m(0,h,c3)
-c1+=c3+80}c4=5000-(j.gc2(b9)?c1-80:c1)/2
-c5=5000+b8.a*240
+c1+=c3+140}c4=5000-(j.gc2(b9)?c1-140:c1)/2
+c5=5000+b8.a*320
 for(j=j.ga_(b9);j.u();){i=j.gJ()
 c2=d9.f.ha(i)
 if(c2!=null){i=c0.h(0,i)
@@ -103928,7 +103928,7 @@ if(c6>b5)b5=c6
 if(c4<b6)b6=c4
 c7=c4+i
 if(c7>b7)b7=c7
-c4+=i+80}}}for(s=new A.e6(n,n.r,n.e),q=t.RJ;s.u();){k=s.d
+c4+=i+140}}}for(s=new A.e6(n,n.r,n.e),q=t.RJ;s.u();){k=s.d
 c8=n.h(0,k)
 c9=m.h(0,k)
 d0=d9.f.ha(k)
