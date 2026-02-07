@@ -181,8 +181,8 @@ class SupabaseService {
           : await client
               .from('designs')
               .select('id, user_id, title, description, blog_markdown, canvas_data, blueprint_path, is_public, status, rejection_reason, upvotes, created_at, profiles(display_name, email, avatar_url)')
-              .eq('status', 'approved')
               .eq('is_public', true)
+              .or('status.eq.approved,status.is.null')
               .order('created_at', ascending: false)
               .limit(50);
       
