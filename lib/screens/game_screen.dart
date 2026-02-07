@@ -964,113 +964,122 @@ class _ProblemHeader extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          
-          // Auto Layout Button
-          Consumer(builder: (context, ref, _) {
-            return TextButton.icon(
-              icon: const Icon(Icons.auto_awesome_mosaic_outlined, size: 18),
-              label: const Text('AUTO LAYOUT'),
-              onPressed: () => ref.read(canvasProvider.notifier).autoLayout(MediaQuery.of(context).size),
-              style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
-            );
-          }),
-          
-          const SizedBox(width: 8),
+          Flexible(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  // Auto Layout Button
+                  Consumer(builder: (context, ref, _) {
+                    return TextButton.icon(
+                      icon: const Icon(Icons.auto_awesome_mosaic_outlined, size: 18),
+                      label: const Text('AUTO LAYOUT'),
+                      onPressed: () => ref.read(canvasProvider.notifier).autoLayout(MediaQuery.of(context).size),
+                      style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
+                    );
+                  }),
+                  
+                  const SizedBox(width: 8),
 
-          // Library Button
-          TextButton.icon(
-            icon: const Icon(Icons.local_library_rounded, size: 18),
-            label: const Text('LIBRARY'),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const CommunityScreen()),
-              );
-            },
-            style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
-          ),
-          
-          if (isAdmin && onAdminTap != null) ...[
-            const SizedBox(width: 8),
-            TextButton.icon(
-              icon: const Icon(Icons.admin_panel_settings, size: 18),
-              label: const Text('ADMIN'),
-              onPressed: onAdminTap,
-              style: TextButton.styleFrom(foregroundColor: AppTheme.warning),
-            ),
-          ],
-          
-          const SizedBox(width: 16),
-          
-          TextButton.icon(
-            icon: const Icon(Icons.folder_shared_outlined, size: 18),
-            label: const Text('MY DESIGNS'),
-            onPressed: onLoadMyDesignsTap,
-            style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
-          ),
-
-          const SizedBox(width: 8),
-          
-          TextButton.icon(
-            icon: const Icon(Icons.link_rounded, size: 18),
-            label: const Text('SHARE'),
-            onPressed: onShareTap,
-            style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
-          ),
-          
-          const SizedBox(width: 8),
-
-          TextButton.icon(
-            icon: const Icon(Icons.save_outlined, size: 18),
-            label: const Text('SAVE'),
-            onPressed: onSaveTap,
-            style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
-          ),
-
-          const SizedBox(width: 8),
-          
-          profile.maybeWhen(
-            data: (p) {
-              if (p == null) return const SizedBox.shrink();
-              final name = p['display_name'] ?? 'Architect';
-              return Container(
-                margin: const EdgeInsets.only(right: 16),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppTheme.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppTheme.primary.withOpacity(0.2)),
-                ),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 10,
-                      backgroundColor: AppTheme.primary,
-                      child: Text(name[0].toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.white)),
-                    ),
+                  // Library Button
+                  TextButton.icon(
+                    icon: const Icon(Icons.local_library_rounded, size: 18),
+                    label: const Text('LIBRARY'),
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const CommunityScreen()),
+                      );
+                    },
+                    style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
+                  ),
+                  
+                  if (isAdmin && onAdminTap != null) ...[
                     const SizedBox(width: 8),
-                    Text(name, style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary)),
+                    TextButton.icon(
+                      icon: const Icon(Icons.admin_panel_settings, size: 18),
+                      label: const Text('ADMIN'),
+                      onPressed: onAdminTap,
+                      style: TextButton.styleFrom(foregroundColor: AppTheme.warning),
+                    ),
                   ],
-                ),
-              );
-            },
-            orElse: () => const SizedBox.shrink(),
-          ),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primary,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  
+                  const SizedBox(width: 16),
+                  
+                  TextButton.icon(
+                    icon: const Icon(Icons.folder_shared_outlined, size: 18),
+                    label: const Text('MY DESIGNS'),
+                    onPressed: onLoadMyDesignsTap,
+                    style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
+                  ),
+
+                  const SizedBox(width: 8),
+                  
+                  TextButton.icon(
+                    icon: const Icon(Icons.link_rounded, size: 18),
+                    label: const Text('SHARE'),
+                    onPressed: onShareTap,
+                    style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
+                  ),
+                  
+                  const SizedBox(width: 8),
+
+                  TextButton.icon(
+                    icon: const Icon(Icons.save_outlined, size: 18),
+                    label: const Text('SAVE'),
+                    onPressed: onSaveTap,
+                    style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
+                  ),
+
+                  const SizedBox(width: 8),
+                  
+                  profile.maybeWhen(
+                    data: (p) {
+                      if (p == null) return const SizedBox.shrink();
+                      final name = p['display_name'] ?? 'Architect';
+                      return Container(
+                        margin: const EdgeInsets.only(right: 16),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: AppTheme.primary.withOpacity(0.2)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircleAvatar(
+                              radius: 10,
+                              backgroundColor: AppTheme.primary,
+                              child: Text(name[0].toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.white)),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(name, style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary)),
+                          ],
+                        ),
+                      );
+                    },
+                    orElse: () => const SizedBox.shrink(),
+                  ),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    icon: const Icon(Icons.rocket_launch_rounded, size: 18),
+                    label: const Text('PUBLISH', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                    onPressed: onPublishTap,
+                  ),
+                  const SizedBox(width: 12),
+                  IconButton(
+                    icon: const Icon(Icons.person_outline_rounded, color: AppTheme.textSecondary),
+                    onPressed: onProfileTap,
+                  ),
+                ],
+              ),
             ),
-            icon: const Icon(Icons.rocket_launch_rounded, size: 18),
-            label: const Text('PUBLISH', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-            onPressed: onPublishTap,
-          ),
-          const SizedBox(width: 12),
-          IconButton(
-            icon: const Icon(Icons.person_outline_rounded, color: AppTheme.textSecondary),
-            onPressed: onProfileTap,
           ),
         ],
       ),
