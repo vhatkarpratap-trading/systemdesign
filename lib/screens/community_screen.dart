@@ -1049,15 +1049,15 @@ class _CommentAreaState extends ConsumerState<_CommentArea> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (_loading)
-          const LinearProgressIndicator(minHeight: 2)
-        else if (tree.isEmpty)
-          _buildEmptyComments()
-        else
-          ...tree.map((n) => _ThreadComment(
-                node: n,
-                depth: 0,
-                onReply: (id) => setState(() => _replyTo = id),
+    if (_loading)
+      const LinearProgressIndicator(minHeight: 2)
+    else if (tree.isEmpty)
+      const _EmptyComments()
+    else
+      ...tree.map((n) => _ThreadComment(
+            node: n,
+            depth: 0,
+            onReply: (id) => setState(() => _replyTo = id),
               )),
         const SizedBox(height: 12),
         if (_replyTo != null)
@@ -1109,6 +1109,29 @@ class _CommentAreaState extends ConsumerState<_CommentArea> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _EmptyComments extends StatelessWidget {
+  const _EmptyComments();
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: AppTheme.surface.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.border, style: BorderStyle.none),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.chat_bubble_outline_rounded, color: AppTheme.textMuted.withValues(alpha: 0.3)),
+          const SizedBox(height: 12),
+          Text('No thoughts shared yet', style: TextStyle(color: AppTheme.textMuted)),
+        ],
+      ),
     );
   }
 }
