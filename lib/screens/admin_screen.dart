@@ -3,19 +3,49 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/app_theme.dart';
 import '../providers/community_provider.dart';
+import '../providers/auth_provider.dart';
 import '../services/supabase_service.dart';
 import '../utils/blueprint_importer.dart';
 import 'game_screen.dart';
 import '../models/community_design.dart';
 import '../widgets/community/design_card.dart';
 
+/// Admin-only providers
+final adminDesignsProvider = FutureProvider<List<CommunityDesign>>((ref) async {
+  final repo = ref.watch(communityRepositoryProvider);
+  final isAdmin = ref.watch(isAdminProvider);
+  final user = ref.watch(currentUserProvider);
+  if (!isAdmin) return [];
+  return repo.loadDesigns(includePendingForAdmin: true, includeMineUserId: user?.id);
+});
+
+final adminPendingProvider = FutureProvider<List<CommunityDesign>>((ref) async {
+  final repo = ref.watch(communityRepositoryProvider);
+  final isAdmin = ref.watch(isAdminProvider);
+  if (!isAdmin) return [];
+  return repo.loadPendingDesigns();
+});
+
 class AdminScreen extends ConsumerWidget {
   const AdminScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final pendingAsync = ref.watch(pendingDesignsProvider);
-    final designsAsync = ref.watch(communityDesignsProvider);
+    final isAdmin = ref.watch(isAdminProvider);
+    if (!isAdmin) {
+      return Scaffold(
+        appBar: AppBar(
+          backgroundColor: AppTheme.surface,
+          title: const Text('Admin Panel', style: TextStyle(color: AppTheme.textPrimary)),
+        ),
+        body: const Center(
+          child: Text('Admin access required', style: TextStyle(color: AppTheme.textSecondary)),
+        ),
+      );
+    }
+
+    final pendingAsync = ref.watch(adminPendingProvider);
+    final designsAsync = ref.watch(adminDesignsProvider);
 
     return Scaffold(
       backgroundColor: AppTheme.background,
