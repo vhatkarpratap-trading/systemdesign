@@ -59,12 +59,13 @@ class GameScreen extends ConsumerStatefulWidget {
 class _ReadOnlyBadge extends StatelessWidget {
   final VoidCallback onCopy;
   final String? ownerEmail;
-  const _ReadOnlyBadge({required this.onCopy, this.ownerEmail});
+  final double topOffset;
+  const _ReadOnlyBadge({required this.onCopy, this.ownerEmail, this.topOffset = 76});
 
   @override
   Widget build(BuildContext context) {
     return Positioned(
-      top: 76,
+      top: topOffset,
       right: 16,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -892,7 +893,11 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                },
              ),
           if (readOnly)
-            _ReadOnlyBadge(onCopy: _copyToMyDesigns, ownerEmail: _designOwnerEmail),
+            _ReadOnlyBadge(
+              onCopy: _copyToMyDesigns,
+              ownerEmail: _designOwnerEmail,
+              topOffset: 110,
+            ),
           if (readOnly) _ReadOnlyBadge(onCopy: _copyToMyDesigns, ownerEmail: _designOwnerEmail),
         ],
       ),
