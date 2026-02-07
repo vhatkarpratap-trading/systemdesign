@@ -42,8 +42,8 @@ class AdminScreen extends ConsumerWidget {
       );
     }
 
-    final pendingAsync = ref.watch(adminPendingProvider);
     final designsAsync = ref.watch(adminDesignsProvider);
+    final communityAsync = ref.watch(communityDesignsProvider);
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -68,59 +68,83 @@ class AdminScreen extends ConsumerWidget {
           children: [
             const Text('Pending Approvals', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textPrimary)),
             const SizedBox(height: 8),
-            pendingAsync.when(
-              data: (list) => list.isEmpty
-                  ? const Text('No pending designs', style: TextStyle(color: AppTheme.textMuted))
-                  : Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: list
-                          .map((d) => SizedBox(
-                                width: 320,
-                                child: _AdminCard(
-                                  design: d,
-                                  onApprove: () => _moderate(context, ref, d.id, true),
-                                  onReject: () => _moderate(context, ref, d.id, false),
-                                  onLoad: () => _loadOnCanvas(context, d),
-                                ),
-                              ))
-                          .toList(),
-                    ),
-              loading: () => const LinearProgressIndicator(),
-              error: (e, _) => Text('Error: $e', style: const TextStyle(color: AppTheme.error)),
-            ),
+            _buildPendingSection(designsAsync, communityAsync, context, ref),
             const SizedBox(height: 24),
             const Text('Approved/Public & Your Designs', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textPrimary)),
             const SizedBox(height: 8),
-            designsAsync.when(
-              data: (list) => list.isEmpty
-                  ? const Text('No designs found', style: TextStyle(color: AppTheme.textMuted))
-                  : GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: list.length,
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        mainAxisSpacing: 12,
-                        crossAxisSpacing: 12,
-                        childAspectRatio: 1.2,
-                      ),
-                      itemBuilder: (context, i) {
-                        final design = list[i];
-                        return DesignCard(
-                          design: design,
-                          onTap: () {},
-                          onUpvote: () {},
-                          onSimulate: () => _loadOnCanvas(context, design),
-                        );
-                      },
-                    ),
-              loading: () => const LinearProgressIndicator(),
-              error: (e, _) => Text('Error: $e', style: const TextStyle(color: AppTheme.error)),
-            ),
+            _buildDesignGrid(designsAsync, communityAsync, context, ref),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPendingSection(
+    AsyncValue<List<CommunityDesign>> adminAsync,
+    AsyncValue<List<CommunityDesign>> communityAsync,
+    BuildContext context,
+    WidgetRef ref,
+  ) {
+    if (adminAsync.isLoading || communityAsync.isLoading) {
+      return const LinearProgressIndicator();
+    }
+
+    final designs = adminAsync.value ?? communityAsync.value ?? const [];
+    final pending = designs.where((d) => d.status != 'approved' && d.status != 'draft').toList();
+
+    if (pending.isEmpty) {
+      return const Text('No pending designs', style: TextStyle(color: AppTheme.textMuted));
+    }
+
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: pending
+          .map((d) => SizedBox(
+                width: 320,
+                child: _AdminCard(
+                  design: d,
+                  onApprove: () => _moderate(context, ref, d.id, true),
+                  onReject: () => _moderate(context, ref, d.id, false),
+                  onLoad: () => _loadOnCanvas(context, d),
+                ),
+              ))
+          .toList(),
+    );
+  }
+
+  Widget _buildDesignGrid(
+    AsyncValue<List<CommunityDesign>> adminAsync,
+    AsyncValue<List<CommunityDesign>> communityAsync,
+    BuildContext context,
+    WidgetRef ref,
+  ) {
+    if (adminAsync.isLoading || communityAsync.isLoading) {
+      return const LinearProgressIndicator();
+    }
+    final designs = adminAsync.value ?? communityAsync.value ?? const [];
+    if (designs.isEmpty) {
+      return const Text('No designs found', style: TextStyle(color: AppTheme.textMuted));
+    }
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: designs.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 1.2,
+      ),
+      itemBuilder: (context, i) {
+        final design = designs[i];
+        return DesignCard(
+          design: design,
+          onTap: () => _loadOnCanvas(context, design),
+          onUpvote: () {},
+          onSimulate: () => _loadOnCanvas(context, design),
+        );
+      },
     );
   }
 
