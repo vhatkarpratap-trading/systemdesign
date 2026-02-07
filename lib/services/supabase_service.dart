@@ -176,10 +176,9 @@ class SupabaseService {
     bool includePendingForAdmin = false,
     String? includeMineUserId,
   }) async {
-    const fullColumns =
-        'id, user_id, title, description, blog_markdown, canvas_data, blueprint_path, is_public, status, rejection_reason, upvotes, created_at, profiles(display_name, email, avatar_url)';
+    // Some projects may not have email/avatars in profiles. Keep columns minimal for resilience.
     const minimalColumns =
-        'id, user_id, title, description, canvas_data, blueprint_path, is_public, status, upvotes, created_at, profiles(display_name, email, avatar_url)';
+        'id, user_id, title, description, blog_markdown, canvas_data, blueprint_path, is_public, status, rejection_reason, upvotes, created_at, profiles(display_name)';
 
     Future<List<Map<String, dynamic>>> _runQueries(String columns) async {
       final List<Map<String, dynamic>> combined = [];
@@ -247,19 +246,13 @@ class SupabaseService {
     }
 
     try {
-      return await _runQueries(fullColumns);
-    } catch (e) {
-      // Fallback in case a column (e.g., blog_markdown) is missing in DB
-      debugPrint('Error fetching community designs with full columns: $e. Retrying with minimal columns.');
-      try {
-        return await _runQueries(minimalColumns);
-      } catch (e2) {
-        debugPrint('Fallback fetch failed: $e2');
-        if (e2 is PostgrestException) {
-          debugPrint('Postgrest details: ${e2.message} - ${e2.details}');
-        }
-        return [];
+      return await _runQueries(minimalColumns);
+    } catch (e2) {
+      debugPrint('Fetch failed: $e2');
+      if (e2 is PostgrestException) {
+        debugPrint('Postgrest details: ${e2.message} - ${e2.details}');
       }
+      return [];
     }
   }
 
@@ -399,7 +392,7 @@ class SupabaseService {
     try {
       final resp = await client
           .from('designs')
-          .select('*, profiles(display_name, email, avatar_url)')
+          .select('*, profiles(display_name)')
           .eq('status', 'pending')
           .order('created_at', ascending: false);
       return List<Map<String, dynamic>>.from(resp);
