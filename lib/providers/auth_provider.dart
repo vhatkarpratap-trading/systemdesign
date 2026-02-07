@@ -32,3 +32,5 @@ final isAdminProvider = Provider<bool>((ref) {
   final email = user?.email?.toLowerCase();
   return email == SupabaseService.adminEmail;
 });
+
+final canvasReadOnlyProvider = StateProvider<bool>((ref) => false);

@@ -14,6 +14,7 @@ class CommunityRepository {
         // Map Supabase JSON to CommunityDesign
         return CommunityDesign(
           id: json['id'],
+          userId: json['user_id'] ?? '',
           title: json['title'],
           description: json['description'] ?? '',
           blogMarkdown: json['blog_markdown'] ?? json['description'] ?? '',

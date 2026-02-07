@@ -38,11 +38,15 @@ import 'dart:async';
 class GameScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic>? initialCommunityDesign;
   final String? sharedDesignId;
+  final String? designOwnerId;
+  final bool readOnly;
 
   const GameScreen({
     super.key,
     this.initialCommunityDesign,
     this.sharedDesignId,
+    this.designOwnerId,
+    this.readOnly = false,
   });
 
   @override
@@ -60,6 +64,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   String? _privateDesignTitle;
   bool _authPromptShown = false;
   bool _trafficInitialized = false;
+  String? _designOwnerId;
   final GlobalKey _toolbarKey = GlobalKey();
   Offset _toolbarOffset = const Offset(0, 20);
   Size? _toolbarSize;
@@ -93,14 +98,19 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       } else {
         _activeCommunityDesign = widget.initialCommunityDesign;
       }
+      _designOwnerId = widget.designOwnerId ?? widget.initialCommunityDesign!['__owner_id'] as String?;
     }
     _sharedDesignId = widget.sharedDesignId;
+    if (_designOwnerId == null) {
+      _designOwnerId = widget.designOwnerId;
+    }
     
     // Auto-load a complex design for testing simulation and click-to-fix
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_activeCommunityDesign != null) {
         final imported = BlueprintImporter.importFromMap(_activeCommunityDesign!);
         ref.read(canvasProvider.notifier).loadState(imported);
+        _setReadOnlyFlag();
       } else if (_sharedDesignId != null) {
         _loadSharedDesign(_sharedDesignId!);
       } else {
@@ -108,6 +118,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           ref.read(currentProblemProvider).id,
           forceTestDesign: true,
         );
+        ref.read(canvasReadOnlyProvider.notifier).state = false;
       }
       _maybePromptAuth();
       _maybeSetDefaultTraffic();
@@ -127,6 +138,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         ref.read(canvasProvider.notifier).loadState(imported);
         _privateDesignId = designId;
         _privateDesignTitle = data['title'] as String?;
+        _designOwnerId = data['__owner_id'] as String?;
+        _setReadOnlyFlag();
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Shared design not found')),
@@ -166,6 +179,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     if (_trafficInitialized) return;
     ref.read(canvasProvider.notifier).setTrafficLevel(0.4);
     _trafficInitialized = true;
+  }
+
+  void _setReadOnlyFlag() {
+    final user = SupabaseService().currentUser;
+    final isOwner = user != null && _designOwnerId != null && user.id == _designOwnerId;
+    ref.read(canvasReadOnlyProvider.notifier).state = widget.readOnly || !isOwner && _designOwnerId != null;
   }
 
   void _startStatusPolling(User user) {

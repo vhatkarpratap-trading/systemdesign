@@ -2,6 +2,7 @@ import 'dart:convert';
 
 class CommunityDesign {
   final String id;
+  final String userId;
   final String title;
   final String description;
   final String blogMarkdown;
@@ -19,6 +20,7 @@ class CommunityDesign {
 
   CommunityDesign({
     required this.id,
+    required this.userId,
     required this.title,
     required this.description,
     required this.blogMarkdown,
@@ -37,6 +39,7 @@ class CommunityDesign {
 
   Map<String, dynamic> toJson() => {
     'id': id,
+    'user_id': userId,
     'title': title,
     'description': description,
     'blog_markdown': blogMarkdown,
@@ -68,6 +71,7 @@ class CommunityDesign {
 
     return CommunityDesign(
       id: json['id'],
+      userId: json['user_id'] ?? '',
       title: json['title'],
       description: json['description'] ?? '',
       blogMarkdown: json['blog_markdown'] ?? json['description'] ?? '',
@@ -89,6 +93,7 @@ class CommunityDesign {
 
   CommunityDesign copyWith({
     String? title,
+    String? userId,
     String? description,
     String? blogMarkdown,
     int? upvotes,
@@ -99,6 +104,7 @@ class CommunityDesign {
   }) {
     return CommunityDesign(
       id: id,
+      userId: userId ?? this.userId,
       title: title ?? this.title,
       description: description ?? this.description,
       blogMarkdown: blogMarkdown ?? this.blogMarkdown,

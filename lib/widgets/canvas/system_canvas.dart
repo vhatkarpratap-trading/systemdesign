@@ -23,6 +23,7 @@ import '../../models/chaos_event.dart';
 import '../../models/custom_component.dart';
 import 'issue_marker.dart';
 import '../panels/db_modeling_panel.dart';
+import '../../providers/auth_provider.dart';
 
 /// Interactive canvas for building system architecture
 class SystemCanvas extends ConsumerStatefulWidget {
@@ -134,6 +135,7 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
 
   @override
   Widget build(BuildContext context) {
+    final readOnly = ref.watch(canvasReadOnlyProvider);
     // CRITICAL: We only watch the fields that affect the visual build of the components.
     // We specifically do NOT watch 'panOffset' or 'scale' here, because those are 
     // handled by the TransformationController. If we rebuilt on every pan/zoom,
@@ -588,8 +590,8 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                                               _focusNode.requestFocus();
                                             },
                                             onDoubleTap: () {
+                                              if (readOnly) return;
                                               debugPrint('Flutter DoubleTap: ${component.id}');
-                                              // Fallback if manual fails or Flutter starts working
                                               if (activeTool == CanvasTool.arrow) return;
                                               final canEditInline = component.type.isSketchy || component.type == ComponentType.text;
                                               if (canEditInline) {
@@ -599,11 +601,13 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                                               }
                                             },
                                             onPanStart: (details) {
+                                              if (readOnly) return;
                                               if (activeTool == CanvasTool.arrow) {
                                                 _onDragConnectStart(component, startPos: _getCanvasPosition(details.globalPosition));
                                               }
                                             },
                                             onPanUpdate: (details) {
+                                              if (readOnly) return;
                                               if (activeTool == CanvasTool.arrow) {
                                                 _onDragConnectUpdate(details.globalPosition);
                                                 return;
@@ -887,6 +891,7 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
   }
 
   void _onDragConnectStart(SystemComponent component, {Offset? startPos}) {
+    if (ref.read(canvasReadOnlyProvider)) return;
     setState(() {
       _draggingFromId = component.id;
       _dragStartPos = startPos ?? Offset(component.position.dx + 80, component.position.dy + 32);
@@ -896,6 +901,7 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
   }
 
   void _onDragConnectUpdate(Offset globalPos) {
+    if (ref.read(canvasReadOnlyProvider)) return;
     final canvasPos = _getCanvasPosition(globalPos);
 
     // Find if we are hovering over another component (Magnetic Snap)
@@ -932,6 +938,14 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
   }
 
   void _onDragConnectEnd() {
+    if (ref.read(canvasReadOnlyProvider)) {
+      setState(() {
+        _draggingFromId = null;
+        _draggingCurrentPos = null;
+        _hoveredComponentId = null;
+      });
+      return;
+    }
     if (_draggingFromId != null && _hoveredComponentId != null) {
       // Direct connection without dialog for seamless flow
       final error = ref.read(canvasProvider.notifier).connectTo(
@@ -961,6 +975,13 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
     final canvasNotifier = ref.read(canvasProvider.notifier);
     final canvasState = ref.read(canvasProvider);
     final activeTool = ref.read(canvasToolProvider); // Check active tool
+    final readOnly = ref.read(canvasReadOnlyProvider);
+
+    if (readOnly) {
+      // Allow selection highlight only
+      canvasNotifier.selectComponent(component.id);
+      return;
+    }
 
     // Arrow tool acts as a connection tool (Hybrid: Connect + Edit)
     if (activeTool == CanvasTool.arrow) {

@@ -175,12 +175,12 @@ class SupabaseService {
       final response = includePendingForAdmin && isAdmin
           ? await client
               .from('designs')
-              .select('*, profiles(display_name, avatar_url)')
+              .select('id, user_id, title, description, blog_markdown, canvas_data, blueprint_path, is_public, status, rejection_reason, upvotes, created_at, profiles(display_name, avatar_url)')
               .order('created_at', ascending: false)
               .limit(50)
           : await client
               .from('designs')
-              .select('*, profiles(display_name, avatar_url)')
+              .select('id, user_id, title, description, blog_markdown, canvas_data, blueprint_path, is_public, status, rejection_reason, upvotes, created_at, profiles(display_name, avatar_url)')
               .eq('status', 'approved')
               .eq('is_public', true)
               .order('created_at', ascending: false)
@@ -389,17 +389,26 @@ class SupabaseService {
     try {
       final resp = await client
           .from('designs')
-          .select('canvas_data, blueprint_path')
+          .select('canvas_data, blueprint_path, user_id, title, description')
           .eq('id', id)
           .single();
 
       if (resp['canvas_data'] != null) {
-        return Map<String, dynamic>.from(resp['canvas_data'] as Map);
+        final map = Map<String, dynamic>.from(resp['canvas_data'] as Map);
+        map['__owner_id'] = resp['user_id'];
+        map['__title'] = resp['title'];
+        map['__description'] = resp['description'];
+        return map;
       }
 
       if (resp['blueprint_path'] != null) {
         final blueprint = await downloadBlueprint(resp['blueprint_path']);
-        if (blueprint != null) return blueprint;
+        if (blueprint != null) {
+          blueprint['__owner_id'] = resp['user_id'];
+          blueprint['__title'] = resp['title'];
+          blueprint['__description'] = resp['description'];
+          return blueprint;
+        }
       }
     } catch (e) {
       debugPrint('fetchDesignById error: $e');

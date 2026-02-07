@@ -6,6 +6,7 @@ import '../../providers/game_provider.dart';
 import '../../providers/custom_component_provider.dart';
 import '../../screens/custom_component_editor_screen.dart';
 import '../../theme/app_theme.dart';
+import '../../providers/auth_provider.dart';
 
 
 /// Toolbox display mode
@@ -25,6 +26,7 @@ class ComponentToolbox extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final readOnly = ref.watch(canvasReadOnlyProvider);
     final isVisible = ref.watch(toolboxVisibleProvider);
     final selectedCategory = ref.watch(selectedCategoryProvider);
 
@@ -41,12 +43,14 @@ class ComponentToolbox extends ConsumerWidget {
       return _SidebarToolbox(
         components: components,
         selectedCategory: selectedCategory,
+        readOnly: readOnly,
       );
     }
 
     return _HorizontalToolbox(
       components: components,
       selectedCategory: selectedCategory,
+      readOnly: readOnly,
     );
   }
 }
@@ -55,10 +59,12 @@ class ComponentToolbox extends ConsumerWidget {
 class _HorizontalToolbox extends ConsumerWidget {
   final List<ComponentType> components;
   final ComponentCategory? selectedCategory;
+  final bool readOnly;
 
   const _HorizontalToolbox({
     required this.components,
     required this.selectedCategory,
+    required this.readOnly,
   });
 
   @override
@@ -154,21 +160,23 @@ class _HorizontalToolbox extends ConsumerWidget {
                 final type = components[index];
                 return Padding(
                   padding: const EdgeInsets.only(right: 6),
-                  child: LongPressDraggable<ComponentType>(
-                    data: type,
-                    delay: const Duration(milliseconds: 100),
-                    feedback: _DragFeedback(type: type),
-                    childWhenDragging: Opacity(
-                      opacity: 0.3,
-                      child: _ComponentChip(type: type),
-                    ),
-                    child: GestureDetector(
-                      onTap: () {
-                        ref.read(addComponentTriggerProvider.notifier).state = type;
-                      },
-                      child: _ComponentChip(type: type),
-                    ),
-                  ),
+                  child: readOnly
+                      ? _ComponentChip(type: type)
+                      : LongPressDraggable<ComponentType>(
+                          data: type,
+                          delay: const Duration(milliseconds: 100),
+                          feedback: _DragFeedback(type: type),
+                          childWhenDragging: Opacity(
+                            opacity: 0.3,
+                            child: _ComponentChip(type: type),
+                          ),
+                          child: GestureDetector(
+                            onTap: () {
+                              ref.read(addComponentTriggerProvider.notifier).state = type;
+                            },
+                            child: _ComponentChip(type: type),
+                          ),
+                        ),
                 );
               },
             ),
@@ -185,10 +193,12 @@ class _HorizontalToolbox extends ConsumerWidget {
 class _SidebarToolbox extends ConsumerWidget {
   final List<ComponentType> components;
   final ComponentCategory? selectedCategory;
+  final bool readOnly;
 
   const _SidebarToolbox({
     required this.components,
     required this.selectedCategory,
+    required this.readOnly,
   });
 
   @override
@@ -279,20 +289,22 @@ class _SidebarToolbox extends ConsumerWidget {
               itemCount: components.length,
               itemBuilder: (context, index) {
                 final type = components[index];
-                return Draggable<ComponentType>(
-                  data: type,
-                  feedback: _DragFeedback(type: type),
-                  childWhenDragging: Opacity(
-                    opacity: 0.3,
-                    child: _SidebarComponentTile(type: type),
-                  ),
-                  child: GestureDetector(
-                    onTap: () {
-                      ref.read(addComponentTriggerProvider.notifier).state = type;
-                    },
-                    child: _SidebarComponentTile(type: type),
-                  ),
-                );
+                return readOnly
+                    ? _SidebarComponentTile(type: type)
+                    : Draggable<ComponentType>(
+                        data: type,
+                        feedback: _DragFeedback(type: type),
+                        childWhenDragging: Opacity(
+                          opacity: 0.3,
+                          child: _SidebarComponentTile(type: type),
+                        ),
+                        child: GestureDetector(
+                          onTap: () {
+                            ref.read(addComponentTriggerProvider.notifier).state = type;
+                          },
+                          child: _SidebarComponentTile(type: type),
+                        ),
+                      );
               },
             ),
           ),
@@ -609,4 +621,3 @@ class ToolboxToggle extends ConsumerWidget {
     );
   }
 }
-

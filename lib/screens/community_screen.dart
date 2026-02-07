@@ -736,6 +736,9 @@ class CommunityScreen extends ConsumerWidget {
       
       ref.read(currentProblemProvider.notifier).state = problem;
       ref.read(canvasProvider.notifier).loadState(newState);
+      final user = ref.read(currentUserProvider);
+      final isOwner = user != null && design.userId == user.id;
+      ref.read(canvasReadOnlyProvider.notifier).state = !isOwner;
       
       Navigator.push(
         context,
@@ -743,6 +746,8 @@ class CommunityScreen extends ConsumerWidget {
           builder: (context) => GameScreen(
             initialCommunityDesign: design.canvasData,
             sharedDesignId: design.id,
+            designOwnerId: design.userId,
+            readOnly: !isOwner,
           ),
         ),
       );
