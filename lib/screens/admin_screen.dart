@@ -4,9 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/app_theme.dart';
 import '../providers/community_provider.dart';
 import '../services/supabase_service.dart';
-import '../widgets/community/design_card.dart';
 import '../utils/blueprint_importer.dart';
 import 'game_screen.dart';
+import '../models/community_design.dart';
 
 class AdminScreen extends ConsumerWidget {
   const AdminScreen({super.key});
