@@ -55,7 +55,7 @@ class AdminScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
-              ref.invalidate(pendingDesignsProvider);
+              ref.invalidate(adminDesignsProvider);
               ref.invalidate(communityDesignsProvider);
             },
           ),
@@ -69,6 +69,8 @@ class AdminScreen extends ConsumerWidget {
             const Text('Pending Approvals', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textPrimary)),
             const SizedBox(height: 8),
             _buildPendingSection(designsAsync, communityAsync, context, ref),
+            const SizedBox(height: 12),
+            _DebugCounts(designsAsync: designsAsync, communityAsync: communityAsync),
             const SizedBox(height: 24),
             const Text('Approved/Public & Your Designs', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.textPrimary)),
             const SizedBox(height: 8),
@@ -88,9 +90,19 @@ class AdminScreen extends ConsumerWidget {
     if (adminAsync.isLoading || communityAsync.isLoading) {
       return const LinearProgressIndicator();
     }
+    if (adminAsync.hasError || communityAsync.hasError) {
+      final err = adminAsync.error ?? communityAsync.error;
+      return Text('Error loading pending: $err', style: const TextStyle(color: AppTheme.error));
+    }
 
-    final designs = adminAsync.value ?? communityAsync.value ?? const [];
-    final pending = designs.where((d) => d.status != 'approved' && d.status != 'draft').toList();
+    final designs = adminAsync.value != null && adminAsync.value!.isNotEmpty
+        ? adminAsync.value!
+        : (communityAsync.value ?? const []);
+
+    final pending = designs.where((d) {
+      final status = d.status;
+      return status == null || status.isEmpty || status == 'pending';
+    }).toList();
 
     if (pending.isEmpty) {
       return const Text('No pending designs', style: TextStyle(color: AppTheme.textMuted));
@@ -122,7 +134,13 @@ class AdminScreen extends ConsumerWidget {
     if (adminAsync.isLoading || communityAsync.isLoading) {
       return const LinearProgressIndicator();
     }
-    final designs = adminAsync.value ?? communityAsync.value ?? const [];
+    if (adminAsync.hasError || communityAsync.hasError) {
+      final err = adminAsync.error ?? communityAsync.error;
+      return Text('Error loading designs: $err', style: const TextStyle(color: AppTheme.error));
+    }
+    final designs = adminAsync.value != null && adminAsync.value!.isNotEmpty
+        ? adminAsync.value!
+        : (communityAsync.value ?? const []);
     if (designs.isEmpty) {
       return const Text('No designs found', style: TextStyle(color: AppTheme.textMuted));
     }
@@ -236,6 +254,37 @@ class _AdminCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _DebugCounts extends StatelessWidget {
+  final AsyncValue<List<CommunityDesign>> designsAsync;
+  final AsyncValue<List<CommunityDesign>> communityAsync;
+  const _DebugCounts({required this.designsAsync, required this.communityAsync});
+
+  @override
+  Widget build(BuildContext context) {
+    if (designsAsync.isLoading || communityAsync.isLoading) return const SizedBox.shrink();
+    final list = designsAsync.value != null && designsAsync.value!.isNotEmpty
+        ? designsAsync.value!
+        : (communityAsync.value ?? const []);
+    if (list.isEmpty) return const SizedBox.shrink();
+
+    final pending = list.where((d) => d.status == null || d.status.isEmpty || d.status == 'pending').length;
+    final total = list.length;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceLight,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Text(
+        'Pending: $pending • Total: $total',
+        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12, fontWeight: FontWeight.w600),
       ),
     );
   }
