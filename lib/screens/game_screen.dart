@@ -170,6 +170,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         ref.read(canvasProvider.notifier).loadState(imported);
         _setReadOnlyFlag();
         _fitContentToViewport();
+        _autoLayoutCurrent();
       } else if (_sharedDesignId != null) {
         _loadSharedDesign(_sharedDesignId!);
       } else {
@@ -201,6 +202,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         _designOwnerEmail = data['__owner_email'] as String?;
         _setReadOnlyFlag();
         _fitContentToViewport();
+        _autoLayoutCurrent();
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Shared design not found')),
@@ -483,6 +485,13 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       panOffset: newOffset,
       scale: fitScale,
     );
+  }
+
+  void _autoLayoutCurrent() {
+    final canvas = ref.read(canvasProvider);
+    if (canvas.components.isEmpty) return;
+    final size = MediaQuery.of(context).size;
+    ref.read(canvasProvider.notifier).autoLayout(size);
   }
 
   Future<void> _handleLoadMyDesigns() async {
