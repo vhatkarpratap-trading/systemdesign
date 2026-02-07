@@ -153,7 +153,7 @@ class _ConnectionsLayerState extends State<ConnectionsLayer>
     final len = math.sqrt(dx * dx + dy * dy);
     if (len == 0) return Offset.zero;
     final normal = Offset(-dy / len, dx / len);
-    const spread = 14.0;
+    const spread = 24.0; // wider lane separation near origin/target
     final offsetAmount = (index - (total - 1) / 2) * spread;
     return normal * offsetAmount;
   }
@@ -389,7 +389,7 @@ class _ConnectionsPainter extends CustomPainter {
     final len = math.sqrt(dx * dx + dy * dy);
     if (len == 0) return Offset.zero;
     final normal = Offset(-dy / len, dx / len);
-    const spread = 14.0;
+    const spread = 24.0; // mirror painter spacing for hit targets
     final offsetAmount = (index - (total - 1) / 2) * spread;
     return normal * offsetAmount;
   }
