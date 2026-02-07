@@ -108,20 +108,50 @@ class AdminScreen extends ConsumerWidget {
       return const Text('No pending designs', style: TextStyle(color: AppTheme.textMuted));
     }
 
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: pending
-          .map((d) => SizedBox(
-                width: 320,
-                child: _AdminCard(
-                  design: d,
-                  onApprove: () => _moderate(context, ref, d.id, true),
-                  onReject: () => _moderate(context, ref, d.id, false),
-                  onLoad: () => _loadOnCanvas(context, d),
-                ),
-              ))
-          .toList(),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppTheme.warning.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.warning.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.pending_actions, color: AppTheme.warning),
+              const SizedBox(width: 8),
+              Text(
+                'Pending approvals (${pending.length})',
+                style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w700, fontSize: 15),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 190,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: pending.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final d = pending[index];
+                return SizedBox(
+                  width: 280,
+                  child: _AdminCard(
+                    design: d,
+                    onApprove: () => _moderate(context, ref, d.id, true),
+                    onReject: () => _moderate(context, ref, d.id, false),
+                    onLoad: () => _loadOnCanvas(context, d),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -176,7 +206,7 @@ class AdminScreen extends ConsumerWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(approve ? 'Approved' : 'Rejected')),
       );
-      ref.invalidate(pendingDesignsProvider);
+      ref.invalidate(adminDesignsProvider);
       ref.invalidate(communityDesignsProvider);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));

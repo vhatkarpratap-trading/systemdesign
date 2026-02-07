@@ -66,9 +66,6 @@ class CommunityScreen extends ConsumerWidget {
                       ],
                   ),
                 ),
-                if (isAdmin)
-                  _PendingStrip(pendingAsync: pendingAsync, onTapDesign: (design) => _showDesignDetails(context, ref, design), onApprove: (id) => _moderateDesign(context, ref, id, approve: true), onReject: (id) => _promptReject(context, ref, id)),
-
                 // Design Feed
                 Expanded(
                   child: designsAsync.when(
@@ -939,100 +936,6 @@ class _AdminActions extends StatelessWidget {
           ],
         ),
       ],
-    );
-  }
-}
-
-class _PendingStrip extends StatelessWidget {
-  final AsyncValue<List<CommunityDesign>> pendingAsync;
-  final void Function(CommunityDesign) onTapDesign;
-  final void Function(String) onApprove;
-  final void Function(String) onReject;
-
-  const _PendingStrip({
-    required this.pendingAsync,
-    required this.onTapDesign,
-    required this.onApprove,
-    required this.onReject,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return pendingAsync.when(
-      data: (designs) {
-        if (designs.isEmpty) return const SizedBox.shrink();
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            color: AppTheme.warning.withValues(alpha: 0.08),
-            border: Border(
-              bottom: BorderSide(color: AppTheme.warning.withValues(alpha: 0.3)),
-              top: BorderSide(color: AppTheme.warning.withValues(alpha: 0.3)),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.pending_actions, color: AppTheme.warning),
-                  const SizedBox(width: 8),
-                  Text('Pending approvals (${designs.length})', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w700)),
-                ],
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 150,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: designs.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 12),
-                  itemBuilder: (context, index) {
-                    final d = designs[index];
-                    return Container(
-                      width: 260,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surface,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppTheme.border),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(d.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
-                          const SizedBox(height: 4),
-                          Text(d.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              TextButton(onPressed: () => onTapDesign(d), child: const Text('View')),
-                              const Spacer(),
-                              IconButton(
-                                icon: const Icon(Icons.check_circle, color: AppTheme.success),
-                                tooltip: 'Approve',
-                                onPressed: () => onApprove(d.id),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.cancel, color: AppTheme.error),
-                                tooltip: 'Reject',
-                                onPressed: () => onReject(d.id),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-      loading: () => const LinearProgressIndicator(minHeight: 2),
-      error: (e, _) => const SizedBox.shrink(),
     );
   }
 }
