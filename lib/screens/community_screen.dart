@@ -909,7 +909,7 @@ class _PendingStrip extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               SizedBox(
-                height: 120,
+                height: 150,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: designs.length,
@@ -930,7 +930,7 @@ class _PendingStrip extends StatelessWidget {
                           Text(d.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
                           const SizedBox(height: 4),
                           Text(d.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
-                          const Spacer(),
+                          const SizedBox(height: 8),
                           Row(
                             children: [
                               TextButton(onPressed: () => onTapDesign(d), child: const Text('View')),
