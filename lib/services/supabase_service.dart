@@ -338,8 +338,10 @@ class SupabaseService {
   Future<String> savePrivateDesign({
     required String title,
     required String description,
+    String? blogMarkdown,
     required Map<String, dynamic> canvasData,
     required String? designId,
+    String status = 'pending',
   }) async {
     final user = currentUser;
     if (user == null) throw Exception('Must be logged in to save');
@@ -351,9 +353,11 @@ class SupabaseService {
       'user_id': user.id,
       'title': title,
       'description': description,
+      'blog_markdown': blogMarkdown ?? description,
       'canvas_data': canvasData,
       'blueprint_path': blueprintPath,
       'is_public': false,
+      'status': status,
       'updated_at': DateTime.now().toIso8601String(),
     };
 

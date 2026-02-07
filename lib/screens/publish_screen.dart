@@ -22,6 +22,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
   late TextEditingController _titleController;
   final _descController = TextEditingController();
   bool _isPublishing = false;
+  bool _submitForReview = true;
 
   @override
   void initState() {
@@ -50,28 +51,48 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
     setState(() => _isPublishing = true);
 
     try {
-      await SupabaseService().publishDesign(
-        title: title,
-        description: description,
-        blogMarkdown: description,
-        canvasData: widget.canvasData,
-        designId: null, // Always new for now
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Submitted for review. We will publish once approved.'),
-            backgroundColor: AppTheme.warning,
-          ),
+      if (_submitForReview) {
+        await SupabaseService().publishDesign(
+          title: title,
+          description: description,
+          blogMarkdown: description.isEmpty ? null : description,
+          canvasData: widget.canvasData,
+          designId: null, // Always new for now
         );
-        Navigator.pop(context); // Return to GameScreen
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Submitted for review. We will publish once approved.'),
+              backgroundColor: AppTheme.warning,
+            ),
+          );
+          Navigator.pop(context); // Return to GameScreen
+        }
+      } else {
+        await SupabaseService().savePrivateDesign(
+          title: title,
+          description: description,
+          blogMarkdown: description.isEmpty ? null : description,
+          canvasData: widget.canvasData,
+          designId: null,
+          status: 'draft',
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Saved privately as draft. You can publish later.'),
+              backgroundColor: AppTheme.surfaceLight,
+            ),
+          );
+          Navigator.pop(context);
+        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to publish: $e'),
+            content: Text('Failed to submit: $e'),
             backgroundColor: AppTheme.error,
           ),
         );
@@ -160,6 +181,18 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
 
                 const SizedBox(height: 24),
 
+                // Review toggle
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Submit for community review'),
+                  subtitle: const Text('Turn off to save as a private draft (not published)'),
+                  value: _submitForReview,
+                  onChanged: (v) => setState(() => _submitForReview = v),
+                  activeColor: AppTheme.primary,
+                ),
+
+                const SizedBox(height: 12),
+
                 // Description Input
                 Text('WRITEUP / BLOG', style: _labelStyle),
                 const SizedBox(height: 8),
@@ -177,7 +210,7 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
                     textAlignVertical: TextAlignVertical.top,
                     style: const TextStyle(color: AppTheme.textPrimary, fontSize: 15, height: 1.5),
                     decoration: const InputDecoration(
-                      hintText: 'Describe your architecture, tradeoffs, and design decisions...\n\n- Why did you choose this database?\n- How do you handle scaling?\n- What are the bottlenecks?',
+                      hintText: 'Optional: Describe your architecture, tradeoffs, and design decisions...',
                       hintStyle: TextStyle(color: AppTheme.textMuted),
                       border: InputBorder.none,
                       contentPadding: EdgeInsets.all(16),
