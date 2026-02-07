@@ -168,11 +168,13 @@ class AdminScreen extends ConsumerWidget {
       final err = adminAsync.error ?? communityAsync.error;
       return Text('Error loading designs: $err', style: const TextStyle(color: AppTheme.error));
     }
-    final designs = adminAsync.value != null && adminAsync.value!.isNotEmpty
-        ? adminAsync.value!
-        : (communityAsync.value ?? const []);
+    final designs = (adminAsync.value != null && adminAsync.value!.isNotEmpty
+            ? adminAsync.value!
+            : (communityAsync.value ?? const []))
+        .where((d) => d.status != 'approved')
+        .toList();
     if (designs.isEmpty) {
-      return const Text('No designs found', style: TextStyle(color: AppTheme.textMuted));
+      return const Text('No designs found (only approved designs were hidden)', style: TextStyle(color: AppTheme.textMuted));
     }
     return GridView.builder(
       shrinkWrap: true,
