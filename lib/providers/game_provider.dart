@@ -794,9 +794,9 @@ String addComponentTemplate(SystemComponent template, Offset position) {
     const startX = 5000.0;
     const startY = 5000.0; // Centered
     
-    // Tighter spacing defaults
-    const layerSpacingX = 240.0;
-    const fixedNodeSpacing = 80.0; // Minimum gap between nodes
+    // Spacing tuned to reduce overlap on dense graphs
+    const layerSpacingX = 320.0;      // more horizontal separation
+    const fixedNodeSpacing = 140.0;   // more vertical gap between nodes
     
     double minX = double.infinity;
     double maxX = double.negativeInfinity;
