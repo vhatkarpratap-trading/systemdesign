@@ -178,6 +178,12 @@ class _ConnectionsPainter extends CustomPainter {
     }
 
     groups.forEach((_, list) {
+      // Count per-protocol within this pair for label context
+      final Map<ConnectionProtocol, int> protocolCounts = {};
+      for (final c in list) {
+        protocolCounts[c.protocol] = (protocolCounts[c.protocol] ?? 0) + 1;
+      }
+
       final sorted = List<Connection>.from(list)
         ..sort((a, b) => a.protocol.index.compareTo(b.protocol.index));
 
@@ -194,6 +200,7 @@ class _ConnectionsPainter extends CustomPainter {
           connection,
           index: i,
           total: sorted.length,
+          protocolCount: protocolCounts[connection.protocol] ?? 1,
         );
       }
     });
@@ -206,6 +213,7 @@ class _ConnectionsPainter extends CustomPainter {
     Connection connection, {
     required int index,
     required int total,
+    required int protocolCount,
   }) {
     // 1. Determine Color & Style
     final traffic = connection.trafficFlow;
@@ -256,7 +264,7 @@ class _ConnectionsPainter extends CustomPainter {
     }
 
     // 5. Label (protocol + mini stats)
-    _drawLabel(canvas, path, connection.protocol, lineColor, traffic);
+    _drawLabel(canvas, path, connection.protocol, lineColor, traffic, protocolCount);
 
     // 4. Draw Traffic Packets (Legacy removed in favor of TrafficLayer)
     // if (traffic > 0) {
@@ -386,14 +394,16 @@ class _ConnectionsPainter extends CustomPainter {
     return normal * offsetAmount;
   }
 
-  void _drawLabel(Canvas canvas, Path path, ConnectionProtocol protocol, Color color, double traffic) {
+  void _drawLabel(Canvas canvas, Path path, ConnectionProtocol protocol, Color color, double traffic, int protocolCount) {
     final metrics = path.computeMetrics().toList();
     if (metrics.isEmpty) return;
     final metric = metrics.first;
     final midTangent = metric.getTangentForOffset(metric.length / 2);
     if (midTangent == null) return;
 
-    final text = protocol.label + (traffic > 0 ? ' • ${(traffic * 100).round()}%' : '');
+    final countPart = protocolCount > 1 ? ' • ${protocolCount} APIs' : '';
+    final trafficPart = traffic > 0 ? ' • ${(traffic * 100).round()}%' : '';
+    final text = '${protocol.label}$countPart$trafficPart';
     final painter = TextPainter(
       text: TextSpan(
         text: text,
