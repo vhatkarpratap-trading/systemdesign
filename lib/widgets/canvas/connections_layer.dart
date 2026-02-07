@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:system_design_simulator/models/connection.dart';
 import 'package:system_design_simulator/models/component.dart';
 import 'package:system_design_simulator/providers/game_provider.dart';
-import 'connection_painter_utils.dart'; // Added
 import '../../theme/app_theme.dart';
 
 class ConnectionsLayer extends StatefulWidget {
@@ -26,6 +25,7 @@ class ConnectionsLayer extends StatefulWidget {
 class _ConnectionsLayerState extends State<ConnectionsLayer>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
+  static const double _laneSpread = 24.0;
 
   @override
   void initState() {
@@ -58,53 +58,19 @@ class _ConnectionsLayerState extends State<ConnectionsLayer>
           final list = entry.value;
           for (int i = 0; i < list.length; i++) {
             final connection = list[i];
-            final source = widget.canvasState.getComponent(connection.sourceId);
-            final target = widget.canvasState.getComponent(connection.targetId);
-            if (source == null || target == null) continue;
+            final start = anchors.start[connection.id];
+            final end = anchors.end[connection.id];
+            if (start == null || end == null) continue;
 
-            // Smart Anchors Logic (Mirrored for Hit Testing)
-            final sourceCenter = Offset(source.position.dx + 40, source.position.dy + 32);
-            final targetCenter = Offset(target.position.dx + 40, target.position.dy + 32);
-
-            final dx = targetCenter.dx - sourceCenter.dx;
-            final dy = targetCenter.dy - sourceCenter.dy;
-            final isHorizontal = dx.abs() > dy.abs();
-
-            Offset start;
-            Offset end;
-
-            if (isHorizontal) {
-              if (dx > 0) {
-                // Source -> Target (Left to Right)
-                start = Offset(source.position.dx + 80, source.position.dy + 32);
-                end = Offset(target.position.dx, target.position.dy + 32);
-              } else {
-                // Target -> Source (Right to Left)
-                start = Offset(source.position.dx, source.position.dy + 32);
-                end = Offset(target.position.dx + 80, target.position.dy + 32);
-              }
-            } else {
-              if (dy > 0) {
-                // Source Top -> Target Bottom (Downwards)
-                start = Offset(source.position.dx + 40, source.position.dy + 64);
-                end = Offset(target.position.dx + 40, target.position.dy);
-              } else {
-                // Source Bottom -> Target Top (Upwards)
-                start = Offset(source.position.dx + 40, source.position.dy);
-                end = Offset(target.position.dx + 40, target.position.dy + 64);
-              }
-            }
-
-            // Apply same parallel offset as painter
-            final offset = _offsetForPair(source, target, i, list.length);
-            start += offset;
-            end += offset;
+            final offset = _offsetForPair(start, end, i, list.length);
+            final s = start + offset;
+            final e = end + offset;
            
-           if (_isPointNearLine(tapPos, start, end)) {
-             widget.onTap(connection);
-             return;
-           }
-        }
+            if (_isPointNearLine(tapPos, s, e)) {
+              widget.onTap(connection);
+              return;
+            }
+          }
         }
       },
       child: AnimatedBuilder(
@@ -144,24 +110,24 @@ class _ConnectionsLayerState extends State<ConnectionsLayer>
     return (point - projection).distance < threshold;
   }
 
-  Offset _offsetForPair(SystemComponent source, SystemComponent target, int index, int total) {
+  Offset _offsetForPair(Offset start, Offset end, int index, int total) {
     if (total <= 1) return Offset.zero;
-    final srcCenter = Offset(source.position.dx + source.size.width / 2, source.position.dy + source.size.height / 2);
-    final tgtCenter = Offset(target.position.dx + target.size.width / 2, target.position.dy + target.size.height / 2);
-    final dx = tgtCenter.dx - srcCenter.dx;
-    final dy = tgtCenter.dy - srcCenter.dy;
+    final dx = end.dx - start.dx;
+    final dy = end.dy - start.dy;
     final len = math.sqrt(dx * dx + dy * dy);
     if (len == 0) return Offset.zero;
     final normal = Offset(-dy / len, dx / len);
-    const spread = 24.0; // wider lane separation near origin/target
-    final offsetAmount = (index - (total - 1) / 2) * spread;
+    final offsetAmount = (index - (total - 1) / 2) * _laneSpread;
     return normal * offsetAmount;
   }
+
+  _Anchors _computeAnchors(CanvasState state) => computeAnchors(state);
 }
 
 class _ConnectionsPainter extends CustomPainter {
   final CanvasState canvasState;
   final double animationValue;
+  static const double _laneSpread = 24.0;
 
   _ConnectionsPainter({
     required this.canvasState,
@@ -170,6 +136,8 @@ class _ConnectionsPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final anchors = computeAnchors(canvasState);
+
     // Group connections by oriented pair to offset parallels
     final Map<String, List<Connection>> groups = {};
     for (final c in canvasState.connections) {
@@ -189,14 +157,14 @@ class _ConnectionsPainter extends CustomPainter {
 
       for (int i = 0; i < sorted.length; i++) {
         final connection = sorted[i];
-        final source = canvasState.getComponent(connection.sourceId);
-        final target = canvasState.getComponent(connection.targetId);
-        if (source == null || target == null) continue;
+        final start = anchors.start[connection.id];
+        final end = anchors.end[connection.id];
+        if (start == null || end == null) continue;
 
         _paintConnection(
           canvas,
-          source,
-          target,
+          start,
+          end,
           connection,
           index: i,
           total: sorted.length,
@@ -208,8 +176,8 @@ class _ConnectionsPainter extends CustomPainter {
 
   void _paintConnection(
     Canvas canvas, 
-    SystemComponent source, 
-    SystemComponent target, 
+    Offset start,
+    Offset end,
     Connection connection, {
     required int index,
     required int total,
@@ -227,10 +195,10 @@ class _ConnectionsPainter extends CustomPainter {
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round;
 
-    Path path = ConnectionPathUtils.getPathForConnection(source, target, connection.type);
+    Path path = _buildSmoothPath(start, end);
 
     // Offset parallel lines so multiple protocols are visible
-    final offset = _offsetForPair(source, target, index, total);
+    final offset = _offsetForPair(start, end, index, total);
     if (offset != Offset.zero) {
       path = path.shift(offset);
     }
@@ -380,17 +348,14 @@ class _ConnectionsPainter extends CustomPainter {
     return base;
   }
 
-  Offset _offsetForPair(SystemComponent source, SystemComponent target, int index, int total) {
+  Offset _offsetForPair(Offset start, Offset end, int index, int total) {
     if (total <= 1) return Offset.zero;
-    final srcCenter = Offset(source.position.dx + source.size.width / 2, source.position.dy + source.size.height / 2);
-    final tgtCenter = Offset(target.position.dx + target.size.width / 2, target.position.dy + target.size.height / 2);
-    final dx = tgtCenter.dx - srcCenter.dx;
-    final dy = tgtCenter.dy - srcCenter.dy;
+    final dx = end.dx - start.dx;
+    final dy = end.dy - start.dy;
     final len = math.sqrt(dx * dx + dy * dy);
     if (len == 0) return Offset.zero;
     final normal = Offset(-dy / len, dx / len);
-    const spread = 24.0; // mirror painter spacing for hit targets
-    final offsetAmount = (index - (total - 1) / 2) * spread;
+    final offsetAmount = (index - (total - 1) / 2) * _laneSpread;
     return normal * offsetAmount;
   }
 
@@ -430,4 +395,106 @@ class _ConnectionsPainter extends CustomPainter {
     canvas.drawRRect(rrect, bgPaint);
     painter.paint(canvas, rect.topLeft + Offset(padding.left, padding.top));
   }
+
+  _Anchors _computeAnchors() {
+    final Map<String, Offset> start = {};
+    final Map<String, Offset> end = {};
+    final Map<String, int> sourceCount = {};
+    final Map<String, int> targetCount = {};
+
+    final ordered = List<Connection>.from(canvasState.connections)
+      ..sort((a, b) {
+        final s = a.sourceId.compareTo(b.sourceId);
+        if (s != 0) return s;
+        final t = a.targetId.compareTo(b.targetId);
+        if (t != 0) return t;
+        return a.id.compareTo(b.id);
+      });
+
+    for (final c in ordered) {
+      final source = canvasState.getComponent(c.sourceId);
+      final target = canvasState.getComponent(c.targetId);
+      if (source == null || target == null) continue;
+      start[c.id] = _nextAnchor(source, sourceCount);
+      end[c.id] = _nextAnchor(target, targetCount);
+    }
+    return _Anchors(start: start, end: end);
+  }
+
+  Offset _nextAnchor(SystemComponent c, Map<String, int> map) {
+    final idx = map[c.id] ?? 0;
+    map[c.id] = idx + 1;
+    final w = c.size.width;
+    final h = c.size.height;
+    final anchors = [
+      Offset(c.position.dx + w / 2, c.position.dy), // top
+      Offset(c.position.dx + w, c.position.dy + h / 2), // right
+      Offset(c.position.dx + w / 2, c.position.dy + h), // bottom
+      Offset(c.position.dx, c.position.dy + h / 2), // left
+    ];
+    return anchors[idx % anchors.length];
+  }
+
+  Path _buildSmoothPath(Offset start, Offset end) {
+    final path = Path()..moveTo(start.dx, start.dy);
+    final dx = end.dx - start.dx;
+    final dy = end.dy - start.dy;
+    Offset c1, c2;
+    if (dx.abs() > dy.abs()) {
+      final midX = (start.dx + end.dx) / 2;
+      c1 = Offset(midX, start.dy);
+      c2 = Offset(midX, end.dy);
+    } else {
+      final midY = (start.dy + end.dy) / 2;
+      c1 = Offset(start.dx, midY);
+      c2 = Offset(end.dx, midY);
+    }
+    path.cubicTo(c1.dx, c1.dy, c2.dx, c2.dy, end.dx, end.dy);
+    return path;
+  }
+}
+
+class _Anchors {
+  final Map<String, Offset> start;
+  final Map<String, Offset> end;
+  _Anchors({required this.start, required this.end});
+}
+
+_Anchors computeAnchors(CanvasState state) {
+  final Map<String, Offset> start = {};
+  final Map<String, Offset> end = {};
+  final Map<String, int> sourceCount = {};
+  final Map<String, int> targetCount = {};
+
+  final ordered = List<Connection>.from(state.connections)
+    ..sort((a, b) {
+      final s = a.sourceId.compareTo(b.sourceId);
+      if (s != 0) return s;
+      final t = a.targetId.compareTo(b.targetId);
+      if (t != 0) return t;
+      return a.id.compareTo(b.id);
+    });
+
+  for (final c in ordered) {
+    final source = state.getComponent(c.sourceId);
+    final target = state.getComponent(c.targetId);
+    if (source == null || target == null) continue;
+    start[c.id] = _nextAnchor(source, sourceCount);
+    end[c.id] = _nextAnchor(target, targetCount);
+  }
+  return _Anchors(start: start, end: end);
+}
+
+Offset _nextAnchor(SystemComponent c, Map<String, int> map) {
+  final idx = map[c.id] ?? 0;
+  map[c.id] = idx + 1;
+  final w = c.size.width;
+  final h = c.size.height;
+  final anchors = [
+    Offset(c.position.dx + w / 2, c.position.dy), // top
+    Offset(c.position.dx + w, c.position.dy + h / 2), // right
+    Offset(c.position.dx + w / 2, c.position.dy + h), // bottom
+    Offset(c.position.dx, c.position.dy + h / 2), // left
+  ];
+  return anchors[idx % anchors.length];
 }
