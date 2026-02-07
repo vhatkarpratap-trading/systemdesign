@@ -196,7 +196,7 @@ class _ConnectionsPainter extends CustomPainter {
           total: sorted.length,
         );
       }
-    }
+    });
   }
 
   void _paintConnection(
@@ -206,8 +206,7 @@ class _ConnectionsPainter extends CustomPainter {
     Connection connection, {
     required int index,
     required int total,
-  }
-  ) {
+  }) {
     // 1. Determine Color & Style
     final traffic = connection.trafficFlow;
     final protocolColor = _colorForProtocol(connection.protocol);
