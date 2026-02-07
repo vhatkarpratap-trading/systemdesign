@@ -20,10 +20,8 @@ final adminDesignsProvider = FutureProvider<List<CommunityDesign>>((ref) async {
 });
 
 final adminPendingProvider = FutureProvider<List<CommunityDesign>>((ref) async {
-  final repo = ref.watch(communityRepositoryProvider);
-  final isAdmin = ref.watch(isAdminProvider);
-  if (!isAdmin) return [];
-  return repo.loadPendingDesigns();
+  final designs = await ref.watch(adminDesignsProvider.future);
+  return designs.where((d) => (d.status != 'approved') && (d.status != 'draft')).toList();
 });
 
 class AdminScreen extends ConsumerWidget {
@@ -167,6 +165,21 @@ class _AdminCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final status = (design.status.isEmpty ? 'pending' : design.status).toUpperCase();
+    Color statusColor;
+    switch (design.status) {
+      case 'approved':
+        statusColor = AppTheme.success;
+        break;
+      case 'rejected':
+        statusColor = AppTheme.error;
+        break;
+      case 'draft':
+        statusColor = AppTheme.textMuted;
+        break;
+      default:
+        statusColor = AppTheme.warning;
+    }
     return Card(
       color: AppTheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: AppTheme.border)),
@@ -176,6 +189,16 @@ class _AdminCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(design.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textPrimary)),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: statusColor.withValues(alpha: 0.5)),
+              ),
+              child: Text(status, style: TextStyle(color: statusColor, fontWeight: FontWeight.w700, fontSize: 11)),
+            ),
             const SizedBox(height: 4),
             Text(design.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: AppTheme.textMuted, fontSize: 12)),
             const Spacer(),
