@@ -453,11 +453,14 @@ class CommunityScreen extends ConsumerWidget {
               const SizedBox(height: 16),
               Row(
                 children: [
-                  _buildDetailedMetric('Complexity', '${design.complexity}/5', Icons.psychology),
-                  const SizedBox(width: 48),
-                  _buildDetailedMetric('Efficiency', '${(design.efficiency * 100).toInt()}%', Icons.bolt),
-                ],
-              ),
+            _buildDetailedMetric('Complexity', '${design.complexity}/5', Icons.psychology),
+            const SizedBox(width: 48),
+            _buildDetailedMetric('Efficiency', '${(design.efficiency * 100).toInt()}%', Icons.bolt),
+          ],
+        ),
+
+        const SizedBox(height: 16),
+        _ReadOnlyNotice(design: design),
               
               const SizedBox(height: 48),
               
@@ -753,6 +756,75 @@ class CommunityScreen extends ConsumerWidget {
       );
     } catch (e) {
        debugPrint('Error loading design: $e');
+    }
+  }
+}
+
+class _ReadOnlyNotice extends ConsumerWidget {
+  final CommunityDesign design;
+  const _ReadOnlyNotice({required this.design});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserProvider);
+    final isOwner = user != null && design.userId == user.id;
+    if (isOwner) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceLight,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.lock_outline, size: 18, color: AppTheme.textMuted),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'This design is read-only. Copy it to your workspace to edit.',
+              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+            ),
+          ),
+          TextButton.icon(
+            icon: const Icon(Icons.copy_all_rounded, size: 16),
+            label: const Text('Copy to My Designs'),
+            onPressed: () => _copyDesign(context, ref, design),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _copyDesign(BuildContext context, WidgetRef ref, CommunityDesign design) async {
+    try {
+      final user = SupabaseService().currentUser;
+      if (user == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please login to copy designs')));
+        return;
+      }
+      final problem = ref.read(currentProblemProvider);
+      final canvasState = BlueprintImporter.importFromMap(design.canvasData);
+      final exported = BlueprintExporter.exportToJson(canvasState, problem);
+      final id = await SupabaseService().savePrivateDesign(
+        title: '${design.title} (copy)',
+        description: design.description,
+        canvasData: jsonDecode(exported),
+        designId: null,
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Copied to your designs. Open “My Designs” to edit.')),
+      );
+      // Optionally auto-open copied design in edit mode
+      final imported = BlueprintImporter.importFromMap(design.canvasData);
+      ref.read(canvasProvider.notifier).loadState(imported);
+      ref.read(canvasReadOnlyProvider.notifier).state = false;
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Copy failed: $e')),
+      );
     }
   }
 }
