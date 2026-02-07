@@ -958,7 +958,7 @@ class _PendingStrip extends StatelessWidget {
   }
 }
 
-// _CommentArea is a stateful widget to manage comment input
+// Threaded comment area
 class _CommentArea extends ConsumerStatefulWidget {
   final String designId;
   const _CommentArea({super.key, required this.designId});
@@ -970,6 +970,15 @@ class _CommentArea extends ConsumerStatefulWidget {
 class _CommentAreaState extends ConsumerState<_CommentArea> {
   final _controller = TextEditingController();
   bool _isSubmitting = false;
+  bool _loading = true;
+  List<DesignComment> _comments = [];
+  String? _replyTo;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
 
   @override
   void dispose() {
@@ -977,67 +986,200 @@ class _CommentAreaState extends ConsumerState<_CommentArea> {
     super.dispose();
   }
 
-  Future<void> _submitComment() async {
+  Future<void> _refresh() async {
+    setState(() => _loading = true);
+    final repo = ref.read(communityRepositoryProvider);
+    final data = await repo.fetchComments(widget.designId);
+    setState(() {
+      _comments = data;
+      _loading = false;
+    });
+  }
+
+  List<_ThreadNode> _buildTree() {
+    final byParent = <String?, List<DesignComment>>{};
+    for (final c in _comments) {
+      byParent.putIfAbsent(c.parentId, () => []).add(c);
+    }
+    List<_ThreadNode> build(String? pid) {
+      final kids = byParent[pid] ?? [];
+      return kids.map((c) => _ThreadNode(comment: c, replies: build(c.id))).toList();
+    }
+    return build(null);
+  }
+
+  Future<void> _submit() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
-
+    final user = ref.read(currentUserProvider);
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please login to comment')),
+      );
+      return;
+    }
     setState(() => _isSubmitting = true);
     try {
-      await ref.read(communityDesignsProvider.notifier).addComment(
+      final repo = ref.read(communityRepositoryProvider);
+      await repo.addComment(
         widget.designId,
-        text,
-        'You', // Default author for now
+        DesignComment(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          author: user.email ?? 'You',
+          content: text,
+          parentId: _replyTo,
+          createdAt: DateTime.now(),
+        ),
       );
       _controller.clear();
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-      }
+      _replyTo = null;
+      await _refresh();
     } catch (e) {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to post: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.border),
-      ),
-      child: Row(
+    final tree = _buildTree();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_loading)
+          const LinearProgressIndicator(minHeight: 2)
+        else if (tree.isEmpty)
+          _buildEmptyComments()
+        else
+          ...tree.map((n) => _ThreadComment(
+                node: n,
+                depth: 0,
+                onReply: (id) => setState(() => _replyTo = id),
+              )),
+        const SizedBox(height: 12),
+        if (_replyTo != null)
+          Row(
+            children: [
+              const Icon(Icons.reply, color: AppTheme.primary, size: 16),
+              const SizedBox(width: 6),
+              Text('Replying', style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w600)),
+              const Spacer(),
+              TextButton(onPressed: () => setState(() => _replyTo = null), child: const Text('Cancel')),
+            ],
+          ),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppTheme.border),
+          ),
+          child: Column(
+            children: [
+              TextField(
+                controller: _controller,
+                minLines: 2,
+                maxLines: 4,
+                style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: _replyTo == null ? 'Add to the discussion...' : 'Write a reply...',
+                  hintStyle: const TextStyle(color: AppTheme.textMuted, fontSize: 14),
+                  border: InputBorder.none,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: ElevatedButton.icon(
+                  onPressed: _isSubmitting ? null : _submit,
+                  icon: _isSubmitting
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.send, size: 16),
+                  label: const Text('Post'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              )
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ThreadNode {
+  final DesignComment comment;
+  final List<_ThreadNode> replies;
+  _ThreadNode({required this.comment, this.replies = const []});
+}
+
+class _ThreadComment extends StatelessWidget {
+  final _ThreadNode node;
+  final int depth;
+  final void Function(String) onReply;
+
+  const _ThreadComment({
+    required this.node,
+    required this.depth,
+    required this.onReply,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = node.comment;
+    return Padding(
+      padding: EdgeInsets.only(left: depth * 16.0, bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: TextField(
-              controller: _controller,
-              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
-              decoration: const InputDecoration(
-                hintText: 'Add to the discussion...',
-                hintStyle: TextStyle(color: AppTheme.textMuted, fontSize: 14),
-                border: InputBorder.none,
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 14,
+                backgroundColor: AppTheme.surfaceLight,
+                child: Text(
+                  c.author.isNotEmpty ? c.author[0].toUpperCase() : '?',
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                ),
               ),
-              onSubmitted: (_) => _submitComment(),
-            ),
-          ),
-          Material(
-            color: AppTheme.primary,
-            borderRadius: BorderRadius.circular(8),
-            child: InkWell(
-              onTap: _isSubmitting ? null : _submitComment,
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                child: _isSubmitting 
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Icon(Icons.send_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(c.author, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                    Text(_timeAgo(c.createdAt), style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+                  ],
+                ),
               ),
-            ),
+              TextButton(onPressed: () => onReply(c.id), child: const Text('Reply', style: TextStyle(fontSize: 12))),
+            ],
           ),
+          const SizedBox(height: 6),
+          Text(
+            c.content,
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 14, height: 1.45),
+          ),
+          if (node.replies.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ...node.replies.map((r) => _ThreadComment(node: r, depth: depth + 1, onReply: onReply)),
+          ],
         ],
       ),
     );
+  }
+
+  static String _timeAgo(DateTime dateTime) {
+    final diff = DateTime.now().difference(dateTime);
+    if (diff.inDays > 0) return '${diff.inDays}d ago';
+    if (diff.inHours > 0) return '${diff.inHours}h ago';
+    if (diff.inMinutes > 0) return '${diff.inMinutes}m ago';
+    return 'just now';
   }
 }

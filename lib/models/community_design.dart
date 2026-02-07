@@ -121,12 +121,14 @@ class DesignComment {
   final String id;
   final String author;
   final String content;
+  final String? parentId;
   final DateTime createdAt;
 
   DesignComment({
     required this.id,
     required this.author,
     required this.content,
+    this.parentId,
     required this.createdAt,
   });
 
@@ -134,6 +136,7 @@ class DesignComment {
     'id': id,
     'author': author,
     'content': content,
+    'parent_id': parentId,
     'createdAt': createdAt.toIso8601String(),
   };
 
@@ -141,6 +144,7 @@ class DesignComment {
     id: json['id'],
     author: json['author'],
     content: json['content'],
+    parentId: json['parent_id'],
     createdAt: DateTime.parse(json['createdAt']),
   );
 }

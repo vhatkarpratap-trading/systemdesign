@@ -216,6 +216,37 @@ class SupabaseService {
     }
   }
 
+  /// Comments
+  Future<List<Map<String, dynamic>>> fetchComments(String designId) async {
+    final resp = await client
+        .from('comments')
+        .select('id, content, parent_id, created_at, profiles(display_name)')
+        .eq('design_id', designId)
+        .order('created_at');
+    return List<Map<String, dynamic>>.from(resp.map((e) => {
+          'id': e['id'],
+          'content': e['content'],
+          'parent_id': e['parent_id'],
+          'createdAt': e['created_at'],
+          'author': e['profiles']?['display_name'] ?? 'Anonymous',
+        }));
+  }
+
+  Future<void> addComment({
+    required String designId,
+    required String content,
+    String? parentId,
+  }) async {
+    final user = currentUser;
+    if (user == null) throw Exception('Must be logged in to comment');
+    await client.from('comments').insert({
+      'design_id': designId,
+      'user_id': user.id,
+      'content': content,
+      'parent_id': parentId,
+    });
+  }
+
   /// Publish a design. Returns the design id.
   Future<String> publishDesign({
     required String title,

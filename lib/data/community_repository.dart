@@ -58,7 +58,18 @@ class CommunityRepository {
   }
 
   Future<void> addComment(String designId, DesignComment comment) async {
-    // TODO: Implement comments in SupabaseService
+    await _supabase.addComment(
+      designId: designId,
+      content: comment.content,
+      parentId: comment.parentId,
+    );
+  }
+
+  Future<List<DesignComment>> fetchComments(String designId) async {
+    final data = await _supabase.fetchComments(designId);
+    return data
+        .map((e) => DesignComment.fromJson(e))
+        .toList();
   }
 
   List<CommunityDesign> _getFeaturedDesigns() {
