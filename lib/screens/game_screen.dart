@@ -36,6 +36,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
 import 'dart:convert';
 import '../utils/blueprint_exporter.dart';
+import 'dart:math' as math;
 import 'admin_screen.dart';
 
 class GameScreen extends ConsumerStatefulWidget {
@@ -168,6 +169,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         final imported = BlueprintImporter.importFromMap(_activeCommunityDesign!);
         ref.read(canvasProvider.notifier).loadState(imported);
         _setReadOnlyFlag();
+        _fitContentToViewport();
       } else if (_sharedDesignId != null) {
         _loadSharedDesign(_sharedDesignId!);
       } else {
@@ -198,6 +200,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         _designOwnerId = data['__owner_id'] as String?;
         _designOwnerEmail = data['__owner_email'] as String?;
         _setReadOnlyFlag();
+        _fitContentToViewport();
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Shared design not found')),
@@ -445,6 +448,41 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         ),
       );
     }
+  }
+
+  void _fitContentToViewport() {
+    final canvasState = ref.read(canvasProvider);
+    if (canvasState.components.isEmpty) return;
+
+    final size = MediaQuery.of(context).size;
+    const padding = 200.0;
+
+    double minX = double.infinity, minY = double.infinity;
+    double maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+
+    for (final c in canvasState.components) {
+      minX = math.min(minX, c.position.dx);
+      minY = math.min(minY, c.position.dy);
+      maxX = math.max(maxX, c.position.dx + c.size.width);
+      maxY = math.max(maxY, c.position.dy + c.size.height);
+    }
+
+    final contentWidth = (maxX - minX) + padding;
+    final contentHeight = (maxY - minY) + padding;
+
+    final scaleX = size.width / contentWidth;
+    final scaleY = size.height / contentHeight;
+    final fitScale = math.max(0.2, math.min(1.2, math.min(scaleX, scaleY)));
+
+    final contentCenter = Offset(minX + (maxX - minX) / 2, minY + (maxY - minY) / 2);
+    final viewportCenter = Offset(size.width / 2, size.height / 2);
+
+    final newOffset = viewportCenter - (contentCenter * fitScale);
+
+    ref.read(canvasProvider.notifier).updateTransform(
+      panOffset: newOffset,
+      scale: fitScale,
+    );
   }
 
   Future<void> _handleLoadMyDesigns() async {
