@@ -7,6 +7,7 @@ import '../services/supabase_service.dart';
 import '../utils/blueprint_importer.dart';
 import 'game_screen.dart';
 import '../models/community_design.dart';
+import '../widgets/community/design_card.dart';
 
 class AdminScreen extends ConsumerWidget {
   const AdminScreen({super.key});
