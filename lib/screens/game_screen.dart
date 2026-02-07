@@ -123,9 +123,6 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   String? _designOwnerId;
   String? _designOwnerEmail;
   final GlobalKey _toolbarKey = GlobalKey();
-  Offset _toolbarOffset = const Offset(0, 20);
-  Size? _toolbarSize;
-  bool _toolbarInitialized = false;
   RealtimeChannel? _statusChannel;
   String? _statusListeningUserId;
   ProviderSubscription<User?>? _authListener;
@@ -735,24 +732,16 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   }
 
   Widget _buildCanvasArea(SimulationState simState, bool hasComponents, Problem problem, BoxConstraints constraints) {
-    _ensureToolbarPosition(constraints);
     return Stack(
       children: [
         const SystemCanvas(),
         
         // Drawing Toolbar
         Positioned(
-          top: _toolbarOffset.dy,
-          left: _toolbarOffset.dx,
-          child: GestureDetector(
-            onPanUpdate: (details) {
-              setState(() {
-                _toolbarOffset = _clampToolbarOffset(
-                  _toolbarOffset + details.delta,
-                  constraints,
-                );
-              });
-            },
+          top: 12,
+          left: 0,
+          right: 0,
+          child: Center(
             child: RepaintBoundary(
               child: SizedBox(
                 key: _toolbarKey,
@@ -828,34 +817,6 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           ],
         );
       },
-    );
-  }
-
-  void _ensureToolbarPosition(BoxConstraints constraints) {
-    if (_toolbarInitialized && _toolbarSize != null) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final box = _toolbarKey.currentContext?.findRenderObject() as RenderBox?;
-      if (box == null) return;
-      final size = box.size;
-      if (!mounted) return;
-      setState(() {
-        _toolbarSize = size;
-        if (!_toolbarInitialized) {
-          final left = (constraints.maxWidth - size.width) / 2;
-          _toolbarOffset = _clampToolbarOffset(Offset(left, 20), constraints);
-          _toolbarInitialized = true;
-        }
-      });
-    });
-  }
-
-  Offset _clampToolbarOffset(Offset offset, BoxConstraints constraints) {
-    final size = _toolbarSize ?? const Size(520, 48);
-    final maxX = (constraints.maxWidth - size.width).clamp(0.0, constraints.maxWidth);
-    final maxY = (constraints.maxHeight - size.height).clamp(0.0, constraints.maxHeight);
-    return Offset(
-      offset.dx.clamp(0.0, maxX),
-      offset.dy.clamp(0.0, maxY),
     );
   }
 
