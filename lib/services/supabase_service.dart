@@ -176,20 +176,25 @@ class SupabaseService {
     bool includePendingForAdmin = false,
     String? includeMineUserId,
   }) async {
-    try {
+    const fullColumns =
+        'id, user_id, title, description, blog_markdown, canvas_data, blueprint_path, is_public, status, rejection_reason, upvotes, created_at, profiles(display_name, email, avatar_url)';
+    const minimalColumns =
+        'id, user_id, title, description, canvas_data, blueprint_path, is_public, status, upvotes, created_at, profiles(display_name, email, avatar_url)';
+
+    Future<List<Map<String, dynamic>>> _runQueries(String columns) async {
       final List<Map<String, dynamic>> combined = [];
 
       if (includePendingForAdmin && isAdmin) {
         final resp = await client
             .from('designs')
-            .select('id, user_id, title, description, blog_markdown, canvas_data, blueprint_path, is_public, status, rejection_reason, upvotes, created_at, profiles(display_name, email, avatar_url)')
+            .select(columns)
             .order('created_at', ascending: false)
             .limit(100);
         combined.addAll(List<Map<String, dynamic>>.from(resp));
       } else {
         final publicResp = await client
             .from('designs')
-            .select('id, user_id, title, description, blog_markdown, canvas_data, blueprint_path, is_public, status, rejection_reason, upvotes, created_at, profiles(display_name, email, avatar_url)')
+            .select(columns)
             .eq('is_public', true)
             .or('status.eq.approved,status.is.null')
             .order('created_at', ascending: false)
@@ -199,7 +204,7 @@ class SupabaseService {
         if (includeMineUserId != null) {
           final mineResp = await client
               .from('designs')
-              .select('id, user_id, title, description, blog_markdown, canvas_data, blueprint_path, is_public, status, rejection_reason, upvotes, created_at, profiles(display_name, email, avatar_url)')
+              .select(columns)
               .eq('user_id', includeMineUserId)
               .order('created_at', ascending: false)
               .limit(100);
@@ -217,7 +222,7 @@ class SupabaseService {
           deduped.add(item);
         }
       }
-      
+
       final List<Map<String, dynamic>> results = [];
       
       // Hydrate with storage data if path exists
@@ -239,12 +244,22 @@ class SupabaseService {
       }
 
       return results;
+    }
+
+    try {
+      return await _runQueries(fullColumns);
     } catch (e) {
-      debugPrint('Error fetching community designs: $e');
-      if (e is PostgrestException) {
-        debugPrint('Postgrest details: ${e.message} - ${e.details}');
+      // Fallback in case a column (e.g., blog_markdown) is missing in DB
+      debugPrint('Error fetching community designs with full columns: $e. Retrying with minimal columns.');
+      try {
+        return await _runQueries(minimalColumns);
+      } catch (e2) {
+        debugPrint('Fallback fetch failed: $e2');
+        if (e2 is PostgrestException) {
+          debugPrint('Postgrest details: ${e2.message} - ${e2.details}');
+        }
+        return [];
       }
-      return [];
     }
   }
 
