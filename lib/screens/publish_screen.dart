@@ -351,19 +351,33 @@ class _RuleItem extends StatelessWidget {
 
 class _FormatterToolbar extends StatelessWidget {
   final ValueChanged<String> onInsert;
-  const _FormatterToolbar({required this.onInsert});
+  final bool expanded;
+  const _FormatterToolbar({required this.onInsert, this.expanded = false});
 
   @override
   Widget build(BuildContext context) {
-    final chips = [
-      ('Bold', '**bold**'),
-      ('Italic', '_italic_'),
-      ('Code', '`code`'),
-      ('Link', '[text](https://example.com)'),
-      ('List', '- item'),
-      ('Quote', '> note'),
-      ('Header', '## Heading'),
-    ];
+    final chips = expanded
+        ? [
+            ('Bold', '**bold**'),
+            ('Italic', '_italic_'),
+            ('Code', '`code`'),
+            ('Link', '[text](https://example.com)'),
+            ('List', '- item'),
+            ('Quote', '> note'),
+            ('Header', '## Heading'),
+            ('Table', '\n| Col1 | Col2 |\n| --- | --- |\n| a | b |\n'),
+            ('Checklist', '- [ ] Todo'),
+            ('Image', '![alt](https://image.url)'),
+          ]
+        : [
+            ('Bold', '**bold**'),
+            ('Italic', '_italic_'),
+            ('Code', '`code`'),
+            ('Link', '[text](https://example.com)'),
+            ('List', '- item'),
+            ('Quote', '> note'),
+            ('Header', '## Heading'),
+          ];
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -485,6 +499,24 @@ class _FullPageBlogEditorState extends State<_FullPageBlogEditor> {
       ),
       body: Column(
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: _FormatterToolbar(
+              onInsert: (snippet) {
+                final text = _controller.text;
+                final selection = _controller.selection;
+                final start = selection.start >= 0 ? selection.start : text.length;
+                final end = selection.end >= 0 ? selection.end : text.length;
+                final newText = text.replaceRange(start, end, snippet);
+                _controller.value = TextEditingValue(
+                  text: newText,
+                  selection: TextSelection.collapsed(offset: start + snippet.length),
+                );
+                _recount();
+              },
+              expanded: true,
+            ),
+          ),
           Expanded(
             child: Container(
               margin: const EdgeInsets.all(16),
