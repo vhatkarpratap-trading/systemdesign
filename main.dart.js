@@ -104656,7 +104656,7 @@ this.sb2(s.yq(r))},
 aIi(a){var s=this.f,r=J.ck(s.b,new A.aak(a),t.dS)
 r=A.P(r,r.$ti.i("a3.E"))
 this.sb2(s.yr(r))},
-RL(a){this.sb2(this.f.az5(B.c.aK(a,0,1)))
+RL(a){this.sb2(this.f.az5(B.c.aK(a,0,5)))
 this.dc()},
 QA(a,b){this.sb2(this.f.azs(a,b))
 this.dc()},
@@ -112146,8 +112146,8 @@ s.sb2(s.f.ayW(a))
 s.dc()},
 $S:6}
 A.aBn.prototype={
-$3(a,b,c){var s=null,r=b.bd($.b9(),t.v).x*100,q=""+B.c.d2(r),p=A.O("Traffic: "+q+"%",s,s,s,s,B.r1,s,s,s),o=A.awa(a).a1U(B.U,A.a1(51,B.U.n()>>>16&255,B.U.n()>>>8&255,B.U.n()&255),A.a1(B.c.ac(25.5),B.U.n()>>>16&255,B.U.n()>>>8&255,B.U.n()&255),B.Gf,B.U,B.Gi,2)
-return A.aB(A.b([new A.az(B.uW,p,s),new A.aK(s,24,A.aWF(A.VW(100,q+"%",100,0,new A.aBh(b),r),o),s)],t.p),B.E,B.j,B.P)},
+$3(a,b,c){var s=null,r=B.c.d2(B.c.aK(b.bd($.b9(),t.v).x*100,0,500)),q=""+r,p=A.O("Traffic: "+q,s,s,s,s,B.r1,s,s,s),o=A.awa(a).a1U(B.U,A.a1(51,B.U.n()>>>16&255,B.U.n()>>>8&255,B.U.n()&255),A.a1(B.c.ac(25.5),B.U.n()>>>16&255,B.U.n()>>>8&255,B.U.n()&255),B.Gf,B.U,B.Gi,2)
+return A.aB(A.b([new A.az(B.uW,p,s),new A.aK(s,24,A.aWF(A.VW(500,q,500,0,new A.aBh(b),r),o),s)],t.p),B.E,B.j,B.P)},
 $C:"$3",
 $R:3,
 $S:844}
