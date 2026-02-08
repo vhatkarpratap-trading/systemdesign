@@ -131,6 +131,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   Timer? _statusPollTimer;
   final Map<String, String> _statusCache = {};
   final Set<String> _notifiedRejections = {};
+  final List<_RejectionNotice> _rejectionNotices = [];
 
   @override
   void initState() {
@@ -201,19 +202,21 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         if (id == null || status != 'rejected') continue;
         if (_notifiedRejections.contains(id)) continue;
         final reason = d['rejection_reason'] as String? ?? 'Rejected by moderator.';
+        final title = d['title'] as String? ?? 'Design';
         _notifiedRejections.add(id);
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Design rejected: $reason'),
-            backgroundColor: AppTheme.error.withOpacity(0.9),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        _addRejectionNotice(id: id, title: title, reason: reason);
       }
     } catch (_) {
       // ignore errors; polling already handles live updates
     }
+  }
+
+  void _addRejectionNotice({required String id, required String title, required String reason}) {
+    if (_rejectionNotices.any((n) => n.id == id)) return;
+    if (!mounted) return;
+    setState(() {
+      _rejectionNotices.add(_RejectionNotice(id: id, title: title, reason: reason));
+    });
   }
 
   Future<void> _loadSharedDesign(String designId) async {
@@ -482,6 +485,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         text = (reason != null && reason.isNotEmpty)
             ? 'Design rejected: $reason'
             : 'Design rejected by moderator.';
+        final currentId = _privateDesignId ?? _sharedDesignId ?? 'unknown';
+        _addRejectionNotice(
+          id: currentId,
+          title: _privateDesignTitle ?? 'Design',
+          reason: reason ?? 'Design rejected by moderator.',
+        );
         break;
       default:
         return;
@@ -1108,6 +1117,47 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           
           // Chaos Engineering Controls
           const ChaosControlsPanel(),
+          if (_rejectionNotices.isNotEmpty)
+            Positioned(
+              top: MediaQuery.paddingOf(context).top + 80,
+              right: 16,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 360, maxHeight: 260),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: _rejectionNotices.map((n) {
+                      return Card(
+                        color: AppTheme.error.withOpacity(0.12),
+                        margin: const EdgeInsets.only(bottom: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(color: AppTheme.error.withOpacity(0.4)),
+                        ),
+                        child: ListTile(
+                          dense: true,
+                          leading: const Icon(Icons.block, color: AppTheme.error),
+                          title: Text(
+                            n.title,
+                            style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w700),
+                          ),
+                          subtitle: Text(
+                            n.reason,
+                            style: const TextStyle(color: AppTheme.textSecondary),
+                          ),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.close, color: AppTheme.textMuted),
+                            onPressed: () {
+                              setState(() => _rejectionNotices.removeWhere((x) => x.id == n.id));
+                            },
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+            ),
             
           if (_showResultsOverlay)
              ResultsScreen(
