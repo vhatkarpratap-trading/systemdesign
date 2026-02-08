@@ -131,10 +131,11 @@ class SupabaseService {
           .maybeSingle();
       if (exists != null) return;
 
+      final meta = user.userMetadata ?? <String, dynamic>{};
       await client.from('profiles').insert({
         'id': user.id,
-        'display_name': user.userMetadata['full_name'] ?? user.email ?? 'Architect',
-        'avatar_url': user.userMetadata['avatar_url'],
+        'display_name': meta['full_name'] ?? user.email ?? 'Architect',
+        'avatar_url': meta['avatar_url'],
       });
     } catch (e) {
       debugPrint('ensureProfile failed: $e');
