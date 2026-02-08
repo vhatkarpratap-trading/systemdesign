@@ -34,6 +34,11 @@ class AppTheme {
   static const Color queueColor = Color(0xFFA855F7);
   static const Color pubsubColor = Color(0xFF06B6D4);
   static const Color streamColor = Color(0xFFA78BFA);
+  static const Color llmGatewayColor = Color(0xFF0EA5E9); // Sky blue
+  static const Color toolRegistryColor = Color(0xFFEAB308); // Amber
+  static const Color memoryFabricColor = Color(0xFF34D399); // Mint/green
+  static const Color agentOrchestratorColor = Color(0xFF6366F1); // Indigo
+  static const Color safetyMeshColor = Color(0xFFFB7185); // Coral
 
   // Cyberpunk Palette
   static const Color neonCyan = Color(0xFF00FFFF);

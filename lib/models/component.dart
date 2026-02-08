@@ -26,6 +26,13 @@ enum ComponentType {
   secretsManager('Secrets Manager', 'Keys & secrets storage', Icons.vpn_key_outlined),
   featureFlag('Feature Flags', 'Runtime feature toggles', Icons.flag_outlined),
   
+  // AI & Agentic
+  llmGateway('LLM Gateway', 'Route prompts to models with safety/cost control', Icons.smart_toy_outlined),
+  toolRegistry('Tool Registry', 'Discoverable tools/skills catalog', Icons.extension_outlined),
+  memoryFabric('Memory Fabric', 'Short/long-term memory layers', Icons.memory_outlined),
+  agentOrchestrator('Agent Orchestrator', 'Plan/act loops & agent spawning', Icons.account_tree_outlined),
+  safetyMesh('Safety & Observability Mesh', 'Guardrails, red teaming, telemetry', Icons.shield_moon_outlined),
+  
   // Clients
   client('Users', 'Client traffic source', Icons.devices_outlined),
 
@@ -164,6 +171,11 @@ enum ComponentType {
         ComponentType.configService => AppTheme.primaryMuted,
         ComponentType.secretsManager => AppTheme.warning,
         ComponentType.featureFlag => AppTheme.secondary,
+        ComponentType.llmGateway => AppTheme.llmGatewayColor,
+        ComponentType.toolRegistry => AppTheme.toolRegistryColor,
+        ComponentType.memoryFabric => AppTheme.memoryFabricColor,
+        ComponentType.agentOrchestrator => AppTheme.agentOrchestratorColor,
+        ComponentType.safetyMesh => AppTheme.safetyMeshColor,
         ComponentType.customService => AppTheme.primary,
         ComponentType.cache => AppTheme.cacheColor,
         ComponentType.database => AppTheme.databaseColor,
@@ -225,6 +237,12 @@ enum ComponentType {
         ComponentType.secretsManager ||
         ComponentType.featureFlag =>
           ComponentCategory.compute,
+        ComponentType.llmGateway ||
+        ComponentType.toolRegistry ||
+        ComponentType.memoryFabric ||
+        ComponentType.agentOrchestrator ||
+        ComponentType.safetyMesh =>
+          ComponentCategory.ai,
         ComponentType.cache ||
         ComponentType.database ||
         ComponentType.objectStore ||
@@ -291,6 +309,11 @@ enum ComponentType {
         ComponentType.configService => const ['Spring Cloud Config', 'Consul KV', 'etcd', 'AWS AppConfig'],
         ComponentType.secretsManager => const ['HashiCorp Vault', 'AWS Secrets Manager', 'GCP Secret Manager', 'Azure Key Vault'],
         ComponentType.featureFlag => const ['LaunchDarkly', 'Unleash', 'Flagsmith', 'Split'],
+        ComponentType.llmGateway => const ['OpenAI Gateway', 'Vertex AI', 'Azure OpenAI', 'Anthropic'],
+        ComponentType.toolRegistry => const ['LangChain Tools', 'OpenAPI Tooling', 'AWS Lambda Tools', 'Custom HTTP Tools'],
+        ComponentType.memoryFabric => const ['Redis + TTL', 'Weaviate', 'Pinecone', 'Chroma'],
+        ComponentType.agentOrchestrator => const ['LangGraph', 'Temporal', 'Custom Planner/Executor'],
+        ComponentType.safetyMesh => const ['Guardrails', 'NeMo Guardrails', 'Custom Moderation API'],
         ComponentType.dns => const ['Route53', 'Cloudflare', 'Google Cloud DNS', 'NS1'],
         ComponentType.stream => const ['Apache Flink', 'Spark Streaming', 'Kinesis', 'Storm'],
         ComponentType.sharding => const ['Consistent Hashing', 'Range Based', 'Directory Based'],
@@ -314,6 +337,7 @@ enum ComponentCategory {
   storage('Storage', Icons.storage),
   messaging('Messaging', Icons.message),
   user('My Services', Icons.person),
+  ai('AI & Agents', Icons.smart_toy_outlined),
   techniques('Techniques', Icons.lightbulb_outlined), // New Category
   sketchy('Sketchy Library', Icons.brush); 
 
@@ -664,6 +688,39 @@ class ComponentConfig {
           capacity: 12000,
           instances: 2,
           costPerHour: 0.10,
+        ),
+      ComponentType.llmGateway => const ComponentConfig(
+          capacity: 3000,
+          instances: 2,
+          costPerHour: 0.30,
+          rateLimiting: true,
+          circuitBreaker: true,
+        ),
+      ComponentType.toolRegistry => const ComponentConfig(
+          capacity: 2000,
+          instances: 2,
+          costPerHour: 0.12,
+          retries: true,
+        ),
+      ComponentType.memoryFabric => const ComponentConfig(
+          capacity: 8000,
+          instances: 3,
+          cacheTtlSeconds: 900,
+          costPerHour: 0.18,
+        ),
+      ComponentType.agentOrchestrator => const ComponentConfig(
+          capacity: 1500,
+          instances: 2,
+          autoScale: true,
+          minInstances: 1,
+          maxInstances: 8,
+          costPerHour: 0.22,
+        ),
+      ComponentType.safetyMesh => const ComponentConfig(
+          capacity: 6000,
+          instances: 2,
+          rateLimiting: true,
+          costPerHour: 0.16,
         ),
       ComponentType.cache => const ComponentConfig(
           capacity: 100000,

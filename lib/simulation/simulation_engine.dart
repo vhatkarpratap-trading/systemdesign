@@ -149,6 +149,9 @@ class SimulationEngine {
     _isProcessingTick = true;
 
     try {
+      // Prune expired chaos events before building tick data
+      _ref.read(simulationProvider.notifier).updateChaosEvents();
+
       final canvasState = _ref.read(canvasProvider);
       final problem = _ref.read(currentProblemProvider);
       final previousMetrics = _ref.read(simulationMetricsProvider);

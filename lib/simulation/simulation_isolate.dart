@@ -171,7 +171,9 @@ double _chaosIntensity(ChaosEvent event) {
     return severity;
   }
   final p = event.progress.clamp(0.0, 1.0);
-  final ramp = sin(pi * p);
+  // Start with immediate impact so users see feedback right away
+  // ramp peaks at mid-duration but never drops to zero
+  final ramp = 0.35 + 0.65 * sin(pi * p);
   return (ramp * severity).clamp(0.0, 1.0);
 }
 
@@ -1203,11 +1205,25 @@ SimulationResult runSimulationTick(SimulationData data) {
         final prev = states[c.targetId]?.prevMetrics;
         return (prev?.errorRate ?? 0.0) > 0.15 || (states[c.targetId]?.utilization ?? 0.0) > 1.4;
       });
-      var cacheBias = cacheHitAvg.clamp(0.6, 0.98);
-      if (cacheHealthPenalty) cacheBias = max(0.5, cacheBias - 0.25);
+      // Default: 90% of traffic to cache when both are present
+      double cacheBias = cacheHealthPenalty ? 0.2 : 0.9;
+      // If cache looks healthy and hit-rate is high, keep bias near 0.9; else drop toward 0.6
+      cacheBias = cacheHealthPenalty
+          ? cacheBias
+          : max(0.6, min(0.95, cacheHitAvg + 0.05));
       if (token.isHotKey) cacheBias = min(0.99, cacheBias + 0.05);
+
+      // If cache is invalidated by chaos, bypass it entirely
+      final cacheUnavailable = cacheTargets.any((t) =>
+          activeChaosEvents.any((e) =>
+              e.type == ChaosType.cacheMissStorm &&
+              _chaosIntensity(e) > 0.2 &&
+              _affectsComponent(e, states[t.targetId]!.component)));
+
       if (cacheTargets.length + dbTargets.length == viable.length) {
-        final useCache = random.nextDouble() < cacheBias;
+        final useCache = !token.isWrite &&
+            !cacheUnavailable &&
+            (random.nextDouble() < cacheBias);
         viable = useCache ? cacheTargets : dbTargets;
       }
     }
@@ -1698,10 +1714,18 @@ SimulationResult runSimulationTick(SimulationData data) {
       final ttlSeconds = max(1, component.config.cacheTtlSeconds);
       final ttlFactor = (ttlSeconds / 300).clamp(0.2, 1.1);
       cacheHitRate = (cacheHitRate * ttlFactor).clamp(0.0, 1.0);
-      final writeFraction = state.arrivals > 0 ? state.writeArrivals / state.arrivals : 0.0;
+
+      // Global write pressure fallback (if writes don’t route through cache directly)
+      final globalWriteFraction =
+          1.0 / (problem.constraints.readWriteRatio.toDouble() + 1.0);
+      final localWriteFraction =
+          state.arrivals > 0 ? state.writeArrivals / state.arrivals : null;
+      final writeFraction = localWriteFraction ?? globalWriteFraction;
+
       // Writes invalidate cache: higher write ratio → lower hit rate
-      final invalidationPenalty = (writeFraction * 0.8).clamp(0.0, 0.7);
+      final invalidationPenalty = (writeFraction * 0.85).clamp(0.0, 0.8);
       cacheHitRate = (cacheHitRate * (1 - invalidationPenalty)).clamp(0.0, 1.0);
+
       if (memoryUsage > 0.8) {
         evictionRate = (memoryUsage - 0.8) * 5000;
       }
@@ -2041,7 +2065,17 @@ ComponentMetrics _calculateComponentMetrics(
 
   if (component.type == ComponentType.cache) {
     cacheHitRate = (0.9 - effectiveLoad * 0.3).clamp(0.0, 1.0);
-    
+
+    // Global write pressure fallback (captures invalidations even if writes bypass cache)
+    final globalWriteFraction =
+        1.0 / (problem.constraints.readWriteRatio.toDouble() + 1.0);
+    // This fast path doesn’t track per-cache write arrivals; use global ratio.
+    final writeFraction = globalWriteFraction;
+
+    // Write-heavy traffic lowers hit rate
+    final invalidationPenalty = (writeFraction * 0.85).clamp(0.0, 0.8);
+    cacheHitRate = (cacheHitRate * (1 - invalidationPenalty)).clamp(0.0, 1.0);
+
     // Simulate evictions if memory usage is high (>80%)
     if (memoryUsage > 0.8) {
       // Eviction rate drastically increases as memory fills up
@@ -2056,6 +2090,12 @@ ComponentMetrics _calculateComponentMetrics(
         cacheHitRate = (cacheHitRate * (1 - drop * intensity)).clamp(0.0, 1.0);
         evictionRate += (drop * 1200 * intensity);
       }
+    }
+
+    // Low TTLs under write pressure should purge faster
+    if (component.config.cacheTtlSeconds <= 45 && writeFraction > 0.1) {
+      evictionRate += 300 * writeFraction;
+      cacheHitRate = (cacheHitRate * (1 - 0.1 * writeFraction)).clamp(0.0, 1.0);
     }
   }
 
@@ -2152,6 +2192,11 @@ double _getBaseLatency(ComponentType type) {
     ComponentType.configService => 5.0,
     ComponentType.secretsManager => 10.0,
     ComponentType.featureFlag => 8.0,
+    ComponentType.llmGateway => 25.0,
+    ComponentType.toolRegistry => 12.0,
+    ComponentType.memoryFabric => 15.0,
+    ComponentType.agentOrchestrator => 30.0,
+    ComponentType.safetyMesh => 10.0,
     ComponentType.cache => 2.0,
     ComponentType.database => 10.0,
     ComponentType.objectStore => 50.0,
@@ -2605,7 +2650,12 @@ bool _isServiceLike(ComponentType type) {
     ComponentType.serviceDiscovery ||
     ComponentType.configService ||
     ComponentType.secretsManager ||
-    ComponentType.featureFlag => true,
+    ComponentType.featureFlag ||
+    ComponentType.llmGateway ||
+    ComponentType.toolRegistry ||
+    ComponentType.memoryFabric ||
+    ComponentType.agentOrchestrator ||
+    ComponentType.safetyMesh => true,
     _ => false,
   };
 }
@@ -2618,7 +2668,10 @@ bool _isCriticalPath(ComponentType type) {
     ComponentType.waf ||
     ComponentType.ingress ||
     ComponentType.cache ||
-    ComponentType.serverless => true,
+    ComponentType.serverless ||
+    ComponentType.llmGateway ||
+    ComponentType.agentOrchestrator ||
+    ComponentType.memoryFabric => true,
     _ => false,
   };
 }
@@ -2650,7 +2703,12 @@ bool _isSpofCandidate(ComponentType type) {
     ComponentType.serviceDiscovery ||
     ComponentType.configService ||
     ComponentType.secretsManager ||
-    ComponentType.featureFlag => true,
+    ComponentType.featureFlag ||
+    ComponentType.llmGateway ||
+    ComponentType.toolRegistry ||
+    ComponentType.memoryFabric ||
+    ComponentType.agentOrchestrator ||
+    ComponentType.safetyMesh => true,
     ComponentType.objectStore => false,
     _ => false,
   };

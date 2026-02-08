@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../providers/game_provider.dart';
 import '../providers/auth_provider.dart';
 import '../simulation/simulation_engine.dart';
@@ -123,6 +124,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   String? _designOwnerId;
   String? _designOwnerEmail;
   final GlobalKey _toolbarKey = GlobalKey();
+  bool _showDesktopHint = true;
   RealtimeChannel? _statusChannel;
   String? _statusListeningUserId;
   ProviderSubscription<User?>? _authListener;
@@ -239,6 +241,109 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     if (_trafficInitialized) return;
     ref.read(canvasProvider.notifier).setTrafficLevel(0.4);
     _trafficInitialized = true;
+  }
+
+  Future<void> _exportCanvasJson() async {
+    try {
+      final canvasState = ref.read(canvasProvider);
+      final problem = ref.read(currentProblemProvider);
+      final jsonString = BlueprintExporter.exportToJson(canvasState, problem);
+
+      // Show dialog with copy option
+      await showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            backgroundColor: AppTheme.surface,
+            title: const Text('Exported JSON', style: TextStyle(color: AppTheme.textPrimary)),
+            content: SizedBox(
+              width: 520,
+              child: SelectableText(
+                jsonString,
+                style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: jsonString));
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Copied to clipboard')),
+                  );
+                },
+                child: const Text('COPY'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('CLOSE'),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Export failed: $e')),
+      );
+    }
+  }
+
+  Future<void> _importCanvasJson() async {
+    final controller = TextEditingController();
+    final result = await showDialog<String?>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: AppTheme.surface,
+          title: const Text('Import JSON', style: TextStyle(color: AppTheme.textPrimary)),
+          content: SizedBox(
+            width: 520,
+            child: TextField(
+              controller: controller,
+              maxLines: 12,
+              style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary),
+              decoration: const InputDecoration(
+                hintText: 'Paste canvas JSON here',
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, null),
+              child: const Text('CANCEL'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, controller.text.trim()),
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
+              child: const Text('LOAD'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result == null || result.isEmpty) return;
+    try {
+      final decoded = jsonDecode(result);
+      final map = (decoded is Map<String, dynamic>) ? decoded : null;
+      if (map == null) throw 'JSON must be an object';
+      final payload = map['canvas_data'] is Map<String, dynamic>
+          ? Map<String, dynamic>.from(map['canvas_data'])
+          : map;
+      final imported = BlueprintImporter.importFromMap(payload);
+      ref.read(canvasProvider.notifier).loadState(imported);
+      ref.read(canvasReadOnlyProvider.notifier).state = false;
+      _fitContentToViewport();
+      _autoLayoutCurrent();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Canvas loaded from JSON')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Import failed: $e')),
+      );
+    }
   }
 
   void _setReadOnlyFlag() {
@@ -720,18 +825,49 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     );
   }
 
-  Widget _buildMobileLayout(SimulationState simState, bool hasComponents, Problem problem, BoxConstraints constraints) {
-    return Column(
+  Widget _buildMobileLayout(
+    SimulationState simState,
+    bool hasComponents,
+    Problem problem,
+    BoxConstraints constraints,
+    {required bool canStart}
+  ) {
+    final bottomSafe = MediaQuery.viewPaddingOf(context).bottom;
+    return Stack(
       children: [
-        Expanded(
-          child: _buildCanvasArea(simState, hasComponents, problem, constraints),
+        Column(
+          children: [
+            Expanded(
+              child: _buildCanvasArea(simState, hasComponents, problem, constraints),
+            ),
+            const ComponentToolbox(mode: ToolboxMode.horizontal),
+          ],
         ),
-        const ComponentToolbox(mode: ToolboxMode.horizontal),
+        Positioned(
+          right: 16,
+          bottom: 16 + bottomSafe,
+          child: FloatingActionButton.extended(
+            heroTag: 'fab-sim',
+            backgroundColor: simState.isRunning
+                ? AppTheme.error
+                : (canStart ? AppTheme.primary : AppTheme.textMuted.withOpacity(0.3)),
+            foregroundColor: Colors.white,
+            onPressed: simState.isRunning
+                ? () => ref.read(simulationEngineProvider).stop()
+                : (canStart ? () {
+                    setState(() => _showResultsOverlay = false);
+                    ref.read(simulationEngineProvider).start();
+                  } : null),
+            icon: Icon(simState.isRunning ? Icons.stop : Icons.play_arrow),
+            label: Text(simState.isRunning ? 'Stop Simulation' : 'Start Simulation'),
+          ),
+        ),
       ],
     );
   }
 
   Widget _buildCanvasArea(SimulationState simState, bool hasComponents, Problem problem, BoxConstraints constraints) {
+    final isAdmin = ref.watch(isAdminProvider);
     return Stack(
       children: [
         const SystemCanvas(),
@@ -776,6 +912,29 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
         if (_showGuide)
            GuideOverlay(onDismiss: () => setState(() => _showGuide = false)),
+
+        // Admin JSON import/export shortcuts
+        if (isAdmin)
+          Positioned(
+            top: 16,
+            left: 16,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _AdminActionChip(
+                  icon: Icons.download_rounded,
+                  label: 'Export JSON',
+                  onTap: _exportCanvasJson,
+                ),
+                const SizedBox(height: 8),
+                _AdminActionChip(
+                  icon: Icons.upload_rounded,
+                  label: 'Import JSON',
+                  onTap: _importCanvasJson,
+                ),
+              ],
+            ),
+          ),
 
         // Disaster Toolkit (Chaos Mode)
         Positioned(
@@ -844,11 +1003,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           LayoutBuilder(
             builder: (context, constraints) {
               final useSidebar = constraints.maxWidth >= 900;
+              final isMobile = !useSidebar;
               return Column(
                 children: [
-          _ProblemHeader(
-            onPublishTap: _handlePublishDesign,
-            onSaveTap: _handleSaveDesign,
+                  _ProblemHeader(
+                    onPublishTap: _handlePublishDesign,
+                    onSaveTap: _handleSaveDesign,
             onProfileTap: _handleProfileTap,
             onShareTap: _handleShareLink,
             onLoadMyDesignsTap: _handleLoadMyDesigns,
@@ -860,7 +1020,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                   Expanded(
                     child: useSidebar 
                       ? _buildWebLayout(simState, hasComponents, problem, constraints)
-                      : _buildMobileLayout(simState, hasComponents, problem, constraints),
+                      : _buildMobileLayout(simState, hasComponents, problem, constraints, canStart: validation.isValid),
                   ),
                   _BottomControls(
                     canStart: validation.isValid,
@@ -885,6 +1045,34 @@ class _GameScreenState extends ConsumerState<GameScreen> {
               );
             },
           ),
+          if (_showDesktopHint)
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final isMobile = constraints.maxWidth < 900;
+                if (!isMobile) return const SizedBox.shrink();
+                return Positioned(
+                  top: MediaQuery.paddingOf(context).top + 8,
+                  left: 12,
+                  right: 12,
+                  child: Material(
+                    color: AppTheme.surface.withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(12),
+                    child: ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.desktop_mac, color: AppTheme.primary),
+                      title: const Text(
+                        'For the best experience, try on a laptop or desktop.',
+                        style: TextStyle(color: AppTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.close, color: AppTheme.textMuted),
+                        onPressed: () => setState(() => _showDesktopHint = false),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
           
           // Simulation Overlays
           if (simState.isFailed && !_showResultsOverlay)
@@ -918,6 +1106,36 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     _authListener?.close();
     _stopStatusPolling();
     super.dispose();
+  }
+}
+
+class _AdminActionChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _AdminActionChip({required this.icon, required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppTheme.surfaceLight,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16, color: AppTheme.primary),
+              const SizedBox(width: 6),
+              Text(label, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

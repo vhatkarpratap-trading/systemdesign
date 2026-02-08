@@ -151,7 +151,7 @@ class ComponentNode extends ConsumerWidget {
         );
 
     if (component.type == ComponentType.text) {
-      final label = component.customName ?? 'Text';
+      final label = component.customName ?? '';
       final canInlineEdit = onTextChange != null && onEditDone != null;
 
       return SizedBox(
@@ -160,13 +160,9 @@ class ComponentNode extends ConsumerWidget {
         child: Align(
           alignment: Alignment.centerLeft,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            decoration: BoxDecoration(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            decoration: const BoxDecoration(
               color: Colors.transparent,
-              border: isSelected
-                  ? Border.all(color: AppTheme.primary.withValues(alpha: 0.6), width: 1.5)
-                  : null,
-              borderRadius: BorderRadius.circular(6),
             ),
             child: (isEditing && canInlineEdit)
                 ? _InlineTextEditor(
@@ -174,13 +170,15 @@ class ComponentNode extends ConsumerWidget {
                     onChange: onTextChange!,
                     onDone: onEditDone!,
                     isCentered: false,
-                    maxWidth: math.max(40.0, component.size.width - 16),
+                    maxWidth: math.max(40.0, component.size.width),
                   )
                 : GestureDetector(
                     onTap: (!isEditing && canInlineEdit) ? onLabelTap : null,
                     behavior: HitTestBehavior.translucent,
                     child: Text(
                       label,
+                      softWrap: false,
+                      overflow: TextOverflow.visible,
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
@@ -2020,6 +2018,14 @@ class _InlineTextEditorState extends State<_InlineTextEditor> {
                 fontWeight: FontWeight.w500,
                 height: 1.2,
               ),
+          maxLines: 1,
+          minLines: 1,
+          keyboardType: TextInputType.text,
+          textInputAction: TextInputAction.done,
+          autocorrect: false,
+          enableSuggestions: false,
+          smartDashesType: SmartDashesType.disabled,
+          smartQuotesType: SmartQuotesType.disabled,
           strutStyle: const StrutStyle(
             height: 1.2,
             forceStrutHeight: true,
@@ -2027,7 +2033,7 @@ class _InlineTextEditorState extends State<_InlineTextEditor> {
           textAlignVertical: TextAlignVertical.center,
           decoration: const InputDecoration(
             border: InputBorder.none,
-            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
             isDense: true,
           ),
           onChanged: (val) => widget.onChange(val),

@@ -1087,13 +1087,16 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
 
   void _addTextAt(Offset globalPos) {
     // Convert local interactive viewer position to canvas position
-    final canvasPos = _getCanvasPosition(globalPos);
+    var canvasPos = _getCanvasPosition(globalPos);
     
-    // Check if tapping on an existing component to avoid conflict
+    // If tapped on top of an existing component, nudge the text below it instead of canceling
     final canvasState = ref.read(canvasProvider);
     for (final component in canvasState.components) {
-       final rect = Rect.fromLTWH(component.position.dx, component.position.dy, 80, 64);
-       if (rect.contains(canvasPos)) return;
+      final rect = Rect.fromLTWH(component.position.dx, component.position.dy, 80, 64);
+      if (rect.contains(canvasPos)) {
+        canvasPos = Offset(component.position.dx, component.position.dy + component.size.height + 12);
+        break;
+      }
     }
 
     // Overlap prevention logic
@@ -1108,18 +1111,18 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
       for (final comp in canvasState.components) {
         final compRect = Rect.fromLTWH(comp.position.dx, comp.position.dy, 80, 64);
         if (compRect.overlaps(textRect)) {
-          finalPos += const Offset(0, 40);
+          finalPos += Offset(0, textSize.height + 8);
           hasOverlap = true;
           break;
         }
       }
       attempts++;
-    } while (hasOverlap && attempts < 5);
+    } while (hasOverlap && attempts < 3);
 
-    final adjustedPos = finalPos - const Offset(8, 4);
     final id = ref.read(canvasProvider.notifier).addComponent(
       ComponentType.text,
-      adjustedPos,
+      finalPos,
+      size: const Size(140, 48),
     );
     setState(() {
       _editingComponentId = id;
@@ -1177,15 +1180,16 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
     // Min sizes & Padding
     double minW = 80.0;
     double minH = 64.0;
-    double paddingX = 50.0; // Increased padding to prevent text clipping
-    double paddingY = 32.0; // Extra for shape
+    double paddingX = 32.0;
+    double paddingY = 20.0;
 
     if (component.type == ComponentType.text) {
-        minW = 20; minH = 20; paddingX = 24; paddingY = 12;
+        minW = 40; minH = 28; paddingX = 28; paddingY = 14;
     }
 
-    final newW = math.max(minW, textPainter.width + paddingX);
-    final newH = math.max(minH, textPainter.height + paddingY);
+    // Allow long single-line labels to expand; cap to avoid runaway width
+    final newW = math.min(900.0, math.max(minW, textPainter.width + paddingX));
+    final newH = math.min(220.0, math.max(minH, textPainter.height + paddingY));
     
     // Only update if dimensions changed significantly
     if ((newW - component.size.width).abs() > 2 || (newH - component.size.height).abs() > 2) {
