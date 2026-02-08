@@ -1162,6 +1162,62 @@ class _ProblemHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isCompact = MediaQuery.of(context).size.width < 900;
+    final spacing = SizedBox(width: isCompact ? 6 : 12);
+    final actionStyle = TextButton.styleFrom(foregroundColor: AppTheme.primary);
+    final adminStyle = TextButton.styleFrom(foregroundColor: AppTheme.warning);
+
+    Widget btn({
+      required IconData icon,
+      required String label,
+      required VoidCallback onTap,
+      bool admin = false,
+    }) {
+      if (isCompact) {
+        return IconButton(
+          tooltip: label,
+          icon: Icon(icon, size: 20, color: admin ? AppTheme.warning : AppTheme.primary),
+          onPressed: onTap,
+        );
+      }
+      return TextButton.icon(
+        icon: Icon(icon, size: 18),
+        label: Text(label),
+        onPressed: onTap,
+        style: admin ? adminStyle : actionStyle,
+      );
+    }
+
+    final profileChip = profile.maybeWhen(
+      data: (p) {
+        if (p == null) return const SizedBox.shrink();
+        final name = p['display_name'] ?? 'Architect';
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppTheme.primary.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppTheme.primary.withOpacity(0.2)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(
+                radius: 10,
+                backgroundColor: AppTheme.primary,
+                child: Text(name[0].toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.white)),
+              ),
+              if (!isCompact) ...[
+                const SizedBox(width: 8),
+                Text(name, style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary)),
+              ],
+            ],
+          ),
+        );
+      },
+      orElse: () => const SizedBox.shrink(),
+    );
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       decoration: BoxDecoration(
@@ -1182,101 +1238,71 @@ class _ProblemHeader extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          Expanded(
-            child: Wrap(
-              alignment: WrapAlignment.end,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                Consumer(builder: (context, ref, _) {
-                  return TextButton.icon(
-                    icon: const Icon(Icons.auto_awesome_mosaic_outlined, size: 18),
-                    label: const Text('AUTO LAYOUT'),
-                    onPressed: () => ref.read(canvasProvider.notifier).autoLayout(MediaQuery.of(context).size),
-                    style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
-                  );
-                }),
-                TextButton.icon(
-                  icon: const Icon(Icons.local_library_rounded, size: 18),
-                  label: const Text('LIBRARY'),
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const CommunityScreen()),
-                    );
-                  },
-                  style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
-                ),
-                if (isAdmin && onAdminTap != null)
-                  TextButton.icon(
-                    icon: const Icon(Icons.admin_panel_settings, size: 18),
-                    label: const Text('ADMIN'),
-                    onPressed: onAdminTap,
-                    style: TextButton.styleFrom(foregroundColor: AppTheme.warning),
-                  ),
-                TextButton.icon(
-                  icon: const Icon(Icons.folder_shared_outlined, size: 18),
-                  label: const Text('MY DESIGNS'),
-                  onPressed: onLoadMyDesignsTap,
-                  style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
-                ),
-                TextButton.icon(
-                  icon: const Icon(Icons.link_rounded, size: 18),
-                  label: const Text('SHARE'),
-                  onPressed: onShareTap,
-                  style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
-                ),
-                TextButton.icon(
-                  icon: const Icon(Icons.save_outlined, size: 18),
-                  label: const Text('SAVE'),
-                  onPressed: onSaveTap,
-                  style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
-                ),
-                profile.maybeWhen(
-                  data: (p) {
-                    if (p == null) return const SizedBox.shrink();
-                    final name = p['display_name'] ?? 'Architect';
-                    return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primary.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppTheme.primary.withOpacity(0.2)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          CircleAvatar(
-                            radius: 10,
-                            backgroundColor: AppTheme.primary,
-                            child: Text(name[0].toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.white)),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(name, style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary)),
-                        ],
-                      ),
-                    );
-                  },
-                  orElse: () => const SizedBox.shrink(),
-                ),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primary,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  icon: const Icon(Icons.rocket_launch_rounded, size: 18),
-                  label: const Text('PUBLISH', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5)),
-                  onPressed: onPublishTap,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.person_outline_rounded, color: AppTheme.textSecondary),
-                  onPressed: onProfileTap,
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Consumer(builder: (context, ref, _) {
+                return btn(
+                  icon: Icons.auto_awesome_mosaic_outlined,
+                  label: 'AUTO LAYOUT',
+                  onTap: () => ref.read(canvasProvider.notifier).autoLayout(MediaQuery.of(context).size),
+                );
+              }),
+              spacing,
+              btn(
+                icon: Icons.local_library_rounded,
+                label: 'LIBRARY',
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CommunityScreen())),
+              ),
+              if (isAdmin && onAdminTap != null) ...[
+                spacing,
+                btn(
+                  icon: Icons.admin_panel_settings,
+                  label: 'ADMIN',
+                  onTap: onAdminTap!,
+                  admin: true,
                 ),
               ],
-            ),
+              spacing,
+              btn(
+                icon: Icons.folder_shared_outlined,
+                label: 'MY DESIGNS',
+                onTap: onLoadMyDesignsTap,
+              ),
+              spacing,
+              btn(
+                icon: Icons.link_rounded,
+                label: 'SHARE',
+                onTap: onShareTap,
+              ),
+              spacing,
+              btn(
+                icon: Icons.save_outlined,
+                label: 'SAVE',
+                onTap: onSaveTap,
+              ),
+              spacing,
+              if (!isCompact) profileChip,
+              spacing,
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: EdgeInsets.symmetric(horizontal: isCompact ? 14 : 20, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                icon: Icon(Icons.rocket_launch_rounded, size: isCompact ? 16 : 18),
+                label: Text('PUBLISH', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5, fontSize: isCompact ? 12 : 14)),
+                onPressed: onPublishTap,
+              ),
+              spacing,
+              IconButton(
+                icon: const Icon(Icons.person_outline_rounded, color: AppTheme.textSecondary),
+                tooltip: 'Account',
+                onPressed: onProfileTap,
+              ),
+            ],
           ),
         ],
       ),
