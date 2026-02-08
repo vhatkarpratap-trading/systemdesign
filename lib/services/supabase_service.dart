@@ -121,6 +121,27 @@ class SupabaseService {
     }
   }
 
+  /// Ensure a minimal profile row exists for the current user (needed for FK)
+  Future<void> _ensureProfile(User user) async {
+    try {
+      final exists = await client
+          .from('profiles')
+          .select('id')
+          .eq('id', user.id)
+          .maybeSingle();
+      if (exists != null) return;
+
+      await client.from('profiles').insert({
+        'id': user.id,
+        'display_name': user.userMetadata['full_name'] ?? user.email ?? 'Architect',
+        'avatar_url': user.userMetadata['avatar_url'],
+      });
+    } catch (e) {
+      debugPrint('ensureProfile failed: $e');
+      // Let publish/save surface any remaining errors
+    }
+  }
+
   // --- Database Methods ---
 
   /// Get current user profile (display name, etc)
@@ -297,6 +318,7 @@ class SupabaseService {
   }) async {
     final user = currentUser;
     if (user == null) throw Exception('Must be logged in to publish');
+    await _ensureProfile(user);
 
     // Upload to Storage
     final blueprintPath = await _uploadBlueprint(user.id, title, canvasData);
@@ -338,6 +360,7 @@ class SupabaseService {
   }) async {
     final user = currentUser;
     if (user == null) throw Exception('Must be logged in to save');
+    await _ensureProfile(user);
 
     // Upload blueprint to storage for durability
     final blueprintPath = await _uploadBlueprint(user.id, title, canvasData);
