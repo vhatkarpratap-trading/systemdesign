@@ -1126,7 +1126,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                 child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: _rejectionNotices.map((n) {
+                    children: _rejectionNotices.map<Widget>((n) {
                       return Card(
                         color: AppTheme.error.withOpacity(0.12),
                         margin: const EdgeInsets.only(bottom: 8),
@@ -1597,4 +1597,11 @@ class _ClickableErrorCardState extends State<_ClickableErrorCard> {
       ),
     );
   }
+}
+
+class _RejectionNotice {
+  final String id;
+  final String title;
+  final String reason;
+  const _RejectionNotice({required this.id, required this.title, required this.reason});
 }
