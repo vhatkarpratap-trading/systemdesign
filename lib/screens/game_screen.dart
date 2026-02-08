@@ -130,6 +130,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   ProviderSubscription<User?>? _authListener;
   Timer? _statusPollTimer;
   final Map<String, String> _statusCache = {};
+  final Set<String> _notifiedRejections = {};
 
   @override
   void initState() {
@@ -185,7 +186,34 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       if (user != null) {
         _setupDesignStatusListener(user);
       }
+      _maybeNotifyExistingRejections();
     });
+  }
+
+  Future<void> _maybeNotifyExistingRejections() async {
+    final user = SupabaseService().currentUser;
+    if (user == null) return;
+    try {
+      final designs = await SupabaseService().fetchMyDesigns();
+      for (final d in designs) {
+        final id = d['id'] as String?;
+        final status = d['status'] as String?;
+        if (id == null || status != 'rejected') continue;
+        if (_notifiedRejections.contains(id)) continue;
+        final reason = d['rejection_reason'] as String? ?? 'Rejected by moderator.';
+        _notifiedRejections.add(id);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Design rejected: $reason'),
+            backgroundColor: AppTheme.error.withOpacity(0.9),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (_) {
+      // ignore errors; polling already handles live updates
+    }
   }
 
   Future<void> _loadSharedDesign(String designId) async {
