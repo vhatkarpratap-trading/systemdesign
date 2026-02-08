@@ -23,11 +23,13 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
   final _descController = TextEditingController();
   bool _isPublishing = false;
   bool _submitForReview = true;
+  int _wordCount = 0;
 
   @override
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.initialTitle);
+    _descController.addListener(_updateWordCount);
   }
 
   @override
@@ -35,6 +37,16 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
     _titleController.dispose();
     _descController.dispose();
     super.dispose();
+  }
+
+  void _updateWordCount() {
+    final text = _descController.text.trim();
+    if (text.isEmpty) {
+      setState(() => _wordCount = 0);
+      return;
+    }
+    final words = text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+    setState(() => _wordCount = words);
   }
 
   Future<void> _handlePublish() async {
@@ -196,26 +208,10 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
                 // Description Input
                 Text('WRITEUP / BLOG', style: _labelStyle),
                 const SizedBox(height: 8),
-                Container(
-                  height: 300,
-                  decoration: BoxDecoration(
-                    color: AppTheme.surface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.border),
-                  ),
-                  child: TextField(
-                    controller: _descController,
-                    maxLines: null,
-                    expands: true,
-                    textAlignVertical: TextAlignVertical.top,
-                    style: const TextStyle(color: AppTheme.textPrimary, fontSize: 15, height: 1.5),
-                    decoration: const InputDecoration(
-                      hintText: 'Optional: Describe your architecture, tradeoffs, and design decisions...',
-                      hintStyle: TextStyle(color: AppTheme.textMuted),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.all(16),
-                    ),
-                  ),
+                _BlogEditorCard(
+                  controller: _descController,
+                  wordCount: _wordCount,
+                  onOpenFullScreen: _openFullScreenEditor,
                 ),
 
                 const SizedBox(height: 40),
@@ -261,6 +257,20 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
     letterSpacing: 1.0,
   );
 
+  Future<void> _openFullScreenEditor() async {
+    final updated = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _FullPageBlogEditor(initialText: _descController.text),
+        fullscreenDialog: true,
+      ),
+    );
+    if (updated != null) {
+      _descController.text = updated;
+      _updateWordCount();
+    }
+  }
+
   InputDecoration _inputDecoration(String hint) {
     return InputDecoration(
       hintText: hint,
@@ -280,6 +290,155 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
         borderSide: const BorderSide(color: AppTheme.primary),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+    );
+  }
+}
+
+class _BlogEditorCard extends StatelessWidget {
+  final TextEditingController controller;
+  final int wordCount;
+  final VoidCallback onOpenFullScreen;
+
+  const _BlogEditorCard({
+    required this.controller,
+    required this.wordCount,
+    required this.onOpenFullScreen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final h = (MediaQuery.of(context).size.height * 0.55).clamp(320.0, 700.0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          height: h,
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppTheme.border),
+          ),
+          child: TextField(
+            controller: controller,
+            maxLines: null,
+            expands: true,
+            textAlignVertical: TextAlignVertical.top,
+            keyboardType: TextInputType.multiline,
+            style: const TextStyle(color: AppTheme.textPrimary, fontSize: 15, height: 1.5),
+            decoration: const InputDecoration(
+              hintText: 'Optional: Describe your architecture, tradeoffs, and design decisions...',
+              hintStyle: TextStyle(color: AppTheme.textMuted),
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.all(16),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Text('$wordCount words', style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: onOpenFullScreen,
+              icon: const Icon(Icons.fullscreen, size: 18),
+              label: const Text('Open full-page editor'),
+              style: TextButton.styleFrom(foregroundColor: AppTheme.primary),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _FullPageBlogEditor extends StatefulWidget {
+  final String initialText;
+  const _FullPageBlogEditor({required this.initialText});
+
+  @override
+  State<_FullPageBlogEditor> createState() => _FullPageBlogEditorState();
+}
+
+class _FullPageBlogEditorState extends State<_FullPageBlogEditor> {
+  late TextEditingController _controller;
+  int _wordCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialText);
+    _controller.addListener(_recount);
+    _recount();
+  }
+
+  void _recount() {
+    final text = _controller.text.trim();
+    setState(() {
+      _wordCount = text.isEmpty ? 0 : text.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.background,
+      appBar: AppBar(
+        backgroundColor: AppTheme.surface,
+        title: const Text('Full-page Blog Editor', style: TextStyle(color: AppTheme.textPrimary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, _controller.text),
+            child: const Text('Save & Close'),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: Container(
+              margin: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: TextField(
+                controller: _controller,
+                maxLines: null,
+                expands: true,
+                textAlignVertical: TextAlignVertical.top,
+                keyboardType: TextInputType.multiline,
+                style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16, height: 1.55),
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.all(16),
+                  hintText: 'Write your full blog here...',
+                  hintStyle: TextStyle(color: AppTheme.textMuted),
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Row(
+              children: [
+                Text('$_wordCount words', style: const TextStyle(color: AppTheme.textSecondary)),
+                const Spacer(),
+                OutlinedButton(
+                  onPressed: () => Navigator.pop(context, _controller.text),
+                  child: const Text('Save & Close'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
