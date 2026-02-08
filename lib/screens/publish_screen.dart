@@ -208,6 +208,8 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
                 // Description Input
                 Text('WRITEUP / BLOG', style: _labelStyle),
                 const SizedBox(height: 8),
+                _FormatterToolbar(onInsert: _insertIntoBlog),
+                const SizedBox(height: 8),
                 _BlogEditorCard(
                   controller: _descController,
                   wordCount: _wordCount,
@@ -271,6 +273,19 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
     }
   }
 
+  void _insertIntoBlog(String snippet) {
+    final text = _descController.text;
+    final selection = _descController.selection;
+    final start = selection.start >= 0 ? selection.start : text.length;
+    final end = selection.end >= 0 ? selection.end : text.length;
+    final newText = text.replaceRange(start, end, snippet);
+    _descController.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: start + snippet.length),
+    );
+    _updateWordCount();
+  }
+
   InputDecoration _inputDecoration(String hint) {
     return InputDecoration(
       hintText: hint,
@@ -290,6 +305,76 @@ class _PublishScreenState extends ConsumerState<PublishScreen> {
         borderSide: const BorderSide(color: AppTheme.primary),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+    );
+  }
+}
+
+class _HouseRulesCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          Text('House Rules', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 14)),
+          SizedBox(height: 6),
+          _RuleItem('No credentials, secrets, or PII.'),
+          _RuleItem('Cite sources; flag opinions as opinions.'),
+          _RuleItem('Highlight tradeoffs, failure modes, and capacity assumptions.'),
+          _RuleItem('Be respectful; no offensive or plagiarized content.'),
+        ],
+      ),
+    );
+  }
+}
+
+class _RuleItem extends StatelessWidget {
+  final String text;
+  const _RuleItem(this.text);
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('• ', style: TextStyle(color: AppTheme.textSecondary)),
+        Expanded(child: Text(text, style: const TextStyle(color: AppTheme.textSecondary, height: 1.3))),
+      ],
+    );
+  }
+}
+
+class _FormatterToolbar extends StatelessWidget {
+  final ValueChanged<String> onInsert;
+  const _FormatterToolbar({required this.onInsert});
+
+  @override
+  Widget build(BuildContext context) {
+    final chips = [
+      ('Bold', '**bold**'),
+      ('Italic', '_italic_'),
+      ('Code', '`code`'),
+      ('Link', '[text](https://example.com)'),
+      ('List', '- item'),
+      ('Quote', '> note'),
+      ('Header', '## Heading'),
+    ];
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: chips.map((c) {
+        return ActionChip(
+          label: Text(c.$1, style: const TextStyle(fontSize: 12)),
+          onPressed: () => onInsert(c.$2),
+          backgroundColor: AppTheme.surfaceLight,
+          side: const BorderSide(color: AppTheme.border),
+        );
+      }).toList(),
     );
   }
 }
