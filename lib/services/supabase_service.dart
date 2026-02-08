@@ -217,7 +217,7 @@ class SupabaseService {
             .from('designs')
             .select(columns)
             .eq('is_public', true)
-            .or('status.eq.approved,status.is.null')
+            .eq('status', 'approved')
             .order('created_at', ascending: false)
             .limit(100);
         combined.addAll(List<Map<String, dynamic>>.from(publicResp));
