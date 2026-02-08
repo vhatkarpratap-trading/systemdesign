@@ -560,7 +560,8 @@ String addComponentTemplate(SystemComponent template, Offset position) {
 
   /// Update traffic level (0.0 to 1.0)
   void setTrafficLevel(double level) {
-    state = state.copyWith(trafficLevel: level.clamp(0.0, 1.0));
+    // Allow up to 5x base traffic (0..5). UI may present as 0..500 units.
+    state = state.copyWith(trafficLevel: level.clamp(0.0, 5.0));
     _save();
   }
 

@@ -283,13 +283,13 @@ class _ChaosControlsPanelState extends ConsumerState<ChaosControlsPanel> {
                         },
                       ),
                       
-                      // Traffic Control Slider (0-100%)
+                      // Traffic Control Slider (0-500)
                       SizedBox(
                         width: 180,
                         child: Consumer(
                           builder: (context, ref, _) {
                             final canvasState = ref.watch(canvasProvider);
-                            final trafficPercent = (canvasState.trafficLevel * 100).toInt();
+                            final trafficUnits = (canvasState.trafficLevel * 100).clamp(0, 500).toInt();
                             return Column(
                               mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -297,7 +297,7 @@ class _ChaosControlsPanelState extends ConsumerState<ChaosControlsPanel> {
                                 Padding(
                                   padding: const EdgeInsets.only(left: 4),
                                   child: Text(
-                                    "Traffic: $trafficPercent%",
+                                    "Traffic: $trafficUnits",
                                     style: const TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.bold,
@@ -318,11 +318,11 @@ class _ChaosControlsPanelState extends ConsumerState<ChaosControlsPanel> {
                                       overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
                                     ),
                                     child: Slider(
-                                      value: canvasState.trafficLevel * 100,
+                                      value: trafficUnits.toDouble(),
                                       min: 0,
-                                      max: 100,
-                                      divisions: 100,
-                                      label: "$trafficPercent%",
+                                      max: 500,
+                                      divisions: 500,
+                                      label: "$trafficUnits",
                                       onChanged: (value) {
                                         ref.read(canvasProvider.notifier).setTrafficLevel(value / 100.0);
                                       },
