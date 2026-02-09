@@ -132,11 +132,13 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   final Map<String, String> _statusCache = {};
   final Set<String> _notifiedRejections = {};
   final List<_RejectionNotice> _rejectionNotices = [];
+  final Set<String> _dismissedRejectionIds = {};
 
   @override
   void initState() {
     super.initState();
     debugPrint('GameScreen Initialized');
+    _loadDismissedRejections();
     _authListener = ref.listenManual<User?>(currentUserProvider, (prev, next) {
       if (next != null && next.id != _statusListeningUserId) {
         _setupDesignStatusListener(next);
@@ -212,11 +214,79 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   }
 
   void _addRejectionNotice({required String id, required String title, required String reason}) {
+    if (_dismissedRejectionIds.contains(id)) return;
     if (_rejectionNotices.any((n) => n.id == id)) return;
     if (!mounted) return;
     setState(() {
       _rejectionNotices.add(_RejectionNotice(id: id, title: title, reason: reason));
     });
+  }
+
+  Future<void> _openNotifications() async {
+    if (_rejectionNotices.isEmpty && _dismissedRejectionIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No notifications'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final notices = List<_RejectionNotice>.from(_rejectionNotices);
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Notifications',
+                  style: TextStyle(color: AppTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                if (notices.isEmpty)
+                  const Text('No new rejections', style: TextStyle(color: AppTheme.textSecondary))
+                else
+                  ...notices.map((n) => ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.block, color: AppTheme.error),
+                        title: Text(n.title, style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w700)),
+                        subtitle: Text(n.reason, style: const TextStyle(color: AppTheme.textSecondary)),
+                      )),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Close'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    // Mark all viewed as dismissed
+    setState(() {
+      for (final n in notices) {
+        _dismissedRejectionIds.add(n.id);
+      }
+      _rejectionNotices.clear();
+    });
+    await _persistDismissed();
   }
 
   Future<void> _loadSharedDesign(String designId) async {
@@ -272,6 +342,19 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     if (_trafficInitialized) return;
     ref.read(canvasProvider.notifier).setTrafficLevel(0.4);
     _trafficInitialized = true;
+  }
+
+  Future<void> _loadDismissedRejections() async {
+    final prefs = await SharedPreferences.getInstance();
+    final ids = prefs.getStringList('dismissed_rejections') ?? [];
+    setState(() {
+      _dismissedRejectionIds.addAll(ids);
+    });
+  }
+
+  Future<void> _persistDismissed() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('dismissed_rejections', _dismissedRejectionIds.toList());
   }
 
   Future<void> _exportCanvasJson() async {
@@ -1046,13 +1129,15 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                   _ProblemHeader(
                     onPublishTap: _handlePublishDesign,
                     onSaveTap: _handleSaveDesign,
-            onProfileTap: _handleProfileTap,
-            onShareTap: _handleShareLink,
-            onLoadMyDesignsTap: _handleLoadMyDesigns,
-            profile: profile,
-            isAdmin: isAdmin,
-            onAdminTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminScreen())),
-          ),
+                    onProfileTap: _handleProfileTap,
+                    onShareTap: _handleShareLink,
+                    onLoadMyDesignsTap: _handleLoadMyDesigns,
+                    profile: profile,
+                    isAdmin: isAdmin,
+                    onAdminTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminScreen())),
+                    onNotificationsTap: _openNotifications,
+                    notificationCount: _rejectionNotices.length,
+                  ),
                   if (simState.isRunning) const MetricsBar(),
                   Expanded(
                     child: useSidebar 
@@ -1117,47 +1202,6 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           
           // Chaos Engineering Controls
           const ChaosControlsPanel(),
-          if (_rejectionNotices.isNotEmpty)
-            Positioned(
-              top: MediaQuery.paddingOf(context).top + 80,
-              right: 16,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 360, maxHeight: 260),
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: _rejectionNotices.map<Widget>((n) {
-                      return Card(
-                        color: AppTheme.error.withOpacity(0.12),
-                        margin: const EdgeInsets.only(bottom: 8),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          side: BorderSide(color: AppTheme.error.withOpacity(0.4)),
-                        ),
-                        child: ListTile(
-                          dense: true,
-                          leading: const Icon(Icons.block, color: AppTheme.error),
-                          title: Text(
-                            n.title,
-                            style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w700),
-                          ),
-                          subtitle: Text(
-                            n.reason,
-                            style: const TextStyle(color: AppTheme.textSecondary),
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.close, color: AppTheme.textMuted),
-                            onPressed: () {
-                              setState(() => _rejectionNotices.removeWhere((x) => x.id == n.id));
-                            },
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ),
-            ),
             
           if (_showResultsOverlay)
              ResultsScreen(
@@ -1223,6 +1267,8 @@ class _ProblemHeader extends StatelessWidget {
   final VoidCallback onProfileTap;
   final VoidCallback onShareTap;
   final VoidCallback onLoadMyDesignsTap;
+  final VoidCallback onNotificationsTap;
+  final int notificationCount;
   final AsyncValue<Map<String, dynamic>?> profile;
   final bool isAdmin;
   final VoidCallback? onAdminTap;
@@ -1233,6 +1279,8 @@ class _ProblemHeader extends StatelessWidget {
     required this.onProfileTap,
     required this.onShareTap,
     required this.onLoadMyDesignsTap,
+    required this.onNotificationsTap,
+    required this.notificationCount,
     required this.profile,
     this.isAdmin = false,
     this.onAdminTap,
@@ -1371,15 +1419,42 @@ class _ProblemHeader extends StatelessWidget {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 icon: Icon(Icons.rocket_launch_rounded, size: isCompact ? 16 : 18),
-                label: Text('PUBLISH', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5, fontSize: isCompact ? 12 : 14)),
-                onPressed: onPublishTap,
-              ),
-              spacing,
-              IconButton(
-                icon: const Icon(Icons.person_outline_rounded, color: AppTheme.textSecondary),
-                tooltip: 'Account',
-                onPressed: onProfileTap,
-              ),
+              label: Text('PUBLISH', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5, fontSize: isCompact ? 12 : 14)),
+              onPressed: onPublishTap,
+            ),
+            spacing,
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.notifications_outlined, color: AppTheme.textSecondary),
+                  tooltip: 'Notifications',
+                  onPressed: onNotificationsTap,
+                ),
+                if (notificationCount > 0)
+                  Positioned(
+                    right: 4,
+                    top: 4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppTheme.error,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        notificationCount > 9 ? '9+' : '$notificationCount',
+                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            spacing,
+            IconButton(
+              icon: const Icon(Icons.person_outline_rounded, color: AppTheme.textSecondary),
+              tooltip: 'Account',
+              onPressed: onProfileTap,
+            ),
             ],
           ),
         ],
