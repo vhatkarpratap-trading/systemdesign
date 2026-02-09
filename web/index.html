@@ -33,6 +33,21 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <script>
+    // Aggressively unregister old service workers (iOS Safari cache buster)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        regs.forEach(reg => reg.unregister());
+      });
+      navigator.serviceWorker.getRegistration().then(reg => {
+        if (reg) reg.unregister();
+      });
+    }
+    // Also clear caches if available
+    if (window.caches && window.caches.keys) {
+      caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+    }
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
