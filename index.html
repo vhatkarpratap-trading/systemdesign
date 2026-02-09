@@ -39,9 +39,12 @@
       padding: 0;
       width: 100%;
       height: 100%;
-      background: #0A0A0F;
+      background: radial-gradient(120% 140% at 20% 20%, rgba(59,130,246,0.10), transparent),
+                  radial-gradient(120% 120% at 80% 10%, rgba(139,92,246,0.10), transparent),
+                  #05050f;
       color: #E5E7EB;
       font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      overflow: hidden;
     }
     #loading {
       position: fixed;
@@ -49,15 +52,61 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #0A0A0F;
       z-index: 9999;
-      letter-spacing: 0.5px;
-      opacity: 0.9;
+      background: transparent;
+      pointer-events: none;
+    }
+    .loader-card {
+      background: rgba(12, 12, 20, 0.8);
+      border: 1px solid rgba(59,130,246,0.2);
+      border-radius: 16px;
+      padding: 18px 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.45), 0 0 80px rgba(59,130,246,0.25);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 260px;
+      backdrop-filter: blur(8px);
+    }
+    .pulse {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: #3B82F6;
+      box-shadow: 0 0 0 0 rgba(59,130,246, 0.7);
+      animation: pulse 1.6s infinite;
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(59,130,246, 0.7); transform: scale(1); }
+      70% { box-shadow: 0 0 0 18px rgba(59,130,246, 0); transform: scale(1.08); }
+      100% { box-shadow: 0 0 0 0 rgba(59,130,246, 0); transform: scale(1); }
+    }
+    .loader-text {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .loader-title {
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      color: #E5E7EB;
+    }
+    .loader-sub {
+      font-size: 12px;
+      color: #9CA3AF;
+      letter-spacing: 0.2px;
     }
   </style>
 </head>
 <body>
-  <div id="loading">Loading System Architect…</div>
+  <div id="loading">
+    <div class="loader-card">
+      <div class="pulse"></div>
+      <div class="loader-text">
+        <div class="loader-title">Loading System Architect…</div>
+        <div class="loader-sub">Bootstrapping canvas & simulation</div>
+      </div>
+    </div>
+  </div>
   <script src="flutter_bootstrap.js" async></script>
   <script>
     window.addEventListener('flutter-first-frame', () => {
