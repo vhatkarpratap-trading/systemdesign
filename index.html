@@ -106,26 +106,11 @@
   </style>
 </head>
 <body>
-  <div id="loading">
-    <div class="loader-card">
-      <div class="pulse"></div>
-      <div class="loader-text">
-        <div class="loader-title">Loading System Architect…</div>
-        <div class="loader-sub">Bootstrapping canvas & simulation</div>
-      </div>
-    </div>
-  </div>
+  <!-- Minimal loader removed for iOS Safari; placeholder kept to avoid layout shift -->
+  <div id="loading" style="display:none;"></div>
   <script src="flutter_bootstrap.js" async></script>
   <script>
-    window.addEventListener('flutter-first-frame', () => {
-      const el = document.getElementById('loading');
-      if (el) el.remove();
-    });
-    // Fallback: ensure loader never lingers (e.g., on safari quirks)
-    setTimeout(() => {
-      const el = document.getElementById('loading');
-      if (el) el.remove();
-    }, 3000);
+    // No-op: loader is disabled to avoid stuck overlays on iOS Safari.
   </script>
 </body>
 </html>
