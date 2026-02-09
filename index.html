@@ -53,6 +53,14 @@
       color: #E5E7EB;
       font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       overflow: hidden;
+      opacity: 1 !important;
+      filter: none !important;
+      pointer-events: auto !important;
+    }
+    flt-glass-pane {
+      opacity: 1 !important;
+      filter: none !important;
+      pointer-events: auto !important;
     }
     #loading {
       position: fixed;
@@ -110,7 +118,39 @@
   <div id="loading" style="display:none;"></div>
   <script src="flutter_bootstrap.js" async></script>
   <script>
-    // No-op: loader is disabled to avoid stuck overlays on iOS Safari.
+    // Safari overlay killer: remove any full-screen, semi-transparent layers that linger.
+    (function() {
+      const zap = () => {
+        // Remove our loading node if it exists
+        const loading = document.getElementById('loading');
+        if (loading) loading.remove();
+
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const nodes = Array.from(document.body.children);
+        nodes.forEach(el => {
+          if (el.id === 'flt-glass-pane') {
+            el.style.opacity = '1';
+            el.style.filter = 'none';
+            el.style.pointerEvents = 'auto';
+            return;
+          }
+          const cs = getComputedStyle(el);
+          const isCover =
+            (cs.position === 'fixed' || cs.position === 'absolute') &&
+            el.clientWidth >= vw * 0.9 &&
+            el.clientHeight >= vh * 0.9;
+          const isDim = parseFloat(cs.opacity || '1') < 1 || cs.filter !== 'none';
+          if (isCover && isDim) {
+            el.style.display = 'none';
+          }
+        });
+      };
+      window.addEventListener('flutter-first-frame', zap);
+      setTimeout(zap, 300);
+      setTimeout(zap, 1200);
+      setTimeout(zap, 3000);
+    })();
   </script>
 </body>
 </html>
