@@ -184,7 +184,6 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         );
         ref.read(canvasReadOnlyProvider.notifier).state = false;
       }
-      _maybePromptAuth();
       _maybeSetDefaultTraffic();
       final user = SupabaseService().currentUser;
       if (user != null) {
