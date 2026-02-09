@@ -121,6 +121,11 @@
       const el = document.getElementById('loading');
       if (el) el.remove();
     });
+    // Fallback: ensure loader never lingers (e.g., on safari quirks)
+    setTimeout(() => {
+      const el = document.getElementById('loading');
+      if (el) el.remove();
+    }, 3000);
   </script>
 </body>
 </html>
