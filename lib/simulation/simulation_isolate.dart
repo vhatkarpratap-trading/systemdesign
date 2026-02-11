@@ -3045,7 +3045,6 @@ List<FailureEvent> _buildChaosFailures(
       final affectedComponents = components
           .where((c) => _affectsComponent(event, c))
           .where((c) =>
-              c.type != ComponentType.text &&
               c.type != ComponentType.rectangle &&
               c.type != ComponentType.circle &&
               c.type != ComponentType.diamond &&

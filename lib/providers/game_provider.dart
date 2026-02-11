@@ -681,50 +681,11 @@ String addComponentTemplate(SystemComponent template, Offset position) {
     final layers = <int, List<String>>{};
     final visited = <String>{};
     final nodeDepths = <String, int>{};
-
-    // 0. Pre-processing: Pin unconnected text nodes to nearest neighbors
-    final textAttachments = <String, String>{}; // TextId -> HostId
-    final textOffsets = <String, Offset>{}; // TextId -> Relative Offset
-    final excludedIds = <String>{};
-
-    const double attachThreshold = 200.0; // Distance to consider "attached"
-
-    for (final comp in state.components) {
-      if (comp.type == ComponentType.text) {
-        // Check if actually connected
-        final isConnected = state.connections.any((c) => c.sourceId == comp.id || c.targetId == comp.id);
-        if (isConnected) continue;
-
-        // Find nearest non-text neighbor
-        SystemComponent? nearest;
-        double minDistance = double.infinity;
-
-        // Center of text
-        final textCenter = comp.position + Offset(comp.size.width / 2, comp.size.height / 2);
-
-        for (final candidate in state.components) {
-          if (candidate.id == comp.id) continue;
-          if (candidate.type == ComponentType.text) continue; // Don't attach to other text
-
-          final candidateCenter = candidate.position + Offset(candidate.size.width / 2, candidate.size.height / 2);
-          final dist = (textCenter - candidateCenter).distance;
-
-          if (dist < minDistance) {
-            minDistance = dist;
-            nearest = candidate;
-          }
-        }
-
-        if (nearest != null && minDistance < attachThreshold) {
-          textAttachments[comp.id] = nearest.id;
-          textOffsets[comp.id] = comp.position - nearest.position;
-          excludedIds.add(comp.id);
-        }
-      }
-    }
+    final textAttachments = <String, String>{};
+    final textOffsets = <String, Offset>{};
 
     // 1. Identify roots (nodes with no incoming connections from *within* the set of nodes being laid out)
-    final layoutCandidates = state.components.where((c) => !excludedIds.contains(c.id)).toList();
+    final layoutCandidates = state.components.toList();
     final layoutIds = layoutCandidates.map((c) => c.id).toSet();
     
     final targets = state.connections
@@ -871,36 +832,7 @@ String addComponentTemplate(SystemComponent template, Offset position) {
       }
     }
     
-    // 4.5 Re-attach pinned text nodes
-    for (final textId in textAttachments.keys) {
-      final hostId = textAttachments[textId];
-      final offset = textOffsets[textId];
-      final originalTextComp = state.getComponent(textId);
-      
-      // Find the host in the NEW layout
-      final hostComp = newComponents.cast<SystemComponent?>().firstWhere(
-        (c) => c?.id == hostId, 
-        orElse: () => null,
-      );
-
-      if (hostComp != null && originalTextComp != null && offset != null) {
-        final newTextPos = hostComp.position + offset;
-        final newTextComp = originalTextComp.copyWith(position: newTextPos);
-        newComponents.add(newTextComp);
-
-        // Update bounds for these too
-        if (newTextPos.dx < minX) minX = newTextPos.dx;
-        final rightEdge = newTextPos.dx + newTextComp.size.width;
-        if (rightEdge > maxX) maxX = rightEdge;
-        
-        if (newTextPos.dy < minY) minY = newTextPos.dy;
-        final bottomEdge = newTextPos.dy + newTextComp.size.height;
-        if (bottomEdge > maxY) maxY = bottomEdge;
-      } else if (originalTextComp != null) {
-        // Fallback if host lost (shouldn't happen)
-        newComponents.add(originalTextComp);
-      }
-    }
+    // 4.5 Notes are treated like any other component; no special re-attachment.
 
     // 5. Zoom to Fit
     final contentWidth = maxX - minX + 300; 

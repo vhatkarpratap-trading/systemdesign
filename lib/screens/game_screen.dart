@@ -125,7 +125,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   String? _designOwnerId;
   String? _designOwnerEmail;
   final GlobalKey _toolbarKey = GlobalKey();
-  bool _showDesktopHint = true;
+  bool _showDesktopHint = false;
   RealtimeChannel? _statusChannel;
   String? _statusListeningUserId;
   ProviderSubscription<User?>? _authListener;
