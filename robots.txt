@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://vhatkarpratap-trading.github.io/systemdesign/sitemap.xml
