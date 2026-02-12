@@ -1149,6 +1149,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                     isSimulating: simState.isRunning,
                     isPaused: simState.isPaused,
                     isCompleted: simState.isCompleted || simState.isFailed,
+                    validation: validation,
                     onStart: () {
                       setState(() => _showResultsOverlay = false);
                       ref.read(simulationEngineProvider).start();
@@ -1468,6 +1469,7 @@ class _BottomControls extends ConsumerWidget {
   final bool isSimulating;
   final bool isPaused;
   final bool isCompleted;
+  final ValidationResult validation;
   final VoidCallback onStart;
   final VoidCallback onPause;
   final VoidCallback onResume;
@@ -1480,6 +1482,7 @@ class _BottomControls extends ConsumerWidget {
     required this.isSimulating, 
     required this.isPaused, 
     required this.isCompleted,
+    required this.validation,
     required this.onStart, 
     required this.onPause, 
     required this.onResume,
@@ -1491,6 +1494,7 @@ class _BottomControls extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scale = ref.watch(canvasProvider.select((s) => s.scale ?? 1.0)) * 100;
+    final missingEntry = validation.issues.any((i) => i.title == 'No entry point');
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -1519,6 +1523,19 @@ class _BottomControls extends ConsumerWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               ),
             ).animate().fadeIn().scale(),
+          ],
+          if (!isSimulating && !isCompleted && missingEntry) ...[
+            const SizedBox(width: 12),
+            Row(
+              children: const [
+                Icon(Icons.info_outline, size: 16, color: AppTheme.warning),
+                SizedBox(width: 6),
+                Text(
+                  'Add an entry point: Load Balancer, API Gateway, or CDN.',
+                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 11, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
           ],
           const SizedBox(width: 16),
           if (isSimulating) 
