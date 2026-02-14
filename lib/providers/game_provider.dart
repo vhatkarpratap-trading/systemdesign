@@ -15,6 +15,7 @@ import '../data/problems.dart';
 import '../models/canvas_state.dart';
 export '../models/canvas_state.dart';
 import '../data/progress_repository.dart';
+import '../services/analytics_service.dart';
 import '../simulation/design_validator.dart';
 import 'package:flutter/foundation.dart';
 
@@ -37,11 +38,25 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
 
   CanvasNotifier(this._repository, this._ref) : super(const CanvasState());
 
+  void _trackEvent(String name, {Map<String, Object?> parameters = const {}}) {
+    AnalyticsService.event(
+      name,
+      parameters: {'problem_id': _currentProblemId, ...parameters},
+    );
+  }
+
   String? get currentDesignName => _currentDesignName;
 
   Future<void> _save() async {
-    if (_currentDesignId != null && _currentDesignName != null && _currentProblemId != null) {
-      await _repository.saveDesign(_currentDesignId!, _currentDesignName!, _currentProblemId!, state);
+    if (_currentDesignId != null &&
+        _currentDesignName != null &&
+        _currentProblemId != null) {
+      await _repository.saveDesign(
+        _currentDesignId!,
+        _currentDesignName!,
+        _currentProblemId!,
+        state,
+      );
     } else if (_currentProblemId != null) {
       await _repository.saveProgress(_currentProblemId!, state);
     }
@@ -81,12 +96,24 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
   }
 
   /// Initialize with a problem (existing logic modified to set _currentProblemId)
-  void initializeWithProblem(String problemId, {bool forceTestDesign = false}) async {
+  void initializeWithProblem(
+    String problemId, {
+    bool forceTestDesign = false,
+  }) async {
     _currentProblemId = problemId;
     _currentDesignId = null;
     _currentDesignName = null;
+    _trackEvent(
+      'problem_initialized',
+      parameters: {
+        'selected_problem_id': problemId,
+        'force_test_design': forceTestDesign,
+      },
+    );
     if (forceTestDesign) {
-      final loadedSample = await _loadDesignFromAsset('assets/solutions/minimal_design.json');
+      final loadedSample = await _loadDesignFromAsset(
+        'assets/solutions/minimal_design.json',
+      );
       if (!loadedSample) {
         state = const CanvasState();
       }
@@ -100,14 +127,22 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
       return;
     }
 
-    final loadedSample = await _loadDesignFromAsset('assets/solutions/minimal_design.json');
+    final loadedSample = await _loadDesignFromAsset(
+      'assets/solutions/minimal_design.json',
+    );
     if (!loadedSample) {
       state = const CanvasState();
     }
   }
 
   /// Add a new component to the canvas
-  String addComponent(ComponentType type, Offset position, {Size? size, bool flipX = false, bool flipY = false}) {
+  String addComponent(
+    ComponentType type,
+    Offset position, {
+    Size? size,
+    bool flipX = false,
+    bool flipY = false,
+  }) {
     final component = SystemComponent(
       id: _uuid.v4(),
       type: type,
@@ -123,79 +158,113 @@ class CanvasNotifier extends StateNotifier<CanvasState> {
       selectedComponentId: component.id,
     );
     _save();
+    _trackEvent(
+      'component_added',
+      parameters: {
+        'component_type': type.name,
+        'component_count': state.components.length,
+      },
+    );
     return component.id;
   }
 
-/// Add a custom component to the canvas (expands to internal nodes + connections)
-/// Returns a list of all created component IDs
-List<String> addCustomComponent(CustomComponentDefinition definition, Offset dropPosition) {
-  // Map old internal node IDs to new component IDs
-  final Map<String, String> idMapping = {};
-  final List<SystemComponent> newComponents = [];
-  final List<Connection> newConnections = [];
-  
-  // Create components for each internal node, positioned relative to drop position
-  for (final node in definition.internalNodes) {
-    final newId = _uuid.v4();
-    idMapping[node.id] = newId;
-    
-    final component = SystemComponent(
-      id: newId,
-      type: node.type,
-      customName: '${definition.name}: ${node.label}',
-      position: dropPosition + node.relativePosition,
-      size: const Size(80, 64),
-      config: node.config,
-      // Store reference to parent custom component for aggregation
-      customComponentId: definition.id,
-    );
-    newComponents.add(component);
-  }
-  
-  // Create connections between internal nodes
-  for (final conn in definition.internalConnections) {
-    final sourceId = idMapping[conn.sourceNodeId];
-    final targetId = idMapping[conn.targetNodeId];
-    
-    if (sourceId != null && targetId != null) {
-      newConnections.add(Connection(
-        id: _uuid.v4(),
-        sourceId: sourceId,
-        targetId: targetId,
-        direction: ConnectionDirection.unidirectional,
-        type: conn.type,
-      ));
+  /// Add a custom component to the canvas (expands to internal nodes + connections)
+  /// Returns a list of all created component IDs
+  List<String> addCustomComponent(
+    CustomComponentDefinition definition,
+    Offset dropPosition,
+  ) {
+    // Map old internal node IDs to new component IDs
+    final Map<String, String> idMapping = {};
+    final List<SystemComponent> newComponents = [];
+    final List<Connection> newConnections = [];
+
+    // Create components for each internal node, positioned relative to drop position
+    for (final node in definition.internalNodes) {
+      final newId = _uuid.v4();
+      idMapping[node.id] = newId;
+
+      final component = SystemComponent(
+        id: newId,
+        type: node.type,
+        customName: '${definition.name}: ${node.label}',
+        position: dropPosition + node.relativePosition,
+        size: const Size(80, 64),
+        config: node.config,
+        // Store reference to parent custom component for aggregation
+        customComponentId: definition.id,
+      );
+      newComponents.add(component);
     }
-  }
-  
-  // Update state with all new components and connections
-  state = state.copyWith(
-    components: [...state.components, ...newComponents],
-    connections: [...state.connections, ...newConnections],
-    selectedComponentId: newComponents.isNotEmpty ? newComponents.first.id : null,
-  );
-  _save();
-  
+
+    // Create connections between internal nodes
+    for (final conn in definition.internalConnections) {
+      final sourceId = idMapping[conn.sourceNodeId];
+      final targetId = idMapping[conn.targetNodeId];
+
+      if (sourceId != null && targetId != null) {
+        newConnections.add(
+          Connection(
+            id: _uuid.v4(),
+            sourceId: sourceId,
+            targetId: targetId,
+            direction: ConnectionDirection.unidirectional,
+            type: conn.type,
+          ),
+        );
+      }
+    }
+
+    // Update state with all new components and connections
+    state = state.copyWith(
+      components: [...state.components, ...newComponents],
+      connections: [...state.connections, ...newConnections],
+      selectedComponentId: newComponents.isNotEmpty
+          ? newComponents.first.id
+          : null,
+    );
+    _save();
+    _trackEvent(
+      'custom_component_deployed',
+      parameters: {
+        'custom_component_id': definition.id,
+        'custom_component_name': definition.name,
+        'internal_nodes': definition.internalNodes.length,
+        'internal_connections': definition.internalConnections.length,
+        'deployed_components': newComponents.length,
+        'component_count': state.components.length,
+        'connection_count': state.connections.length,
+      },
+    );
+
     return newComponents.map((c) => c.id).toList();
-}
+  }
 
-/// Add a pre-configured template component to the canvas
-String addComponentTemplate(SystemComponent template, Offset position) {
-  final component = template.copyWith(
-    id: _uuid.v4(), // Generate new ID
-    position: position,
-  );
+  /// Add a pre-configured template component to the canvas
+  String addComponentTemplate(SystemComponent template, Offset position) {
+    final component = template.copyWith(
+      id: _uuid.v4(), // Generate new ID
+      position: position,
+    );
 
-  state = state.copyWith(
-    components: [...state.components, component],
-    selectedComponentId: component.id,
-  );
-  _save();
-  return component.id;
-}
+    state = state.copyWith(
+      components: [...state.components, component],
+      selectedComponentId: component.id,
+    );
+    _save();
+    _trackEvent(
+      'component_template_added',
+      parameters: {
+        'template_type': template.type.name,
+        'component_count': state.components.length,
+      },
+    );
+    return component.id;
+  }
 
   /// Remove a component from the canvas
   void removeComponent(String id) {
+    final removed = state.getComponent(id);
     state = state.copyWith(
       components: state.components.where((c) => c.id != id).toList(),
       connections: state.connections
@@ -204,6 +273,13 @@ String addComponentTemplate(SystemComponent template, Offset position) {
       clearSelection: state.selectedComponentId == id,
     );
     _save();
+    _trackEvent(
+      'component_removed',
+      parameters: {
+        'component_type': removed?.type.name,
+        'component_count': state.components.length,
+      },
+    );
   }
 
   /// Move a component to a new position
@@ -221,22 +297,21 @@ String addComponentTemplate(SystemComponent template, Offset position) {
 
   /// Select a component
   void selectComponent(String? id) {
-    state = state.copyWith(
-      selectedComponentId: id,
-      clearSelection: id == null,
-    );
+    state = state.copyWith(selectedComponentId: id, clearSelection: id == null);
   }
 
   /// Update component configuration
   void updateComponentConfig(String id, ComponentConfig config) {
     // Calculate intelligent size based on architecture complexity
     Size newSize = const Size(80, 64);
-    
+
     if (config.displayMode == ComponentDisplayMode.detailed) {
-       newSize = const Size(220, 260);
+      newSize = const Size(220, 260);
     } else if (config.sharding) {
       // Wider for shards: Base 80 + 25 per partition
-      final partitions = config.partitionCount < 1 ? 1 : (config.partitionCount > 4 ? 4 : config.partitionCount);
+      final partitions = config.partitionCount < 1
+          ? 1
+          : (config.partitionCount > 4 ? 4 : config.partitionCount);
       newSize = Size(80.0 + (partitions * 25.0), 96);
     } else if (config.replication && config.replicationFactor > 1) {
       // Wide for Leader-Follower diagram
@@ -249,7 +324,7 @@ String addComponentTemplate(SystemComponent template, Offset position) {
     state = state.copyWith(
       components: state.components.map((c) {
         if (c.id == id) {
-          // Keep custom size if it's vastly different? 
+          // Keep custom size if it's vastly different?
           // For now, snap to architectural size to ensure the visualization looks good.
           return c.copyWith(config: config, size: newSize);
         }
@@ -315,6 +390,14 @@ String addComponentTemplate(SystemComponent template, Offset position) {
         // Return error without clearing connecting state (so they can try again)
         // Or should we clear? Let's clear to reset interaction
         state = state.copyWith(clearConnecting: true);
+        _trackEvent(
+          'connection_rejected',
+          parameters: {
+            'source_type': source.type.name,
+            'target_type': target.type.name,
+            'reason': error,
+          },
+        );
         return error;
       }
     }
@@ -332,6 +415,16 @@ String addComponentTemplate(SystemComponent template, Offset position) {
       clearConnecting: true,
     );
     _save();
+    _trackEvent(
+      'connection_created',
+      parameters: {
+        'source_type': source?.type.name,
+        'target_type': target?.type.name,
+        'protocol': protocol.name,
+        'direction': direction.name,
+        'connection_count': state.connections.length,
+      },
+    );
     return null;
   }
 
@@ -342,79 +435,89 @@ String addComponentTemplate(SystemComponent template, Offset position) {
 
     // Create new ID
     final newId = _uuid.v4();
-    
+
     // Find smart position to avoid overlap
-    Offset newPosition = original.position + const Offset(20, 20); // Default fallback
-    
+    Offset newPosition =
+        original.position + const Offset(20, 20); // Default fallback
+
     // Attempt to find a free spot nearby
     // We check 8 directions at varying distances
     bool foundSpot = false;
     final size = original.size;
     final buffer = 20.0;
-    
+
     // Search spiral: Right, Bottom, Left, Top...
     final candidates = [
-       original.position + Offset(size.width + buffer, 0), // Right
-       original.position + Offset(0, size.height + buffer), // Bottom
-       original.position + Offset(size.width + buffer, size.height + buffer), // Bottom-Right
-       original.position + Offset(-(size.width + buffer), 0), // Left
-       original.position + Offset(0, -(size.height + buffer)), // Top
-       original.position + Offset(size.width + buffer, -(size.height + buffer)), // Top-Right
-       original.position + Offset(-(size.width + buffer), size.height + buffer), // Bottom-Left
+      original.position + Offset(size.width + buffer, 0), // Right
+      original.position + Offset(0, size.height + buffer), // Bottom
+      original.position +
+          Offset(size.width + buffer, size.height + buffer), // Bottom-Right
+      original.position + Offset(-(size.width + buffer), 0), // Left
+      original.position + Offset(0, -(size.height + buffer)), // Top
+      original.position +
+          Offset(size.width + buffer, -(size.height + buffer)), // Top-Right
+      original.position +
+          Offset(-(size.width + buffer), size.height + buffer), // Bottom-Left
     ];
 
     for (final candidate in candidates) {
-        // Check collision with ALL components
-        final candidateRect = Rect.fromLTWH(candidate.dx, candidate.dy, size.width, size.height);
-        bool hasCollision = false;
-        
-        for (final existing in state.components) {
-            final existingRect = Rect.fromLTWH(existing.position.dx, existing.position.dy, existing.size.width, existing.size.height);
-            // Inflate existing rect slightly to ensure gaps
-            if (candidateRect.overlaps(existingRect.inflate(10))) {
-                hasCollision = true;
-                break;
-            }
+      // Check collision with ALL components
+      final candidateRect = Rect.fromLTWH(
+        candidate.dx,
+        candidate.dy,
+        size.width,
+        size.height,
+      );
+      bool hasCollision = false;
+
+      for (final existing in state.components) {
+        final existingRect = Rect.fromLTWH(
+          existing.position.dx,
+          existing.position.dy,
+          existing.size.width,
+          existing.size.height,
+        );
+        // Inflate existing rect slightly to ensure gaps
+        if (candidateRect.overlaps(existingRect.inflate(10))) {
+          hasCollision = true;
+          break;
         }
-        
-        if (!hasCollision) {
-            newPosition = candidate;
-            foundSpot = true;
-            break;
-        }
+      }
+
+      if (!hasCollision) {
+        newPosition = candidate;
+        foundSpot = true;
+        break;
+      }
     }
-    
+
     // If first ring failed, try a second wider ring (simple fallback to further down-right)
     if (!foundSpot) {
-       newPosition = original.position + const Offset(50, 50);
+      newPosition = original.position + const Offset(50, 50);
     }
 
     final newComponent = original.copyWith(
       id: newId,
       position: newPosition,
       // Reset status on new component
-      customName: original.customName != null ? '${original.customName} (Replica)' : null,
+      customName: original.customName != null
+          ? '${original.customName} (Replica)'
+          : null,
     );
 
     // Duplicate connections
     final newConnections = <Connection>[];
-    
+
     // 1. Incoming: Anyone connected to Original should also connect to New (Load balancing)
     final incoming = state.connections.where((c) => c.targetId == originalId);
     for (final conn in incoming) {
-      newConnections.add(conn.copyWith(
-        id: _uuid.v4(),
-        targetId: newId,
-      ));
+      newConnections.add(conn.copyWith(id: _uuid.v4(), targetId: newId));
     }
 
     // 2. Outgoing: New should connect to same targets as Original
     final outgoing = state.connections.where((c) => c.sourceId == originalId);
     for (final conn in outgoing) {
-      newConnections.add(conn.copyWith(
-        id: _uuid.v4(),
-        sourceId: newId,
-      ));
+      newConnections.add(conn.copyWith(id: _uuid.v4(), sourceId: newId));
     }
 
     state = state.copyWith(
@@ -422,19 +525,19 @@ String addComponentTemplate(SystemComponent template, Offset position) {
       connections: [...state.connections, ...newConnections],
     );
     _save();
-    
+
     return newId;
   }
 
   /// Apply an automated fix
   void applyFix(FixType type, String? componentId) {
     if (componentId == null) return;
-    
+
     final component = state.getComponent(componentId);
     if (component == null) return;
-    
+
     var config = component.config;
-    
+
     switch (type) {
       case FixType.enableAutoscaling:
         config = config.copyWith(autoScale: true);
@@ -446,14 +549,16 @@ String addComponentTemplate(SystemComponent template, Offset position) {
         // VISUAL SCALING: Instead of just config increment, adding a real node
         // We add 1 replica visually (user can click again for more)
         duplicateComponent(componentId);
-        // Also update the original config just in case logic relies on it? 
+        // Also update the original config just in case logic relies on it?
         // No, if we have multiple nodes, each has 1 instance.
         // But if the original had 1, and we add 1, we now have 2 nodes of 1 instance.
         break;
       case FixType.enableReplication:
         config = config.copyWith(
-          replication: true, 
-          replicationFactor: config.replicationFactor < 2 ? 2 : config.replicationFactor
+          replication: true,
+          replicationFactor: config.replicationFactor < 2
+              ? 2
+              : config.replicationFactor,
         );
         break;
       case FixType.enableRateLimiting:
@@ -467,12 +572,14 @@ String addComponentTemplate(SystemComponent template, Offset position) {
         config = config.copyWith(dlq: true);
         break;
     }
-    
+
     updateComponentConfig(componentId, config);
-    
-    // OPTIMISTIC FIX: Immediately clear failures from simulation state 
+
+    // OPTIMISTIC FIX: Immediately clear failures from simulation state
     // so the red banner disappears without waiting for the next tick
-    _ref.read(simulationProvider.notifier).clearFailuresForComponent(componentId);
+    _ref
+        .read(simulationProvider.notifier)
+        .clearFailuresForComponent(componentId);
   }
 
   /// Cancel connecting
@@ -482,10 +589,18 @@ String addComponentTemplate(SystemComponent template, Offset position) {
 
   /// Remove a connection
   void removeConnection(String id) {
+    final removed = state.connections.where((c) => c.id == id).toList();
     state = state.copyWith(
       connections: state.connections.where((c) => c.id != id).toList(),
     );
     _save();
+    _trackEvent(
+      'connection_removed',
+      parameters: {
+        'protocol': removed.isNotEmpty ? removed.first.protocol.name : null,
+        'connection_count': state.connections.length,
+      },
+    );
   }
 
   /// Update connection direction
@@ -519,7 +634,9 @@ String addComponentTemplate(SystemComponent template, Offset position) {
     state = state.copyWith(
       connections: state.connections.map((c) {
         if (c.id == id) {
-          return c.copyWith(label: (label ?? '').trim().isEmpty ? null : label!.trim());
+          return c.copyWith(
+            label: (label ?? '').trim().isEmpty ? null : label!.trim(),
+          );
         }
         return c;
       }).toList(),
@@ -572,10 +689,7 @@ String addComponentTemplate(SystemComponent template, Offset position) {
   }
 
   void updateTransform({Offset? panOffset, double? scale}) {
-    state = state.copyWith(
-      panOffset: panOffset,
-      scale: scale,
-    );
+    state = state.copyWith(panOffset: panOffset, scale: scale);
     _save();
   }
 
@@ -603,12 +717,19 @@ String addComponentTemplate(SystemComponent template, Offset position) {
   void loadState(CanvasState newState) {
     state = newState;
     _save();
+    _trackEvent(
+      'canvas_state_loaded',
+      parameters: {
+        'component_count': state.components.length,
+        'connection_count': state.connections.length,
+      },
+    );
   }
 
   /// Load state for a specific problem
   Future<void> loadForProblem(Problem problem) async {
     _currentProblemId = problem.id;
-    
+
     // Try loading saved progress
     try {
       final savedState = await _repository.loadProgress(problem.id);
@@ -628,10 +749,8 @@ String addComponentTemplate(SystemComponent template, Offset position) {
       position: const Offset(50, 300),
       config: ComponentConfig.defaultFor(ComponentType.client),
     );
-    
-    state = CanvasState(
-      components: [client],
-    );
+
+    state = CanvasState(components: [client]);
   }
 
   /// Reset to initial state for a problem (Manual Reset)
@@ -643,10 +762,8 @@ String addComponentTemplate(SystemComponent template, Offset position) {
       position: const Offset(50, 300),
       config: ComponentConfig.defaultFor(ComponentType.client),
     );
-    
-    state = CanvasState(
-      components: [client],
-    );
+
+    state = CanvasState(components: [client]);
     _save();
   }
 
@@ -656,16 +773,20 @@ String addComponentTemplate(SystemComponent template, Offset position) {
     _currentDesignName = null;
     state = const CanvasState();
     _save();
+    _trackEvent('canvas_cleared');
   }
 
   /// Load the optimal solution for the problem
   void loadSolution(Problem problem) {
-    _currentProblemId = problem.id; // Ensure we save solution if they modify it?
+    _currentProblemId =
+        problem.id; // Ensure we save solution if they modify it?
     // Maybe better not to overwrite user progress with solution unless explicitly requested
     // Logic: Loading solution REPLACES current canvas
-    
+
     if (problem.id == 'url_shortener') {
-      _loadDesignFromAsset('assets/solutions/url_shortener_solution.json').then((_) => _save());
+      _loadDesignFromAsset(
+        'assets/solutions/url_shortener_solution.json',
+      ).then((_) => _save());
     } else {
       _save();
     }
@@ -687,19 +808,23 @@ String addComponentTemplate(SystemComponent template, Offset position) {
     // 1. Identify roots (nodes with no incoming connections from *within* the set of nodes being laid out)
     final layoutCandidates = state.components.toList();
     final layoutIds = layoutCandidates.map((c) => c.id).toSet();
-    
+
     final targets = state.connections
-        .where((c) => layoutIds.contains(c.sourceId) && layoutIds.contains(c.targetId))
-        .map((c) => c.targetId).toSet();
-        
+        .where(
+          (c) =>
+              layoutIds.contains(c.sourceId) && layoutIds.contains(c.targetId),
+        )
+        .map((c) => c.targetId)
+        .toSet();
+
     final roots = layoutCandidates
         .where((c) => !targets.contains(c.id))
         .map((c) => c.id)
         .toList();
-    
+
     // Cycle handling / Disconnected graphs: If no roots found but components exist, pick the first one.
     if (roots.isEmpty && layoutCandidates.isNotEmpty) {
-      roots.add(layoutCandidates.first.id); 
+      roots.add(layoutCandidates.first.id);
     }
 
     // 2. BFS for Layer Assignment (Rank)
@@ -713,16 +838,18 @@ String addComponentTemplate(SystemComponent template, Offset position) {
     while (queue.isNotEmpty) {
       final currentId = queue.removeAt(0);
       final depth = nodeDepths[currentId] ?? 0;
-      
+
       layers.putIfAbsent(depth, () => []).add(currentId);
       visited.add(currentId);
-      
+
       // Find downstream neighbors
       final outgoing = state.connections
           .where((c) => c.sourceId == currentId)
           .map((c) => c.targetId)
-          .where((id) => layoutIds.contains(id)); // Only consider nodes in layout
-          
+          .where(
+            (id) => layoutIds.contains(id),
+          ); // Only consider nodes in layout
+
       for (final targetId in outgoing) {
         if (!nodeDepths.containsKey(targetId)) {
           nodeDepths[targetId] = depth + 1;
@@ -741,8 +868,9 @@ String addComponentTemplate(SystemComponent template, Offset position) {
 
     // 3. Crossing Minimization (Barycenter Heuristic)
     // Sort Rank K based on average position of parents in Rank K-1
-    final sortedLayers = layers.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
-    
+    final sortedLayers = layers.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+
     // Virtual positions map for sorting
     final nodeY = <String, double>{};
 
@@ -752,22 +880,22 @@ String addComponentTemplate(SystemComponent template, Offset position) {
 
       if (i == 0) {
         // First layer: Keep mostly as is, maybe sort by type?
-        layerNodes.sort(); 
+        layerNodes.sort();
       } else {
         // Subsequent layers: Sort by average Y of parents
         layerNodes.sort((a, b) {
-           double getAvgParentY(String nodeId) {
-             final parents = state.connections
+          double getAvgParentY(String nodeId) {
+            final parents = state.connections
                 .where((c) => c.targetId == nodeId)
                 .map((c) => c.sourceId)
                 .where((id) => nodeY.containsKey(id));
-             
-             if (parents.isEmpty) return 0.0;
-             final sum = parents.map((id) => nodeY[id]!).reduce((a, b) => a + b);
-             return sum / parents.length;
-           }
 
-           return getAvgParentY(a).compareTo(getAvgParentY(b));
+            if (parents.isEmpty) return 0.0;
+            final sum = parents.map((id) => nodeY[id]!).reduce((a, b) => a + b);
+            return sum / parents.length;
+          }
+
+          return getAvgParentY(a).compareTo(getAvgParentY(b));
         });
       }
 
@@ -781,11 +909,11 @@ String addComponentTemplate(SystemComponent template, Offset position) {
     final newComponents = <SystemComponent>[];
     const startX = 5000.0;
     const startY = 5000.0; // Centered
-    
+
     // Spacing tuned to reduce overlap on dense graphs
-    const layerSpacingX = 320.0;      // more horizontal separation
-    const fixedNodeSpacing = 140.0;   // more vertical gap between nodes
-    
+    const layerSpacingX = 320.0; // more horizontal separation
+    const fixedNodeSpacing = 140.0; // more vertical gap between nodes
+
     double minX = double.infinity;
     double maxX = double.negativeInfinity;
     double minY = double.infinity;
@@ -794,18 +922,19 @@ String addComponentTemplate(SystemComponent template, Offset position) {
     for (final entry in sortedLayers) {
       final depth = entry.key;
       final ids = entry.value;
-      
+
       // Calculate total height needed for this layer to center it
       double totalLayerHeight = 0;
       final componentHeights = <String, double>{};
-      
+
       for (final id in ids) {
         final comp = state.getComponent(id);
         final height = comp?.size.height ?? 64.0;
         componentHeights[id] = height;
         totalLayerHeight += height + fixedNodeSpacing;
       }
-      if (ids.isNotEmpty) totalLayerHeight -= fixedNodeSpacing; // Remove last gap
+      if (ids.isNotEmpty)
+        totalLayerHeight -= fixedNodeSpacing; // Remove last gap
 
       var currentY = startY - (totalLayerHeight / 2);
       final xPos = startX + (depth * layerSpacingX);
@@ -814,37 +943,43 @@ String addComponentTemplate(SystemComponent template, Offset position) {
         final comp = state.getComponent(id);
         if (comp != null) {
           final h = componentHeights[id]!;
-          
+
           final pos = Offset(xPos, currentY);
           newComponents.add(comp.copyWith(position: pos));
-          
+
           // Update bounds
           if (pos.dx < minX) minX = pos.dx;
           final rightEdge = pos.dx + comp.size.width;
           if (rightEdge > maxX) maxX = rightEdge;
-          
+
           if (pos.dy < minY) minY = pos.dy;
           final bottomEdge = pos.dy + h;
           if (bottomEdge > maxY) maxY = bottomEdge;
-          
+
           currentY += h + fixedNodeSpacing;
         }
       }
     }
-    
+
     // 4.5 Notes are treated like any other component; no special re-attachment.
 
     // 5. Zoom to Fit
-    final contentWidth = maxX - minX + 300; 
+    final contentWidth = maxX - minX + 300;
     final contentHeight = maxY - minY + 300;
-    
+
     final scaleX = viewportSize.width / contentWidth;
     final scaleY = viewportSize.height / contentHeight;
     final fitScale = (scaleX < scaleY ? scaleX : scaleY).clamp(0.2, 1.5);
-    
-    final contentCenter = Offset(minX + (maxX - minX) / 2, minY + (maxY - minY) / 2);
-    final viewportCenter = Offset(viewportSize.width / 2, viewportSize.height / 2);
-    
+
+    final contentCenter = Offset(
+      minX + (maxX - minX) / 2,
+      minY + (maxY - minY) / 2,
+    );
+    final viewportCenter = Offset(
+      viewportSize.width / 2,
+      viewportSize.height / 2,
+    );
+
     final newOffset = viewportCenter - (contentCenter * fitScale);
 
     state = state.copyWith(
@@ -853,6 +988,14 @@ String addComponentTemplate(SystemComponent template, Offset position) {
       panOffset: newOffset,
     );
     _save();
+    _trackEvent(
+      'auto_layout_applied',
+      parameters: {
+        'component_count': state.components.length,
+        'connection_count': state.connections.length,
+        'scale': state.scale,
+      },
+    );
   }
 
   Future<bool> _loadDesignFromAsset(String assetPath) async {
@@ -894,10 +1037,11 @@ String addComponentTemplate(SystemComponent template, Offset position) {
       return false;
     }
   }
-
 }
 
-final canvasProvider = StateNotifierProvider<CanvasNotifier, CanvasState>((ref) {
+final canvasProvider = StateNotifierProvider<CanvasNotifier, CanvasState>((
+  ref,
+) {
   final repo = ref.watch(progressRepositoryProvider);
   return CanvasNotifier(repo, ref);
 });
@@ -915,7 +1059,8 @@ class SimulationState {
   final SimulationStatus status;
   final GlobalMetrics globalMetrics;
   final List<FailureEvent> failures;
-  final List<FailureEvent> visibleFailures; // Failures shown on components after persistence delay
+  final List<FailureEvent>
+  visibleFailures; // Failures shown on components after persistence delay
   final int tickCount;
   final double simulationSpeed;
   final List<ChaosEvent> activeChaosEvents;
@@ -954,7 +1099,8 @@ class SimulationState {
       simulationSpeed: simulationSpeed ?? this.simulationSpeed,
       activeChaosEvents: activeChaosEvents ?? this.activeChaosEvents,
       chaosMultipliers: chaosMultipliers ?? this.chaosMultipliers,
-      lastConnectionTraffic: lastConnectionTraffic ?? this.lastConnectionTraffic,
+      lastConnectionTraffic:
+          lastConnectionTraffic ?? this.lastConnectionTraffic,
     );
   }
 
@@ -1001,7 +1147,7 @@ class SimulationNotifier extends StateNotifier<SimulationState> {
     if (state.status != SimulationStatus.running) return;
     state = state.copyWith(tickCount: state.tickCount + 1);
   }
-  
+
   void updateConnectionTraffic(Map<String, double> traffic) {
     state = state.copyWith(lastConnectionTraffic: traffic);
   }
@@ -1010,11 +1156,11 @@ class SimulationNotifier extends StateNotifier<SimulationState> {
     state = state.copyWith(globalMetrics: metrics);
   }
 
-
-
   void removeChaosEvent(String id) {
     state = state.copyWith(
-      activeChaosEvents: state.activeChaosEvents.where((e) => e.id != id).toList(),
+      activeChaosEvents: state.activeChaosEvents
+          .where((e) => e.id != id)
+          .toList(),
     );
   }
 
@@ -1036,10 +1182,7 @@ class SimulationNotifier extends StateNotifier<SimulationState> {
       return now.difference(firstSeen) >= _failureVisibleAfter;
     }).toList();
 
-    state = state.copyWith(
-      failures: failures,
-      visibleFailures: visible,
-    );
+    state = state.copyWith(failures: failures, visibleFailures: visible);
     // Note: We no longer stop the simulation on failure
   }
 
@@ -1047,17 +1190,21 @@ class SimulationNotifier extends StateNotifier<SimulationState> {
   void clearFailuresForComponent(String componentId) {
     _failureFirstSeen.removeWhere((key, _) => key.startsWith('$componentId|'));
     state = state.copyWith(
-      failures: state.failures.where((f) => f.componentId != componentId).toList(),
-      visibleFailures: state.visibleFailures.where((f) => f.componentId != componentId).toList(),
+      failures: state.failures
+          .where((f) => f.componentId != componentId)
+          .toList(),
+      visibleFailures: state.visibleFailures
+          .where((f) => f.componentId != componentId)
+          .toList(),
     );
   }
 
   void addFailure(FailureEvent failure) {
     // Check if we already have this failure to avoid duplicates
-    final exists = state.failures.any((f) => 
-      f.componentId == failure.componentId && f.type == failure.type
+    final exists = state.failures.any(
+      (f) => f.componentId == failure.componentId && f.type == failure.type,
     );
-    
+
     if (!exists) {
       state = state.copyWith(
         failures: [...state.failures, failure],
@@ -1085,7 +1232,9 @@ class SimulationNotifier extends StateNotifier<SimulationState> {
 
   /// Remove expired chaos events and update multipliers
   void updateChaosEvents() {
-    final activeEvents = state.activeChaosEvents.where((e) => e.isActive).toList();
+    final activeEvents = state.activeChaosEvents
+        .where((e) => e.isActive)
+        .toList();
     if (activeEvents.length != state.activeChaosEvents.length) {
       state = state.copyWith(activeChaosEvents: activeEvents);
       _updateChaosMultipliers();
@@ -1108,7 +1257,8 @@ class SimulationNotifier extends StateNotifier<SimulationState> {
         case ChaosType.networkLatency:
           final latency = event.parameters['latencyMs'] as int? ?? 300;
           multipliers = multipliers.copyWith(
-            latencyMultiplier: multipliers.latencyMultiplier * (1 + latency / 100),
+            latencyMultiplier:
+                multipliers.latencyMultiplier * (1 + latency / 100),
           );
           break;
 
@@ -1119,7 +1269,8 @@ class SimulationNotifier extends StateNotifier<SimulationState> {
         case ChaosType.databaseSlowdown:
           final mult = event.parameters['multiplier'] as double? ?? 8.0;
           multipliers = multipliers.copyWith(
-            databaseLatencyMultiplier: multipliers.databaseLatencyMultiplier * mult,
+            databaseLatencyMultiplier:
+                multipliers.databaseLatencyMultiplier * mult,
           );
           break;
 
@@ -1137,18 +1288,20 @@ class SimulationNotifier extends StateNotifier<SimulationState> {
           break;
       }
     }
-// Provider for real-time simulation metrics (decoupled from structure for performance)
+    // Provider for real-time simulation metrics (decoupled from structure for performance)
     state = state.copyWith(chaosMultipliers: multipliers);
   }
 }
 
 // Provider for real-time simulation metrics (decoupled from structure for performance)
-final simulationMetricsProvider = StateProvider<Map<String, ComponentMetrics>>((ref) => {});
+final simulationMetricsProvider = StateProvider<Map<String, ComponentMetrics>>(
+  (ref) => {},
+);
 
 final simulationProvider =
     StateNotifierProvider<SimulationNotifier, SimulationState>((ref) {
-  return SimulationNotifier();
-});
+      return SimulationNotifier();
+    });
 
 /// Current score
 final scoreProvider = StateProvider<Score?>((ref) => null);
@@ -1162,11 +1315,14 @@ final validationProvider = FutureProvider<ValidationResult>((ref) async {
   // Debounce to avoid excessive isolate spawning during drags
   await Future.delayed(const Duration(milliseconds: 300));
 
-  return compute(_validateDesignIsolate, _ValidationData(
-    components: components,
-    connections: connections,
-    problem: problem,
-  ));
+  return compute(
+    _validateDesignIsolate,
+    _ValidationData(
+      components: components,
+      connections: connections,
+      problem: problem,
+    ),
+  );
 });
 
 /// Internal helper for isolate-based validation
@@ -1191,16 +1347,22 @@ ValidationResult _validateDesignIsolate(_ValidationData data) {
 }
 
 /// Level completion results
-final levelResultsProvider = StateProvider<Map<String, LevelResult>>((ref) => {});
+final levelResultsProvider = StateProvider<Map<String, LevelResult>>(
+  (ref) => {},
+);
 
 /// Toolbox visibility
 final toolboxVisibleProvider = StateProvider<bool>((ref) => true);
 
 /// Selected component category in toolbox
-final selectedCategoryProvider = StateProvider<ComponentCategory?>((ref) => null);
+final selectedCategoryProvider = StateProvider<ComponentCategory?>(
+  (ref) => null,
+);
 
 /// Trigger to add a component (from toolbox click)
-final addComponentTriggerProvider = StateProvider<ComponentType?>((ref) => null);
+final addComponentTriggerProvider = StateProvider<ComponentType?>(
+  (ref) => null,
+);
 
 /// Canvas Drawing Tools
 enum CanvasTool {
@@ -1216,4 +1378,6 @@ enum CanvasTool {
   eraser,
 }
 
-final canvasToolProvider = StateProvider<CanvasTool>((ref) => CanvasTool.select);
+final canvasToolProvider = StateProvider<CanvasTool>(
+  (ref) => CanvasTool.select,
+);

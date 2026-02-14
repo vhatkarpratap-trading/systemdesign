@@ -21,6 +21,7 @@ import '../../providers/traffic_provider.dart'; // Added
 import 'package:uuid/uuid.dart';
 import '../../models/chaos_event.dart';
 import '../../models/custom_component.dart';
+import '../../services/analytics_service.dart';
 import 'issue_marker.dart';
 import '../panels/db_modeling_panel.dart';
 import '../../providers/auth_provider.dart';
@@ -34,20 +35,22 @@ class SystemCanvas extends ConsumerStatefulWidget {
 }
 
 class _SystemCanvasState extends ConsumerState<SystemCanvas> {
-  final TransformationController _transformController = TransformationController();
+  final TransformationController _transformController =
+      TransformationController();
   bool _isExternalUpdate = false;
   bool _isUserInteracting = false;
   Offset? _dragPreviewPosition;
   Timer? _debounceTimer;
   Timer? _scrollEndTimer;
-  
+
   // Drag-to-connect state
   String? _draggingFromId;
   Offset? _draggingCurrentPos;
   Offset? _dragStartPos;
   Offset? _drawStartPos;
   Offset? _drawEndPos;
-  String? _hoveredComponentId; // Only for non-selected hint if needed, mostly unused now
+  String?
+  _hoveredComponentId; // Only for non-selected hint if needed, mostly unused now
   String? _editingComponentId; // ID of component being edited inline
   final FocusNode _focusNode = FocusNode();
   Offset? _lastDoubleTapGlobalPos;
@@ -61,22 +64,19 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
     super.initState();
     // Sync UI changes (gestures) back to provider source of truth
     _transformController.addListener(_onTransformChanged);
-    
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Center the view in the stable canvas
       final viewport = MediaQuery.of(context).size;
       final x = -5000.0 + viewport.width / 2;
       final y = -5000.0 + viewport.height / 2;
-      
-      _updateController(
-        Matrix4.identity()..setTranslationRaw(x, y, 0.0),
-      );
-      
+
+      _updateController(Matrix4.identity()..setTranslationRaw(x, y, 0.0));
+
       // Initialize provider with this default state
-      ref.read(canvasProvider.notifier).updateTransform(
-        panOffset: Offset(x, y),
-        scale: 1.0,
-      );
+      ref
+          .read(canvasProvider.notifier)
+          .updateTransform(panOffset: Offset(x, y), scale: 1.0);
     });
   }
 
@@ -111,11 +111,13 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
     final matrix = _transformController.value;
     final translation = matrix.getTranslation();
     final scale = matrix.getMaxScaleOnAxis();
-    
-    ref.read(canvasProvider.notifier).updateTransform(
-      panOffset: Offset(translation.x, translation.y),
-      scale: scale,
-    );
+
+    ref
+        .read(canvasProvider.notifier)
+        .updateTransform(
+          panOffset: Offset(translation.x, translation.y),
+          scale: scale,
+        );
   }
 
   void _updateController(Matrix4 matrix) {
@@ -127,7 +129,7 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
   Offset _getCanvasPosition(Offset globalPosition) {
     final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
     if (renderBox == null) return globalPosition;
-    
+
     final localPosition = renderBox.globalToLocal(globalPosition);
     final Matrix4 matrix = _transformController.value.clone()..invert();
     return MatrixUtils.transformPoint(matrix, localPosition);
@@ -137,13 +139,17 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
   Widget build(BuildContext context) {
     final readOnly = ref.watch(canvasReadOnlyProvider);
     // CRITICAL: We only watch the fields that affect the visual build of the components.
-    // We specifically do NOT watch 'panOffset' or 'scale' here, because those are 
+    // We specifically do NOT watch 'panOffset' or 'scale' here, because those are
     // handled by the TransformationController. If we rebuilt on every pan/zoom,
     // the InteractiveViewer would lose its active gesture state!
     final components = ref.watch(canvasProvider.select((s) => s.components));
     final connections = ref.watch(canvasProvider.select((s) => s.connections));
-    final selectedComponentId = ref.watch(canvasProvider.select((s) => s.selectedComponentId));
-    final connectingFromId = ref.watch(canvasProvider.select((s) => s.connectingFromId));
+    final selectedComponentId = ref.watch(
+      canvasProvider.select((s) => s.selectedComponentId),
+    );
+    final connectingFromId = ref.watch(
+      canvasProvider.select((s) => s.connectingFromId),
+    );
 
     // Reconstruction for backwards compatibility with builders
     final canvasState = CanvasState(
@@ -152,7 +158,7 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
       selectedComponentId: selectedComponentId,
       connectingFromId: connectingFromId,
     );
-    
+
     final activeTool = ref.watch(canvasToolProvider);
     final simState = ref.watch(simulationProvider);
     final problem = ref.watch(currentProblemProvider);
@@ -161,35 +167,38 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
 
     final isSelectionMode = activeTool == CanvasTool.select;
     final isHandMode = activeTool == CanvasTool.hand;
-    final isDrawingMode = activeTool == CanvasTool.rectangle || 
-                         activeTool == CanvasTool.circle ||
-                         activeTool == CanvasTool.diamond ||
-                         activeTool == CanvasTool.arrow ||
-                         activeTool == CanvasTool.line;
+    final isDrawingMode =
+        activeTool == CanvasTool.rectangle ||
+        activeTool == CanvasTool.circle ||
+        activeTool == CanvasTool.diamond ||
+        activeTool == CanvasTool.arrow ||
+        activeTool == CanvasTool.line;
     final isArrowActive = activeTool == CanvasTool.arrow;
 
     // Listen for external transform changes (e.g. Zoom Buttons, Auto Layout)
     ref.listen(canvasProvider, (previous, next) {
-      // If the user is currently interacting with the canvas directly, 
+      // If the user is currently interacting with the canvas directly,
       // do NOT let the provider fight the transformation controller.
       if (_isUserInteracting || _isExternalUpdate) return;
 
       if (next.scale != null && next.panOffset != null) {
         final currentMatrix = _transformController.value;
         final currentTranslation = currentMatrix.getTranslation();
-        final currentScale = (currentMatrix.getMaxScaleOnAxis() * 1000).round() / 1000;
+        final currentScale =
+            (currentMatrix.getMaxScaleOnAxis() * 1000).round() / 1000;
         final nextScale = (next.scale! * 1000).round() / 1000;
 
-        final hasChanged = (currentScale - nextScale).abs() > 0.001 ||
-                           (currentTranslation.x - next.panOffset!.dx).abs() > 0.5 ||
-                           (currentTranslation.y - next.panOffset!.dy).abs() > 0.5;
+        final hasChanged =
+            (currentScale - nextScale).abs() > 0.001 ||
+            (currentTranslation.x - next.panOffset!.dx).abs() > 0.5 ||
+            (currentTranslation.y - next.panOffset!.dy).abs() > 0.5;
 
         if (hasChanged) {
-           final matrix = Matrix4.identity()
+          final matrix = Matrix4.identity()
             ..translate(next.panOffset!.dx, next.panOffset!.dy)
             ..scale(next.scale!);
-           
-           _updateController(matrix);
+
+          _updateController(matrix);
         }
       }
     });
@@ -199,18 +208,23 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
       autofocus: true,
       onKeyEvent: (node, event) {
         if (event is KeyDownEvent) {
-          final isDelete = event.logicalKey == LogicalKeyboardKey.delete || 
-                          event.logicalKey == LogicalKeyboardKey.backspace;
-          
-          if (isDelete && canvasState.selectedComponentId != null && _editingComponentId == null) {
-            ref.read(canvasProvider.notifier).removeComponent(canvasState.selectedComponentId!);
+          final isDelete =
+              event.logicalKey == LogicalKeyboardKey.delete ||
+              event.logicalKey == LogicalKeyboardKey.backspace;
+
+          if (isDelete &&
+              canvasState.selectedComponentId != null &&
+              _editingComponentId == null) {
+            ref
+                .read(canvasProvider.notifier)
+                .removeComponent(canvasState.selectedComponentId!);
             return KeyEventResult.handled;
           }
 
           // Tool shortcuts
           if (_editingComponentId == null) {
             final key = event.logicalKey;
-            
+
             // Escape key handling
             if (key == LogicalKeyboardKey.escape) {
               // Close settings sidebar first if open
@@ -234,7 +248,8 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
               ref.read(canvasToolProvider.notifier).state = CanvasTool.select;
               return KeyEventResult.handled;
             } else if (key == LogicalKeyboardKey.digit2) {
-              ref.read(canvasToolProvider.notifier).state = CanvasTool.rectangle;
+              ref.read(canvasToolProvider.notifier).state =
+                  CanvasTool.rectangle;
               return KeyEventResult.handled;
             } else if (key == LogicalKeyboardKey.digit3) {
               ref.read(canvasToolProvider.notifier).state = CanvasTool.circle;
@@ -263,8 +278,12 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
             }
 
             // Clear Canvas shortcut (Ctrl + Shift + Backspace)
-            final isControl = HardwareKeyboard.instance.isControlPressed || HardwareKeyboard.instance.isMetaPressed;
-            if (isControl && HardwareKeyboard.instance.isShiftPressed && event.logicalKey == LogicalKeyboardKey.backspace) {
+            final isControl =
+                HardwareKeyboard.instance.isControlPressed ||
+                HardwareKeyboard.instance.isMetaPressed;
+            if (isControl &&
+                HardwareKeyboard.instance.isShiftPressed &&
+                event.logicalKey == LogicalKeyboardKey.backspace) {
               ref.read(canvasProvider.notifier).clear();
               return KeyEventResult.handled;
             }
@@ -275,7 +294,8 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
       child: Stack(
         fit: StackFit.expand, // Force stack to fill parent
         children: [
-          Positioned.fill( // Constrain canvas to stack size
+          Positioned.fill(
+            // Constrain canvas to stack size
             child: Container(
               decoration: BoxDecoration(
                 color: AppTheme.background,
@@ -285,443 +305,629 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: DragTarget<Object>(
-                onWillAcceptWithDetails: (details) => true,
-                onMove: (details) {
-                  final canvasPos = _getCanvasPosition(details.offset);
-                  setState(() => _dragPreviewPosition = canvasPos);
-                },
-                onLeave: (_) {
-                  setState(() {
-                    _dragPreviewPosition = null;
-                  });
-                },
-                onAcceptWithDetails: (details) {
-                  final canvasPos = _getCanvasPosition(details.offset);
-                  final data = details.data;
-                  
-                  if (data is ComponentType) {
-                    ref.read(canvasProvider.notifier).addComponent(
-                      data,
-                      Offset(canvasPos.dx.clamp(50, 9900), canvasPos.dy.clamp(50, 9900)),
-                    );
-                  } else if (data is ChaosType) {
-                    // Find target component
-                    final canvasState = ref.read(canvasProvider);
-                    String? targetId;
-                    for (final comp in canvasState.components) {
-                      final rect = Rect.fromLTWH(comp.position.dx, comp.position.dy, comp.size.width, comp.size.height);
-                      if (rect.contains(canvasPos)) {
-                        targetId = comp.id;
-                        break;
-                      }
-                    }
-                    
-                    // Create Chaos Event
-                    final event = ChaosEvent(
-                      id: const Uuid().v4(),
-                      type: data,
-                      startTime: DateTime.now(),
-                      duration: const Duration(seconds: 30), // Default 30s disaster
-                      parameters: {
-                         'targetId': targetId, // Null means global or random?
-                         'severity': 1.0, 
-                      },
-                    );
+                  onWillAcceptWithDetails: (details) => true,
+                  onMove: (details) {
+                    final canvasPos = _getCanvasPosition(details.offset);
+                    setState(() => _dragPreviewPosition = canvasPos);
+                  },
+                  onLeave: (_) {
+                    setState(() {
+                      _dragPreviewPosition = null;
+                    });
+                  },
+                  onAcceptWithDetails: (details) {
+                    final canvasPos = _getCanvasPosition(details.offset);
+                    final data = details.data;
 
-                    // Add to simulation
-                    ref.read(simulationProvider.notifier).addChaosEvent(event);
-                    
-                    // Visual feedback
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('${data.emoji} ${data.label} unleashed!'),
-                        duration: const Duration(seconds: 2),
-                        backgroundColor: AppTheme.secondary,
-                      ),
-                    );
-                  } else if (data is CustomComponentDefinition) {
-                    // Expand custom component to internal nodes + connections
-                    final dropPos = Offset(canvasPos.dx.clamp(50, 9900), canvasPos.dy.clamp(50, 9900));
-                    final createdIds = ref.read(canvasProvider.notifier).addCustomComponent(data, dropPos);
-                    
-                    // Visual feedback
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('${data.name} deployed with ${createdIds.length} components!'),
-                        duration: const Duration(seconds: 2),
-                        backgroundColor: data.color,
-                      ),
-                    );
-                  } else if (data is SystemComponent) {
-                    // Add template component
-                    final dropPos = Offset(canvasPos.dx.clamp(50, 9900), canvasPos.dy.clamp(50, 9900));
-                    ref.read(canvasProvider.notifier).addComponentTemplate(data, dropPos);
-                    
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('${data.customName ?? data.type.displayName} deployed!'),
-                        duration: const Duration(seconds: 2),
-                        backgroundColor: AppTheme.success,
-                      ),
-                    );
-                  }
-                  
-                  setState(() => _dragPreviewPosition = null);
-                },
-                builder: (context, candidateData, rejectedData) {
-                  final isDragging = candidateData.isNotEmpty;
-                  
-                  return Listener(
-                    onPointerSignal: (pointerSignal) {
-                      if (pointerSignal is PointerScrollEvent) {
-                        final isControl = HardwareKeyboard.instance.isControlPressed || 
-                                         HardwareKeyboard.instance.isMetaPressed;
-                        
-                        if (isControl) {
-                          _isUserInteracting = true;
-                          _scrollEndTimer?.cancel();
-                          _scrollEndTimer = Timer(const Duration(milliseconds: 300), () {
-                            if (mounted) {
-                              _isUserInteracting = false;
-                              _syncToProvider();
-                            }
-                          });
-
-                          final double zoomDelta = -pointerSignal.scrollDelta.dy / 250;
-                          final double currentScale = _transformController.value.getMaxScaleOnAxis();
-                          final double newScale = (currentScale + zoomDelta).clamp(0.1, 5.0);
-                          
-                          final Offset localPos = pointerSignal.localPosition;
-                          final Matrix4 matrix = _transformController.value.clone();
-                          final Offset untransformedPos = MatrixUtils.transformPoint(Matrix4.inverted(matrix), localPos);
-                          
-                          final Matrix4 newMatrix = Matrix4.identity()
-                            ..translate(localPos.dx, localPos.dy)
-                            ..scale(newScale)
-                            ..translate(-untransformedPos.dx, -untransformedPos.dy);
-                          
-                          _updateController(newMatrix);
+                    if (data is ComponentType) {
+                      ref
+                          .read(canvasProvider.notifier)
+                          .addComponent(
+                            data,
+                            Offset(
+                              canvasPos.dx.clamp(50, 9900),
+                              canvasPos.dy.clamp(50, 9900),
+                            ),
+                          );
+                    } else if (data is ChaosType) {
+                      // Find target component
+                      final canvasState = ref.read(canvasProvider);
+                      String? targetId;
+                      for (final comp in canvasState.components) {
+                        final rect = Rect.fromLTWH(
+                          comp.position.dx,
+                          comp.position.dy,
+                          comp.size.width,
+                          comp.size.height,
+                        );
+                        if (rect.contains(canvasPos)) {
+                          targetId = comp.id;
+                          break;
                         }
                       }
-                    },
-                    child: InteractiveViewer(
-                      transformationController: _transformController,
-                      minScale: 0.1,
-                      maxScale: 5.0,
-                      constrained: false,
-                      panEnabled: true, // Allow panning during simulation
-                      scaleEnabled: true, // Allow zoom during simulation
-                      trackpadScrollCausesScale: false,
-                      boundaryMargin: const EdgeInsets.all(5000),
-                      onInteractionStart: (_) {
-                        _isUserInteracting = true;
-                        _debounceTimer?.cancel();
-                        _scrollEndTimer?.cancel();
+
+                      // Create Chaos Event
+                      final event = ChaosEvent(
+                        id: const Uuid().v4(),
+                        type: data,
+                        startTime: DateTime.now(),
+                        duration: const Duration(
+                          seconds: 30,
+                        ), // Default 30s disaster
+                        parameters: {
+                          'targetId': targetId, // Null means global or random?
+                          'severity': 1.0,
+                        },
+                      );
+
+                      // Add to simulation
+                      ref
+                          .read(simulationProvider.notifier)
+                          .addChaosEvent(event);
+                      AnalyticsService.event(
+                        'chaos_event_triggered',
+                        parameters: {
+                          'chaos_type': data.name,
+                          'target_component': targetId,
+                        },
+                      );
+
+                      // Visual feedback
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '${data.emoji} ${data.label} unleashed!',
+                          ),
+                          duration: const Duration(seconds: 2),
+                          backgroundColor: AppTheme.secondary,
+                        ),
+                      );
+                    } else if (data is CustomComponentDefinition) {
+                      // Expand custom component to internal nodes + connections
+                      final dropPos = Offset(
+                        canvasPos.dx.clamp(50, 9900),
+                        canvasPos.dy.clamp(50, 9900),
+                      );
+                      final createdIds = ref
+                          .read(canvasProvider.notifier)
+                          .addCustomComponent(data, dropPos);
+
+                      // Visual feedback
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '${data.name} deployed with ${createdIds.length} components!',
+                          ),
+                          duration: const Duration(seconds: 2),
+                          backgroundColor: data.color,
+                        ),
+                      );
+                    } else if (data is SystemComponent) {
+                      // Add template component
+                      final dropPos = Offset(
+                        canvasPos.dx.clamp(50, 9900),
+                        canvasPos.dy.clamp(50, 9900),
+                      );
+                      ref
+                          .read(canvasProvider.notifier)
+                          .addComponentTemplate(data, dropPos);
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '${data.customName ?? data.type.displayName} deployed!',
+                          ),
+                          duration: const Duration(seconds: 2),
+                          backgroundColor: AppTheme.success,
+                        ),
+                      );
+                    }
+
+                    setState(() => _dragPreviewPosition = null);
+                  },
+                  builder: (context, candidateData, rejectedData) {
+                    final isDragging = candidateData.isNotEmpty;
+
+                    return Listener(
+                      onPointerSignal: (pointerSignal) {
+                        if (pointerSignal is PointerScrollEvent) {
+                          final isControl =
+                              HardwareKeyboard.instance.isControlPressed ||
+                              HardwareKeyboard.instance.isMetaPressed;
+
+                          if (isControl) {
+                            _isUserInteracting = true;
+                            _scrollEndTimer?.cancel();
+                            _scrollEndTimer = Timer(
+                              const Duration(milliseconds: 300),
+                              () {
+                                if (mounted) {
+                                  _isUserInteracting = false;
+                                  _syncToProvider();
+                                }
+                              },
+                            );
+
+                            final double zoomDelta =
+                                -pointerSignal.scrollDelta.dy / 250;
+                            final double currentScale = _transformController
+                                .value
+                                .getMaxScaleOnAxis();
+                            final double newScale = (currentScale + zoomDelta)
+                                .clamp(0.1, 5.0);
+
+                            final Offset localPos = pointerSignal.localPosition;
+                            final Matrix4 matrix = _transformController.value
+                                .clone();
+                            final Offset untransformedPos =
+                                MatrixUtils.transformPoint(
+                                  Matrix4.inverted(matrix),
+                                  localPos,
+                                );
+
+                            final Matrix4 newMatrix = Matrix4.identity()
+                              ..translate(localPos.dx, localPos.dy)
+                              ..scale(newScale)
+                              ..translate(
+                                -untransformedPos.dx,
+                                -untransformedPos.dy,
+                              );
+
+                            _updateController(newMatrix);
+                          }
+                        }
                       },
-                      onInteractionEnd: (_) {
-                        _isUserInteracting = false;
-                        _syncToProvider();
-                      },
-                      child: SizedBox(
-                        width: 10000,
-                        height: 10000,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.translucent,
-                          onTap: () {
-                            if (isHandMode) return;
-                            // Reset selection on background tap
-                            ref.read(canvasProvider.notifier).selectComponent(null);
-                            setState(() {
-                              _editingComponentId = null;
-                              _showSettingsSidebar = false;
-                              _selectedComponentForSidebar = null;
-                            });
-                            _focusNode.requestFocus();
-                          },
-                          onTapUp: (details) {
-                             if (activeTool == CanvasTool.text) {
+                      child: InteractiveViewer(
+                        transformationController: _transformController,
+                        minScale: 0.1,
+                        maxScale: 5.0,
+                        constrained: false,
+                        panEnabled: true, // Allow panning during simulation
+                        scaleEnabled: true, // Allow zoom during simulation
+                        trackpadScrollCausesScale: false,
+                        boundaryMargin: const EdgeInsets.all(5000),
+                        onInteractionStart: (_) {
+                          _isUserInteracting = true;
+                          _debounceTimer?.cancel();
+                          _scrollEndTimer?.cancel();
+                        },
+                        onInteractionEnd: (_) {
+                          _isUserInteracting = false;
+                          _syncToProvider();
+                        },
+                        child: SizedBox(
+                          width: 10000,
+                          height: 10000,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.translucent,
+                            onTap: () {
+                              if (isHandMode) return;
+                              // Reset selection on background tap
+                              ref
+                                  .read(canvasProvider.notifier)
+                                  .selectComponent(null);
+                              setState(() {
+                                _editingComponentId = null;
+                                _showSettingsSidebar = false;
+                                _selectedComponentForSidebar = null;
+                              });
+                              _focusNode.requestFocus();
+                            },
+                            onTapUp: (details) {
+                              if (activeTool == CanvasTool.text) {
                                 _addTextAt(details.globalPosition);
                                 return;
-                             }
-                          },
-                          onDoubleTapDown: (details) {
-                            if (isSelectionMode) {
-                              _lastDoubleTapGlobalPos = details.globalPosition;
-                            }
-                          },
-                          onDoubleTap: () {
-                            if (isSelectionMode && _lastDoubleTapGlobalPos != null) {
-                              _addTextAt(_lastDoubleTapGlobalPos!);
-                              _lastDoubleTapGlobalPos = null;
-                            }
-                          },
-                          onPanStart: isDrawingMode ? (details) {
-                            setState(() {
-                              _drawStartPos = details.localPosition;
-                              _drawEndPos = _drawStartPos;
-                            });
-                          } : null,
-                          onPanUpdate: isDrawingMode ? (details) {
-                            setState(() {
-                              _drawEndPos = details.localPosition;
-                            });
-                          } : null,
-                          onPanEnd: isDrawingMode ? (details) {
-                            _finishDrawing(activeTool);
-                          } : null,
-                          child: Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                                    // Background & Grid
-                                    Positioned.fill(
-                                      child: Container(
-                                        color: canvasState.isCyberpunkMode ? AppTheme.cyberpunkBackground : AppTheme.background,
-                                        child: RepaintBoundary(
-                                          child: CustomPaint(
-                                            size: const Size(10000, 10000),
-                                            painter: _GridPainter(
-                                              color: canvasState.isCyberpunkMode 
-                                                ? AppTheme.neonCyan.withValues(alpha: 0.15) 
-                                                : AppTheme.border.withValues(alpha: 0.3),
-                                              isCyberpunk: canvasState.isCyberpunkMode,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-
-                                    // Connections
-                                    Positioned.fill(
-                                      child: RepaintBoundary(
-                                        child: ConnectionsLayer(
-                                          canvasState: canvasState,
-                                          isSimulating: isSimulating,
-                                          onTap: (connection) {
-                                            _showConnectionOptions(connection);
-                                          },
-                                        ),
-                                      ),
-                                    ),
-
-                                    // Traffic Particles (NEW)
-                                    Consumer(
-                                      builder: (context, ref, child) {
-                                        final particles = ref.watch(trafficProvider);
-                                        if (particles.isEmpty) return const SizedBox.shrink();
-                                        
-                                        return Positioned.fill(
-                                          child: IgnorePointer(
-                                            child: RepaintBoundary(
-                                              child: CustomPaint(
-                                                painter: TrafficLayer(
-                                                  particles: particles,
-                                                  connections: canvasState.connections,
-                                                  components: canvasState.components,
+                              }
+                            },
+                            onDoubleTapDown: (details) {
+                              if (isSelectionMode) {
+                                _lastDoubleTapGlobalPos =
+                                    details.globalPosition;
+                              }
+                            },
+                            onDoubleTap: () {
+                              if (isSelectionMode &&
+                                  _lastDoubleTapGlobalPos != null) {
+                                _addTextAt(_lastDoubleTapGlobalPos!);
+                                _lastDoubleTapGlobalPos = null;
+                              }
+                            },
+                            onPanStart: isDrawingMode
+                                ? (details) {
+                                    setState(() {
+                                      _drawStartPos = details.localPosition;
+                                      _drawEndPos = _drawStartPos;
+                                    });
+                                  }
+                                : null,
+                            onPanUpdate: isDrawingMode
+                                ? (details) {
+                                    setState(() {
+                                      _drawEndPos = details.localPosition;
+                                    });
+                                  }
+                                : null,
+                            onPanEnd: isDrawingMode
+                                ? (details) {
+                                    _finishDrawing(activeTool);
+                                  }
+                                : null,
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                // Background & Grid
+                                Positioned.fill(
+                                  child: Container(
+                                    color: canvasState.isCyberpunkMode
+                                        ? AppTheme.cyberpunkBackground
+                                        : AppTheme.background,
+                                    child: RepaintBoundary(
+                                      child: CustomPaint(
+                                        size: const Size(10000, 10000),
+                                        painter: _GridPainter(
+                                          color: canvasState.isCyberpunkMode
+                                              ? AppTheme.neonCyan.withValues(
+                                                  alpha: 0.15,
+                                                )
+                                              : AppTheme.border.withValues(
+                                                  alpha: 0.3,
                                                 ),
-                                              ),
-                                            ),
-                                          ),
-                                        );
+                                          isCyberpunk:
+                                              canvasState.isCyberpunkMode,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+
+                                // Connections
+                                Positioned.fill(
+                                  child: RepaintBoundary(
+                                    child: ConnectionsLayer(
+                                      canvasState: canvasState,
+                                      isSimulating: isSimulating,
+                                      onTap: (connection) {
+                                        _showConnectionOptions(connection);
                                       },
                                     ),
+                                  ),
+                                ),
 
-                                    // Elastic cable
-                                    if (_draggingFromId != null && _draggingCurrentPos != null)
-                                      _buildElasticCable(canvasState),
+                                // Traffic Particles (NEW)
+                                Consumer(
+                                  builder: (context, ref, child) {
+                                    final particles = ref.watch(
+                                      trafficProvider,
+                                    );
+                                    if (particles.isEmpty)
+                                      return const SizedBox.shrink();
 
-                                    // Drawing preview
-                                    if (_drawStartPos != null && _drawEndPos != null && isDrawingMode)
-                                      _buildDrawingPreview(activeTool),
+                                    return Positioned.fill(
+                                      child: IgnorePointer(
+                                        child: RepaintBoundary(
+                                          child: CustomPaint(
+                                            painter: TrafficLayer(
+                                              particles: particles,
+                                              connections:
+                                                  canvasState.connections,
+                                              components:
+                                                  canvasState.components,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
 
-                                    // Components
-                                    ...canvasState.components.map((component) {
-                                      final isSelected = component.id == canvasState.selectedComponentId;
-                                      final isConnectSource = component.id == canvasState.connectingFromId;
-                                      final isHovered = _hoveredComponentId == component.id;
-                                      final isArrowActive = activeTool == CanvasTool.arrow;
-                                      final isValidTarget = (isConnecting && canvasState.connectingFromId != component.id) || 
-                                                          (isArrowActive && isHovered);
-                                      
-                                      return Positioned(
-                                        left: component.position.dx,
-                                        top: component.position.dy,
-                                        child: MouseRegion(
-                                          onEnter: (_) {
-                                            if (activeTool == CanvasTool.arrow) {
-                                              setState(() => _hoveredComponentId = component.id);
+                                // Elastic cable
+                                if (_draggingFromId != null &&
+                                    _draggingCurrentPos != null)
+                                  _buildElasticCable(canvasState),
+
+                                // Drawing preview
+                                if (_drawStartPos != null &&
+                                    _drawEndPos != null &&
+                                    isDrawingMode)
+                                  _buildDrawingPreview(activeTool),
+
+                                // Components
+                                ...canvasState.components.map((component) {
+                                  final isSelected =
+                                      component.id ==
+                                      canvasState.selectedComponentId;
+                                  final isConnectSource =
+                                      component.id ==
+                                      canvasState.connectingFromId;
+                                  final isHovered =
+                                      _hoveredComponentId == component.id;
+                                  final isArrowActive =
+                                      activeTool == CanvasTool.arrow;
+                                  final isValidTarget =
+                                      (isConnecting &&
+                                          canvasState.connectingFromId !=
+                                              component.id) ||
+                                      (isArrowActive && isHovered);
+
+                                  return Positioned(
+                                    left: component.position.dx,
+                                    top: component.position.dy,
+                                    child: MouseRegion(
+                                      onEnter: (_) {
+                                        if (activeTool == CanvasTool.arrow) {
+                                          setState(
+                                            () => _hoveredComponentId =
+                                                component.id,
+                                          );
+                                        }
+                                      },
+                                      onExit: (_) {
+                                        if (_hoveredComponentId ==
+                                                component.id &&
+                                            _draggingFromId == null) {
+                                          setState(
+                                            () => _hoveredComponentId = null,
+                                          );
+                                        }
+                                      },
+                                      cursor: _getCursorForTool(activeTool),
+                                      child: GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTap: () {
+                                          debugPrint(
+                                            'Component Tap: ${component.id}',
+                                          );
+                                          final now = DateTime.now();
+                                          if (_lastTappedId == component.id &&
+                                              _lastTapTime != null) {
+                                            final diff = now
+                                                .difference(_lastTapTime!)
+                                                .inMilliseconds;
+                                            debugPrint(
+                                              'Tap separation: ${diff}ms',
+                                            );
+                                            if (diff < 600) {
+                                              debugPrint(
+                                                'Manual DoubleTap Detected: ${component.id}',
+                                              );
+                                              _showComponentOptions(component);
+                                              _lastTapTime = null;
+                                              _lastTappedId = null;
+                                            } else {
+                                              _lastTapTime = now;
+                                              _lastTappedId = component.id;
                                             }
-                                          },
-                                          onExit: (_) {
-                                            if (_hoveredComponentId == component.id && _draggingFromId == null) {
-                                              setState(() => _hoveredComponentId = null);
-                                            }
-                                          },
-                                          cursor: _getCursorForTool(activeTool),
-                                          child: GestureDetector(
-                                            behavior: HitTestBehavior.opaque,
-                                            onTap: () {
-                                              debugPrint('Component Tap: ${component.id}');
-                                              final now = DateTime.now();
-                                              if (_lastTappedId == component.id && 
-                                                  _lastTapTime != null) {
-                                                final diff = now.difference(_lastTapTime!).inMilliseconds;
-                                                debugPrint('Tap separation: ${diff}ms');
-                                                if (diff < 600) {
-                                                  debugPrint('Manual DoubleTap Detected: ${component.id}');
-                                                  _showComponentOptions(component);
-                                                  _lastTapTime = null; 
-                                                  _lastTappedId = null;
-                                                } else {
-                                                  _lastTapTime = now;
-                                                  _lastTappedId = component.id;
-                                                }
-                                              } else {
-                                                _lastTapTime = now;
-                                                _lastTappedId = component.id;
-                                              }
+                                          } else {
+                                            _lastTapTime = now;
+                                            _lastTappedId = component.id;
+                                          }
 
-                                              if (activeTool == CanvasTool.eraser) {
-                                                ref.read(canvasProvider.notifier).removeComponent(component.id);
-                                                ref.read(canvasToolProvider.notifier).state = CanvasTool.select;
-                                                return;
-                                              }
-                                              if (isHandMode) return;
-                                              _onComponentTap(component, isConnecting);
-                                              _focusNode.requestFocus();
-                                            },
-                                            onDoubleTap: () {
-                                              if (readOnly) return;
-                                              debugPrint('Flutter DoubleTap: ${component.id}');
-                                              if (activeTool == CanvasTool.arrow) return;
-                                              final canEditInline = component.type.isSketchy || component.type == ComponentType.text;
-                                              if (canEditInline) {
-                                                setState(() => _editingComponentId = component.id);
-                                              } else {
-                                                _showComponentOptions(component);
-                                              }
-                                            },
-                                            onPanStart: (details) {
-                                              if (readOnly) return;
-                                              if (activeTool == CanvasTool.arrow) {
-                                                _onDragConnectStart(component, startPos: _getCanvasPosition(details.globalPosition));
-                                              }
-                                            },
-                                            onPanUpdate: (details) {
-                                              if (readOnly) return;
-                                              if (activeTool == CanvasTool.arrow) {
-                                                _onDragConnectUpdate(details.globalPosition);
-                                                return;
-                                              }
-                                              if (isSelectionMode) {
-                                                _moveComponent(component, details.delta);
-                                              }
-                                            },
-                                            onPanEnd: (details) {
-                                              if (activeTool == CanvasTool.arrow) {
-                                                _onDragConnectEnd();
-                                              }
-                                            },
-                                            child: RepaintBoundary(
-                                              child: AnimatedContainer(
-                                                duration: const Duration(milliseconds: 150),
-                                                decoration: isValidTarget
-                                                    ? BoxDecoration(
-                                                        borderRadius: BorderRadius.circular(14),
-                                                        boxShadow: [
-                                                          BoxShadow(
-                                                            color: AppTheme.primary.withValues(alpha: 0.4),
-                                                            blurRadius: 12,
-                                                            spreadRadius: 2,
-                                                          ),
-                                                        ],
+                                          if (activeTool == CanvasTool.eraser) {
+                                            ref
+                                                .read(canvasProvider.notifier)
+                                                .removeComponent(component.id);
+                                            ref
+                                                .read(
+                                                  canvasToolProvider.notifier,
+                                                )
+                                                .state = CanvasTool
+                                                .select;
+                                            return;
+                                          }
+                                          if (isHandMode) return;
+                                          _onComponentTap(
+                                            component,
+                                            isConnecting,
+                                          );
+                                          _focusNode.requestFocus();
+                                        },
+                                        onDoubleTap: () {
+                                          if (readOnly) return;
+                                          debugPrint(
+                                            'Flutter DoubleTap: ${component.id}',
+                                          );
+                                          if (activeTool == CanvasTool.arrow)
+                                            return;
+                                          final canEditInline =
+                                              component.type.isSketchy ||
+                                              component.type ==
+                                                  ComponentType.text;
+                                          if (canEditInline) {
+                                            setState(
+                                              () => _editingComponentId =
+                                                  component.id,
+                                            );
+                                          } else {
+                                            _showComponentOptions(component);
+                                          }
+                                        },
+                                        onPanStart: (details) {
+                                          if (readOnly) return;
+                                          if (activeTool == CanvasTool.arrow) {
+                                            _onDragConnectStart(
+                                              component,
+                                              startPos: _getCanvasPosition(
+                                                details.globalPosition,
+                                              ),
+                                            );
+                                          }
+                                        },
+                                        onPanUpdate: (details) {
+                                          if (readOnly) return;
+                                          if (activeTool == CanvasTool.arrow) {
+                                            _onDragConnectUpdate(
+                                              details.globalPosition,
+                                            );
+                                            return;
+                                          }
+                                          if (isSelectionMode) {
+                                            _moveComponent(
+                                              component,
+                                              details.delta,
+                                            );
+                                          }
+                                        },
+                                        onPanEnd: (details) {
+                                          if (activeTool == CanvasTool.arrow) {
+                                            _onDragConnectEnd();
+                                          }
+                                        },
+                                        child: RepaintBoundary(
+                                          child: AnimatedContainer(
+                                            duration: const Duration(
+                                              milliseconds: 150,
+                                            ),
+                                            decoration: isValidTarget
+                                                ? BoxDecoration(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          14,
+                                                        ),
+                                                    boxShadow: [
+                                                      BoxShadow(
+                                                        color: AppTheme.primary
+                                                            .withValues(
+                                                              alpha: 0.4,
+                                                            ),
+                                                        blurRadius: 12,
+                                                        spreadRadius: 2,
+                                                      ),
+                                                    ],
+                                                  )
+                                                : null,
+                                            child: ComponentHoverPopover(
+                                              component: component,
+                                              child: ComponentNode(
+                                                component: component,
+                                                isSelected: isSelected,
+                                                isConnecting: isConnectSource,
+                                                isValidTarget: isValidTarget,
+                                                isEditing:
+                                                    _editingComponentId ==
+                                                    component.id,
+                                                onLabelTap: () {
+                                                  ref
+                                                      .read(
+                                                        canvasProvider.notifier,
                                                       )
-                                                    : null,
-                                                child: ComponentHoverPopover(
-                                                  component: component,
-                                                  child: ComponentNode(
-                                                    component: component,
-                                                    isSelected: isSelected,
-                                                    isConnecting: isConnectSource,
-                                                    isValidTarget: isValidTarget,
-                                                    isEditing: _editingComponentId == component.id,
-                                                    onLabelTap: () {
-                                                      ref.read(canvasProvider.notifier).selectComponent(component.id);
-                                                      setState(() => _editingComponentId = component.id);
-                                                    },
-                                                    onTextChange: (newName) {
-                                                      ref.read(canvasProvider.notifier).renameComponent(component.id, newName);
-                                                      _resizeComponentToFitText(component, newName);
-                                                    },
-                                                    onEditDone: () {
-                                                      setState(() => _editingComponentId = null);
-                                                    },
-                                                  ),
-                                                ),
+                                                      .selectComponent(
+                                                        component.id,
+                                                      );
+                                                  setState(
+                                                    () => _editingComponentId =
+                                                        component.id,
+                                                  );
+                                                },
+                                                onTextChange: (newName) {
+                                                  ref
+                                                      .read(
+                                                        canvasProvider.notifier,
+                                                      )
+                                                      .renameComponent(
+                                                        component.id,
+                                                        newName,
+                                                      );
+                                                  _resizeComponentToFitText(
+                                                    component,
+                                                    newName,
+                                                  );
+                                                },
+                                                onEditDone: () {
+                                                  setState(
+                                                    () => _editingComponentId =
+                                                        null,
+                                                  );
+                                                },
                                               ),
                                             ),
                                           ),
                                         ),
-                                      );
-                                    }),
+                                      ),
+                                    ),
+                                  );
+                                }),
 
-                                    // Issue Markers - only if enabled and user visible
-                                    ...(canvasState.showErrors 
-                                        ? simState.visibleFailures.where((f) => f.userVisible).map((failure) {
-                                            final component = canvasState.getComponent(failure.componentId);
-                                            if (component == null) return const SizedBox.shrink();
+                                // Issue Markers - only if enabled and user visible
+                                ...(canvasState.showErrors
+                                    ? simState.visibleFailures
+                                          .where((f) => f.userVisible)
+                                          .map((failure) {
+                                            final component = canvasState
+                                                .getComponent(
+                                                  failure.componentId,
+                                                );
+                                            if (component == null)
+                                              return const SizedBox.shrink();
                                             return IssueMarker(
                                               failure: failure,
                                               position: component.position,
                                             );
                                           })
-                                        : []),
+                                    : []),
 
-                                    // Drop preview
-                                    if (isDragging && _dragPreviewPosition != null)
-                                      Positioned(
-                                        left: _dragPreviewPosition!.dx - 40,
-                                        top: _dragPreviewPosition!.dy - 32,
-                                        child: IgnorePointer(
-                                          child: Container(
-                                            width: 80,
-                                            height: 64,
-                                            decoration: BoxDecoration(
-                                              color: AppTheme.primary.withValues(alpha: 0.1),
-                                              borderRadius: BorderRadius.circular(8),
-                                              border: Border.all(color: AppTheme.primary.withValues(alpha: 0.5)),
-                                            ),
-                                            child: Icon(
-                                              (candidateData.first is ComponentType) 
-                                                  ? (candidateData.first as ComponentType).icon 
-                                                  : (candidateData.first is ChaosType)
-                                                      ? (candidateData.first as ChaosType).icon
-                                                      : Icons.add,
-                                              color: AppTheme.primary.withValues(alpha: 0.7),
-                                              size: 24,
+                                // Drop preview
+                                if (isDragging && _dragPreviewPosition != null)
+                                  Positioned(
+                                    left: _dragPreviewPosition!.dx - 40,
+                                    top: _dragPreviewPosition!.dy - 32,
+                                    child: IgnorePointer(
+                                      child: Container(
+                                        width: 80,
+                                        height: 64,
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.primary.withValues(
+                                            alpha: 0.1,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          border: Border.all(
+                                            color: AppTheme.primary.withValues(
+                                              alpha: 0.5,
                                             ),
                                           ),
                                         ),
+                                        child: Icon(
+                                          (candidateData.first is ComponentType)
+                                              ? (candidateData.first
+                                                        as ComponentType)
+                                                    .icon
+                                              : (candidateData.first
+                                                    is ChaosType)
+                                              ? (candidateData.first
+                                                        as ChaosType)
+                                                    .icon
+                                              : Icons.add,
+                                          color: AppTheme.primary.withValues(
+                                            alpha: 0.7,
+                                          ),
+                                          size: 24,
+                                        ),
                                       ),
-                            ],
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             ),
           ),
-          ),
-          
-          
+
           // 2. Settings Sidebar Layer (Overlay)
           AnimatedPositioned(
             duration: const Duration(milliseconds: 300),
             curve: Curves.fastOutSlowIn,
             top: 0,
             bottom: 0,
-            right: (_showSettingsSidebar && _selectedComponentForSidebar != null) ? 0 : -350,
+            right:
+                (_showSettingsSidebar && _selectedComponentForSidebar != null)
+                ? 0
+                : -350,
             width: 350,
             child: Container(
               decoration: BoxDecoration(
@@ -743,7 +949,7 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                   child: Material(
                     color: Colors.transparent,
                     elevation: 0,
-                    child: _selectedComponentForSidebar != null 
+                    child: _selectedComponentForSidebar != null
                         ? _buildSettingsSidebar(_selectedComponentForSidebar!)
                         : const SizedBox.shrink(),
                   ),
@@ -761,18 +967,30 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
               children: [
                 // Cost Ticker
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
-                    color: canvasState.isCyberpunkMode 
+                    color: canvasState.isCyberpunkMode
                         ? AppTheme.cyberpunkSurface.withValues(alpha: 0.9)
                         : AppTheme.surface.withValues(alpha: 0.9),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: canvasState.isCyberpunkMode ? AppTheme.neonMagenta : AppTheme.border,
+                      color: canvasState.isCyberpunkMode
+                          ? AppTheme.neonMagenta
+                          : AppTheme.border,
                       width: canvasState.isCyberpunkMode ? 1.5 : 1,
                     ),
-                    boxShadow: canvasState.isCyberpunkMode 
-                        ? [BoxShadow(color: AppTheme.neonMagenta.withValues(alpha: 0.4), blurRadius: 8)]
+                    boxShadow: canvasState.isCyberpunkMode
+                        ? [
+                            BoxShadow(
+                              color: AppTheme.neonMagenta.withValues(
+                                alpha: 0.4,
+                              ),
+                              blurRadius: 8,
+                            ),
+                          ]
                         : [],
                   ),
                   child: InkWell(
@@ -781,16 +999,19 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.attach_money, size: 16, color: canvasState.isCyberpunkMode ? AppTheme.neonMagenta : AppTheme.success),
+                        Icon(
+                          Icons.attach_money,
+                          size: 16,
+                          color: canvasState.isCyberpunkMode
+                              ? AppTheme.neonMagenta
+                              : AppTheme.success,
+                        ),
                         const SizedBox(width: 6),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '\$${(simState.globalMetrics.totalCostPerHour > 0
-                                      ? simState.globalMetrics.totalCostPerHour
-                                      : canvasState.totalCostPerHour)
-                                  .toStringAsFixed(2)}/hr',
+                              '\$${(simState.globalMetrics.totalCostPerHour > 0 ? simState.globalMetrics.totalCostPerHour : canvasState.totalCostPerHour).toStringAsFixed(2)}/hr',
                               style: GoogleFonts.firaCode(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
@@ -809,7 +1030,11 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                           ],
                         ),
                         const SizedBox(width: 6),
-                        Icon(Icons.edit, size: 14, color: AppTheme.textSecondary),
+                        Icon(
+                          Icons.edit,
+                          size: 14,
+                          color: AppTheme.textSecondary,
+                        ),
                       ],
                     ),
                   ),
@@ -818,26 +1043,35 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                 // Cyberpunk Toggle
                 GestureDetector(
                   onTap: () {
-                      ref.read(canvasProvider.notifier).toggleCyberpunkMode();
+                    ref.read(canvasProvider.notifier).toggleCyberpunkMode();
                   },
                   child: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: canvasState.isCyberpunkMode 
+                      color: canvasState.isCyberpunkMode
                           ? AppTheme.cyberpunkSurface.withValues(alpha: 0.9)
                           : AppTheme.surface.withValues(alpha: 0.9),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color: canvasState.isCyberpunkMode ? AppTheme.neonCyan : AppTheme.border,
+                        color: canvasState.isCyberpunkMode
+                            ? AppTheme.neonCyan
+                            : AppTheme.border,
                       ),
-                      boxShadow: canvasState.isCyberpunkMode 
-                          ? [BoxShadow(color: AppTheme.neonCyan.withValues(alpha: 0.4), blurRadius: 8)]
+                      boxShadow: canvasState.isCyberpunkMode
+                          ? [
+                              BoxShadow(
+                                color: AppTheme.neonCyan.withValues(alpha: 0.4),
+                                blurRadius: 8,
+                              ),
+                            ]
                           : [],
                     ),
                     child: Icon(
                       Icons.nightlight_round,
                       size: 20,
-                      color: canvasState.isCyberpunkMode ? AppTheme.neonCyan : AppTheme.textSecondary,
+                      color: canvasState.isCyberpunkMode
+                          ? AppTheme.neonCyan
+                          : AppTheme.textSecondary,
                     ),
                   ),
                 ),
@@ -882,7 +1116,9 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
       child: IgnorePointer(
         child: CustomPaint(
           painter: _PreviewCablePainter(
-            start: _dragStartPos ?? Offset(source.position.dx + 80, source.position.dy + 32),
+            start:
+                _dragStartPos ??
+                Offset(source.position.dx + 80, source.position.dy + 32),
             end: _draggingCurrentPos!,
           ),
         ),
@@ -894,7 +1130,9 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
     if (ref.read(canvasReadOnlyProvider)) return;
     setState(() {
       _draggingFromId = component.id;
-      _dragStartPos = startPos ?? Offset(component.position.dx + 80, component.position.dy + 32);
+      _dragStartPos =
+          startPos ??
+          Offset(component.position.dx + 80, component.position.dy + 32);
       _draggingCurrentPos = _dragStartPos;
       _editingComponentId = null; // Clear any active editing
     });
@@ -925,8 +1163,8 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
         // Fallback to strict bounds check for larger components if outside snap radius
         final rect = Rect.fromLTWH(comp.position.dx, comp.position.dy, 80, 64);
         if (rect.contains(canvasPos)) {
-           hoverId = comp.id;
-           // Don't modify targetPos here, let it follow mouse unless snapped
+          hoverId = comp.id;
+          // Don't modify targetPos here, let it follow mouse unless snapped
         }
       }
     }
@@ -948,17 +1186,19 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
     }
     if (_draggingFromId != null && _hoveredComponentId != null) {
       // Direct connection without dialog for seamless flow
-      final error = ref.read(canvasProvider.notifier).connectTo(
-        _hoveredComponentId!, 
-        direction: ConnectionDirection.unidirectional,
-        fromIdOverride: _draggingFromId,
-      );
-      
+      final error = ref
+          .read(canvasProvider.notifier)
+          .connectTo(
+            _hoveredComponentId!,
+            direction: ConnectionDirection.unidirectional,
+            fromIdOverride: _draggingFromId,
+          );
+
       if (error != null) {
         // Connection error - removed snackbar
       }
     }
-    
+
     setState(() {
       _draggingFromId = null;
       _draggingCurrentPos = null;
@@ -994,22 +1234,22 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
         // Complete connection
         if (canvasState.connectingFromId != component.id) {
           final error = canvasNotifier.connectTo(
-            component.id, 
+            component.id,
             direction: ConnectionDirection.unidirectional,
           );
-          
+
           if (error != null) {
             // Connection error - removed snackbar
           } else {
-             // Success! Reset tool and close editor
-             canvasNotifier.cancelConnecting();
-             setState(() => _editingComponentId = null);
-             ref.read(canvasToolProvider.notifier).state = CanvasTool.select; 
+            // Success! Reset tool and close editor
+            canvasNotifier.cancelConnecting();
+            setState(() => _editingComponentId = null);
+            ref.read(canvasToolProvider.notifier).state = CanvasTool.select;
           }
         } else {
-            // Tapped self, cancel everything
-             canvasNotifier.cancelConnecting();
-             setState(() => _editingComponentId = null);
+          // Tapped self, cancel everything
+          canvasNotifier.cancelConnecting();
+          setState(() => _editingComponentId = null);
         }
       }
       return;
@@ -1019,8 +1259,11 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
       // Complete connection
       if (canvasState.connectingFromId != component.id) {
         // Automatically create a One-Way connection
-        final error = canvasNotifier.connectTo(component.id, direction: ConnectionDirection.unidirectional);
-        
+        final error = canvasNotifier.connectTo(
+          component.id,
+          direction: ConnectionDirection.unidirectional,
+        );
+
         if (error != null) {
           // Connection error - removed snackbar
         } else {
@@ -1031,7 +1274,8 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
     }
 
     // Close settings sidebar if clicking anywhere on canvas
-    if (_showSettingsSidebar && _selectedComponentForSidebar?.id != component.id) {
+    if (_showSettingsSidebar &&
+        _selectedComponentForSidebar?.id != component.id) {
       _closeSidebar();
     }
 
@@ -1049,7 +1293,7 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
 
   void _moveComponent(SystemComponent component, Offset delta) {
     // Zoom-aware movement
-    final scale = _transformController.value.getMaxScaleOnAxis(); 
+    final scale = _transformController.value.getMaxScaleOnAxis();
     final adjustedDelta = delta / scale;
 
     final newPos = Offset(
@@ -1063,21 +1307,20 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
     // Get viewport center in canvas coordinates
     final viewport = MediaQuery.of(context).size;
     final centerOffset = Offset(viewport.width / 2, viewport.height / 2);
-    
+
     // Invert transform to get canvas coordinates
     final matrix = _transformController.value.clone()..invert();
     final canvasPos = MatrixUtils.transformPoint(matrix, centerOffset);
-    
+
     // Add component slightly offset randomly to prevent perfect stacking
     final randomOffset = Offset(
       (math.Random().nextDouble() - 0.5) * 40,
       (math.Random().nextDouble() - 0.5) * 40,
     );
 
-    final newId = ref.read(canvasProvider.notifier).addComponent(
-      type, 
-      canvasPos + randomOffset,
-    );
+    final newId = ref
+        .read(canvasProvider.notifier)
+        .addComponent(type, canvasPos + randomOffset);
 
     // Auto-edit for text nodes
     if (type == ComponentType.text) {
@@ -1088,13 +1331,21 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
   void _addTextAt(Offset globalPos) {
     // Convert local interactive viewer position to canvas position
     var canvasPos = _getCanvasPosition(globalPos);
-    
+
     // If tapped on top of an existing component, nudge the text below it instead of canceling
     final canvasState = ref.read(canvasProvider);
     for (final component in canvasState.components) {
-      final rect = Rect.fromLTWH(component.position.dx, component.position.dy, 80, 64);
+      final rect = Rect.fromLTWH(
+        component.position.dx,
+        component.position.dy,
+        80,
+        64,
+      );
       if (rect.contains(canvasPos)) {
-        canvasPos = Offset(component.position.dx, component.position.dy + component.size.height + 12);
+        canvasPos = Offset(
+          component.position.dx,
+          component.position.dy + component.size.height + 12,
+        );
         break;
       }
     }
@@ -1104,12 +1355,22 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
     bool hasOverlap;
     int attempts = 0;
     const textSize = Size(100, 40);
-    
+
     do {
       hasOverlap = false;
-      final textRect = Rect.fromLTWH(finalPos.dx - 40, finalPos.dy - 20, textSize.width, textSize.height);
+      final textRect = Rect.fromLTWH(
+        finalPos.dx - 40,
+        finalPos.dy - 20,
+        textSize.width,
+        textSize.height,
+      );
       for (final comp in canvasState.components) {
-        final compRect = Rect.fromLTWH(comp.position.dx, comp.position.dy, 80, 64);
+        final compRect = Rect.fromLTWH(
+          comp.position.dx,
+          comp.position.dy,
+          80,
+          64,
+        );
         if (compRect.overlaps(textRect)) {
           finalPos += Offset(0, textSize.height + 8);
           hasOverlap = true;
@@ -1119,43 +1380,61 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
       attempts++;
     } while (hasOverlap && attempts < 3);
 
-    final id = ref.read(canvasProvider.notifier).addComponent(
-      ComponentType.text,
-      finalPos,
-      size: const Size(140, 48),
-    );
+    final id = ref
+        .read(canvasProvider.notifier)
+        .addComponent(ComponentType.text, finalPos, size: const Size(140, 48));
     setState(() {
       _editingComponentId = id;
     });
-    
+
     // Revert tool to select after placing text
     ref.read(canvasToolProvider.notifier).state = CanvasTool.select;
   }
 
-  void _addComponentAt(CanvasTool tool, Offset canvasPos, {Size? size, bool flipX = false, bool flipY = false}) {
+  void _addComponentAt(
+    CanvasTool tool,
+    Offset canvasPos, {
+    Size? size,
+    bool flipX = false,
+    bool flipY = false,
+  }) {
     ComponentType? type;
-    
+
     switch (tool) {
-      case CanvasTool.rectangle: type = ComponentType.rectangle; break;
-      case CanvasTool.circle: type = ComponentType.circle; break;
-      case CanvasTool.diamond: type = ComponentType.diamond; break;
+      case CanvasTool.rectangle:
+        type = ComponentType.rectangle;
+        break;
+      case CanvasTool.circle:
+        type = ComponentType.circle;
+        break;
+      case CanvasTool.diamond:
+        type = ComponentType.diamond;
+        break;
       // Arrow is now a connector tool, not a component creator
-      case CanvasTool.arrow: return; 
-      case CanvasTool.line: type = ComponentType.line; break;
-      case CanvasTool.text: type = ComponentType.text; break;
-      default: return;
+      case CanvasTool.arrow:
+        return;
+      case CanvasTool.line:
+        type = ComponentType.line;
+        break;
+      case CanvasTool.text:
+        type = ComponentType.text;
+        break;
+      default:
+        return;
     }
-    
+
     if (type == null) return;
-    
-    final id = ref.read(canvasProvider.notifier).addComponent(
-      type,
-      canvasPos,
-      size: size ?? const Size(80, 64),
-      flipX: flipX,
-      flipY: flipY,
-    );
-    
+
+    final id = ref
+        .read(canvasProvider.notifier)
+        .addComponent(
+          type,
+          canvasPos,
+          size: size ?? const Size(80, 64),
+          flipX: flipX,
+          flipY: flipY,
+        );
+
     if (tool == CanvasTool.text) {
       setState(() {
         _editingComponentId = id;
@@ -1165,18 +1444,22 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
 
   void _resizeComponentToFitText(SystemComponent component, String text) {
     // Only resize sketchy components or text (standard ones are fixed size usually)
-    if (!component.type.isSketchy && component.type != ComponentType.text) return;
+    if (!component.type.isSketchy && component.type != ComponentType.text)
+      return;
 
-    final style = component.type == ComponentType.text 
+    final style = component.type == ComponentType.text
         ? const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)
-        : GoogleFonts.architectsDaughter(fontSize: 14, fontWeight: FontWeight.w500);
+        : GoogleFonts.architectsDaughter(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          );
 
     final textPainter = TextPainter(
       text: TextSpan(text: text, style: style),
       textDirection: TextDirection.ltr,
     );
     textPainter.layout();
-    
+
     // Min sizes & Padding
     double minW = 80.0;
     double minH = 64.0;
@@ -1184,25 +1467,31 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
     double paddingY = 20.0;
 
     if (component.type == ComponentType.text) {
-        minW = 40; minH = 28; paddingX = 28; paddingY = 14;
+      minW = 40;
+      minH = 28;
+      paddingX = 28;
+      paddingY = 14;
     }
 
     // Allow long single-line labels to expand; cap to avoid runaway width
     final newW = math.min(900.0, math.max(minW, textPainter.width + paddingX));
     final newH = math.min(220.0, math.max(minH, textPainter.height + paddingY));
-    
+
     // Only update if dimensions changed significantly
-    if ((newW - component.size.width).abs() > 2 || (newH - component.size.height).abs() > 2) {
-       ref.read(canvasProvider.notifier).resizeComponent(component.id, Size(newW, newH));
+    if ((newW - component.size.width).abs() > 2 ||
+        (newH - component.size.height).abs() > 2) {
+      ref
+          .read(canvasProvider.notifier)
+          .resizeComponent(component.id, Size(newW, newH));
     }
   }
 
   void _finishDrawing(CanvasTool tool) {
     if (_drawStartPos == null || _drawEndPos == null) return;
-    
+
     // Arrow tool no longer draws shapes via drag
     if (tool == CanvasTool.arrow) {
-       setState(() {
+      setState(() {
         _drawStartPos = null;
         _drawEndPos = null;
       });
@@ -1215,15 +1504,25 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
     // Check for flip (negative direction)
     final flipX = _drawEndPos!.dx < _drawStartPos!.dx;
     final flipY = _drawEndPos!.dy < _drawStartPos!.dy;
-    
+
     if (rect.width < 10 && rect.height < 10) {
       // Treat as a simple click
-      _addComponentAt(tool, _drawStartPos! - const Offset(40, 32), size: const Size(80, 64));
+      _addComponentAt(
+        tool,
+        _drawStartPos! - const Offset(40, 32),
+        size: const Size(80, 64),
+      );
     } else {
       // Use the dragged area, preserving direction via flip flags
-      _addComponentAt(tool, rect.topLeft, size: rect.size, flipX: flipX, flipY: flipY);
+      _addComponentAt(
+        tool,
+        rect.topLeft,
+        size: rect.size,
+        flipX: flipX,
+        flipY: flipY,
+      );
     }
-    
+
     setState(() {
       _drawStartPos = null;
       _drawEndPos = null;
@@ -1233,13 +1532,12 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
     ref.read(canvasToolProvider.notifier).state = CanvasTool.select;
   }
 
-
-
   Widget _buildDrawingPreview(CanvasTool tool) {
-    if (_drawStartPos == null || _drawEndPos == null) return const SizedBox.shrink();
-    
+    if (_drawStartPos == null || _drawEndPos == null)
+      return const SizedBox.shrink();
+
     final rect = Rect.fromPoints(_drawStartPos!, _drawEndPos!);
-    
+
     return Positioned(
       left: rect.left,
       top: rect.top,
@@ -1248,8 +1546,8 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
       child: Container(
         decoration: BoxDecoration(
           border: Border.all(color: AppTheme.primary, width: 2),
-          borderRadius: tool == CanvasTool.circle 
-              ? BorderRadius.circular(math.max(rect.width, rect.height)) 
+          borderRadius: tool == CanvasTool.circle
+              ? BorderRadius.circular(math.max(rect.width, rect.height))
               : BorderRadius.circular(4),
           color: AppTheme.primary.withValues(alpha: 0.1),
         ),
@@ -1266,11 +1564,13 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
       ),
       builder: (context) => _ConnectionTypeSheet(
         onSelect: (direction) {
-          final error = ref.read(canvasProvider.notifier).connectTo(targetId, direction: direction);
+          final error = ref
+              .read(canvasProvider.notifier)
+              .connectTo(targetId, direction: direction);
           Navigator.pop(context);
-          
+
           if (error != null) {
-             ScaffoldMessenger.of(context).showSnackBar(
+            ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(error),
                 backgroundColor: AppTheme.error,
@@ -1288,7 +1588,9 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
   }
 
   void _showComponentOptions(SystemComponent component) {
-    debugPrint('Show Component Options: ${component.id} (${component.type.displayName})');
+    debugPrint(
+      'Show Component Options: ${component.id} (${component.type.displayName})',
+    );
     ref.read(canvasProvider.notifier).selectComponent(component.id);
     setState(() {
       _selectedComponentForSidebar = component;
@@ -1308,7 +1610,9 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
       width: 320,
       decoration: BoxDecoration(
         color: AppTheme.surface,
-        border: Border(left: BorderSide(color: AppTheme.border.withValues(alpha: 0.5))),
+        border: Border(
+          left: BorderSide(color: AppTheme.border.withValues(alpha: 0.5)),
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.2),
@@ -1324,7 +1628,11 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                const Icon(Icons.settings_outlined, color: AppTheme.primary, size: 20),
+                const Icon(
+                  Icons.settings_outlined,
+                  color: AppTheme.primary,
+                  size: 20,
+                ),
                 const SizedBox(width: 12),
                 const Text(
                   'Component Settings',
@@ -1344,9 +1652,7 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
             ),
           ),
           const Divider(height: 1),
-          Expanded(
-            child: _ComponentSheet(component: component),
-          ),
+          Expanded(child: _ComponentSheet(component: component)),
         ],
       ),
     );
@@ -1367,17 +1673,24 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
         },
         onToggleDirection: () {
           // Toggle between uni and bidirectional
-          final newDirection = connection.direction == ConnectionDirection.unidirectional
+          final newDirection =
+              connection.direction == ConnectionDirection.unidirectional
               ? ConnectionDirection.bidirectional
               : ConnectionDirection.unidirectional;
-          ref.read(canvasProvider.notifier).updateConnectionDirection(connection.id, newDirection);
+          ref
+              .read(canvasProvider.notifier)
+              .updateConnectionDirection(connection.id, newDirection);
           Navigator.pop(context);
         },
         onProtocolChanged: (protocol) {
-          ref.read(canvasProvider.notifier).updateConnectionProtocol(connection.id, protocol);
+          ref
+              .read(canvasProvider.notifier)
+              .updateConnectionProtocol(connection.id, protocol);
         },
         onLabelSaved: (label) {
-          ref.read(canvasProvider.notifier).updateConnectionLabel(connection.id, label);
+          ref
+              .read(canvasProvider.notifier)
+              .updateConnectionLabel(connection.id, label);
         },
       ),
     );
@@ -1390,13 +1703,13 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
       case CanvasTool.arrow:
         return SystemMouseCursors.click;
       case CanvasTool.eraser:
-        return SystemMouseCursors.forbidden; 
+        return SystemMouseCursors.forbidden;
       case CanvasTool.select:
         return SystemMouseCursors.basic;
       case CanvasTool.text:
-         return SystemMouseCursors.text;
+        return SystemMouseCursors.text;
       default:
-        return SystemMouseCursors.precise; 
+        return SystemMouseCursors.precise;
     }
   }
 
@@ -1467,24 +1780,21 @@ class _GridPainter extends CustomPainter {
   final Color color;
   final bool isCyberpunk;
 
-  _GridPainter({
-    required this.color,
-    this.isCyberpunk = false,
-  });
+  _GridPainter({required this.color, this.isCyberpunk = false});
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = isCyberpunk ? color.withValues(alpha: 0.3) : color
       ..strokeWidth = isCyberpunk ? 0.8 : 1.0;
-      
+
     if (isCyberpunk) {
       // Add a glow effect to the grid
       paint.maskFilter = const MaskFilter.blur(BlurStyle.solid, 4);
     }
 
     const gridSize = 100.0;
-    
+
     // Draw dot grid
     for (double x = 0; x <= size.width; x += gridSize) {
       for (double y = 0; y <= size.height; y += gridSize) {
@@ -1513,9 +1823,9 @@ class _PreviewCablePainter extends CustomPainter {
     final path = Path();
     path.moveTo(start.dx, start.dy);
     path.lineTo(end.dx, end.dy);
-    
+
     canvas.drawPath(path, paint);
-    
+
     // Draw endpoint dot
     final dotPaint = Paint()
       ..color = AppTheme.primary
@@ -1556,8 +1866,6 @@ class _PreviewCablePainter extends CustomPainter {
   }
 }
 
-
-
 class _ConnectionPoint extends StatelessWidget {
   final bool isActive;
   final bool isReceiver;
@@ -1582,27 +1890,30 @@ class _ConnectionPoint extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Colors
-    final baseColor = isHovered 
-        ? AppTheme.success 
+    final baseColor = isHovered
+        ? AppTheme.success
         : (isActive ? AppTheme.primary : AppTheme.surface);
-    
-    final borderColor = isHovered 
-        ? AppTheme.success 
-        : (isActive 
-            ? AppTheme.primary 
-            : isReceiver 
-                ? AppTheme.success.withValues(alpha: 0.5) 
-                : showGhost 
-                    ? AppTheme.textMuted.withValues(alpha: 0.5) // Ghost border
-                    : AppTheme.textMuted);
+
+    final borderColor = isHovered
+        ? AppTheme.success
+        : (isActive
+              ? AppTheme.primary
+              : isReceiver
+              ? AppTheme.success.withValues(alpha: 0.5)
+              : showGhost
+              ? AppTheme.textMuted.withValues(alpha: 0.5) // Ghost border
+              : AppTheme.textMuted);
 
     // Hit target size (invisible container)
     return GestureDetector(
       onTap: onTap,
       onPanStart: onDragStart != null ? (_) => onDragStart!() : null,
-      onPanUpdate: onDragUpdate != null ? (d) => onDragUpdate!(d.globalPosition) : null,
+      onPanUpdate: onDragUpdate != null
+          ? (d) => onDragUpdate!(d.globalPosition)
+          : null,
       onPanEnd: onDragEnd != null ? (_) => onDragEnd!() : null,
-      behavior: HitTestBehavior.translucent, // Ensure touches are caught even if empty
+      behavior: HitTestBehavior
+          .translucent, // Ensure touches are caught even if empty
       child: Container(
         width: 44, // Large hit target recommended for touch
         height: 44,
@@ -1618,21 +1929,24 @@ class _ConnectionPoint extends StatelessWidget {
               color: borderColor,
               width: isHovered ? 2.0 : (showGhost ? 1.5 : 1.0),
             ),
-            boxShadow: isHovered || showGhost ? [
-              BoxShadow(
-                color: (isHovered ? AppTheme.success : AppTheme.textPrimary)
-                    .withValues(alpha: 0.15),
-                blurRadius: isHovered ? 8 : 4,
-                spreadRadius: 2,
-              )
-            ] : null,
+            boxShadow: isHovered || showGhost
+                ? [
+                    BoxShadow(
+                      color:
+                          (isHovered ? AppTheme.success : AppTheme.textPrimary)
+                              .withValues(alpha: 0.15),
+                      blurRadius: isHovered ? 8 : 4,
+                      spreadRadius: 2,
+                    ),
+                  ]
+                : null,
           ),
           child: isReceiver || showGhost
               ? Icon(
-                  Icons.arrow_left, 
-                  size: isHovered ? 12 : (showGhost ? 10 : 8), 
-                  color: isHovered 
-                      ? Colors.white 
+                  Icons.arrow_left,
+                  size: isHovered ? 12 : (showGhost ? 10 : 8),
+                  color: isHovered
+                      ? Colors.white
                       : (showGhost ? AppTheme.textMuted : AppTheme.success),
                 )
               : null,
@@ -1650,7 +1964,10 @@ class _ConnectingIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Animate(
-      effects: const [FadeEffect(), SlideEffect(begin: Offset(0, -0.5))],
+      effects: const [
+        FadeEffect(),
+        SlideEffect(begin: Offset(0, -0.5)),
+      ],
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
@@ -1700,10 +2017,7 @@ class _ConnectionTypeSheet extends StatelessWidget {
   final Function(ConnectionDirection) onSelect;
   final VoidCallback onCancel;
 
-  const _ConnectionTypeSheet({
-    required this.onSelect,
-    required this.onCancel,
-  });
+  const _ConnectionTypeSheet({required this.onSelect, required this.onCancel});
 
   @override
   Widget build(BuildContext context) {
@@ -1743,10 +2057,7 @@ class _ConnectionTypeSheet extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          TextButton(
-            onPressed: onCancel,
-            child: const Text('Cancel'),
-          ),
+          TextButton(onPressed: onCancel, child: const Text('Cancel')),
           const SizedBox(height: 8),
         ],
       ),
@@ -1792,10 +2103,7 @@ class _TypeOption extends StatelessWidget {
             ),
             Text(
               sublabel,
-              style: const TextStyle(
-                color: AppTheme.textMuted,
-                fontSize: 10,
-              ),
+              style: const TextStyle(color: AppTheme.textMuted, fontSize: 10),
             ),
           ],
         ),
@@ -1852,7 +2160,10 @@ class _ConnectionOptionsSheet extends StatelessWidget {
               onPressed: () => onLabelSaved(controller.text),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primary,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
               ),
               child: const Text('Save label'),
             ),
@@ -1941,7 +2252,7 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
   late int _cacheTtl;
   late String? _dbSchema;
   late bool _showSchema;
-  
+
   // New resilience properties
   late bool _rateLimiting;
   late int? _rateLimitRps;
@@ -1952,7 +2263,7 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
 
   late int? _quorumWrite;
   late String _region;
-  
+
   // Detailed Visualization
   late ComponentDisplayMode _displayMode;
   late List<ShardConfig> _shardConfigs;
@@ -1965,7 +2276,9 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
     final config = widget.component.config;
     _instances = config.instances;
     _capacity = config.capacity;
-    _nameController = TextEditingController(text: widget.component.customName ?? widget.component.type.displayName);
+    _nameController = TextEditingController(
+      text: widget.component.customName ?? widget.component.type.displayName,
+    );
     _algorithm = config.algorithm;
     _replication = config.replication;
     _replicationFactor = config.replicationFactor;
@@ -1986,7 +2299,7 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
 
     _quorumWrite = config.quorumWrite;
     _region = config.regions.isNotEmpty ? config.regions.first : 'us-east-1';
-    
+
     _displayMode = config.displayMode;
     _shardConfigs = List.from(config.shardConfigs);
     _partitionConfigs = List.from(config.partitionConfigs);
@@ -2002,7 +2315,9 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.8,
+      ),
       padding: EdgeInsets.only(
         left: 20,
         right: 20,
@@ -2022,7 +2337,11 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
                     color: widget.component.type.color.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(widget.component.type.icon, color: widget.component.type.color, size: 28),
+                  child: Icon(
+                    widget.component.type.icon,
+                    color: widget.component.type.color,
+                    size: 28,
+                  ),
                 ),
                 const SizedBox(width: 20),
                 Expanded(
@@ -2030,7 +2349,8 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        widget.component.customName ?? widget.component.type.displayName,
+                        widget.component.customName ??
+                            widget.component.type.displayName,
                         style: const TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
@@ -2044,7 +2364,7 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
               ],
             ),
             const SizedBox(height: 20),
-            
+
             // Scaling & Distribution Section
             _buildSectionHeader('DEPLOYMENT'),
             _DropdownRow(
@@ -2056,7 +2376,12 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
                 'eu-central-1': 'Europe (Frankfurt)',
                 'ap-southeast-1': 'Asia Pacific (Singapore)',
               },
-              onChanged: (val) { if(val != null) { setState(() => _region = val); _updateConfig(); } },
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _region = val);
+                  _updateConfig();
+                }
+              },
             ),
             const SizedBox(height: 12),
 
@@ -2070,111 +2395,165 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
                 'detailed': 'Detailed (Shards/Partitions)',
               },
               onChanged: (val) {
-                 if(val != null) {
-                   setState(() {
-                     _displayMode = ComponentDisplayMode.values.firstWhere((e) => e.name == val);
-                   });
-                   _updateConfig();
-                 }
+                if (val != null) {
+                  setState(() {
+                    _displayMode = ComponentDisplayMode.values.firstWhere(
+                      (e) => e.name == val,
+                    );
+                  });
+                  _updateConfig();
+                }
               },
             ),
             if (_displayMode == ComponentDisplayMode.detailed) ...[
-               const SizedBox(height: 12),
-               const Text('Shards', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.bold)),
-               ..._shardConfigs.map((shard) => Row(
-                 children: [
-                   Expanded(
-                     child: Column(
-                       crossAxisAlignment: CrossAxisAlignment.start,
-                       children: [
-                         Text(shard.name, style: const TextStyle(color: Colors.white, fontSize: 12)),
-                         Text(shard.keyRange, style: const TextStyle(color: Colors.grey, fontSize: 10)),
-                       ],
-                     ),
-                   ),
-                   IconButton(
-                     icon: const Icon(Icons.delete, color: Colors.red, size: 16),
-                     onPressed: () {
+              const SizedBox(height: 12),
+              const Text(
+                'Shards',
+                style: TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              ..._shardConfigs.map(
+                (shard) => Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            shard.name,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                            ),
+                          ),
+                          Text(
+                            shard.keyRange,
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.delete,
+                        color: Colors.red,
+                        size: 16,
+                      ),
+                      onPressed: () {
                         setState(() {
                           _shardConfigs.remove(shard);
                         });
                         _updateConfig();
-                     },
-                   ),
-                 ],
-               )),
-               Align(
-                 alignment: Alignment.centerLeft,
-                 child: TextButton.icon(
-                   icon: const Icon(Icons.add, size: 16),
-                   label: const Text('Add Shard'),
-                   onPressed: () {
-                     setState(() {
-                       _shardConfigs.add(ShardConfig(
-                         id: const Uuid().v4(),
-                         name: 'Shard ${_shardConfigs.length + 1}',
-                         keyRange: 'Range ${_shardConfigs.length + 1}',
-                       ));
-                     });
-                     _updateConfig();
-                   },
-                 ),
-               ),
-               
-               const Divider(height: 16),
-               
-               const Text('Partitions (Primary)', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.bold)),
-               ..._partitionConfigs.map((p) => Row(
-                 children: [
-                    Expanded(child: Text('${p.tableName} (${p.partitions.length})', style: const TextStyle(color: Colors.white, fontSize: 12))),
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Add Shard'),
+                  onPressed: () {
+                    setState(() {
+                      _shardConfigs.add(
+                        ShardConfig(
+                          id: const Uuid().v4(),
+                          name: 'Shard ${_shardConfigs.length + 1}',
+                          keyRange: 'Range ${_shardConfigs.length + 1}',
+                        ),
+                      );
+                    });
+                    _updateConfig();
+                  },
+                ),
+              ),
+
+              const Divider(height: 16),
+
+              const Text(
+                'Partitions (Primary)',
+                style: TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              ..._partitionConfigs.map(
+                (p) => Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${p.tableName} (${p.partitions.length})',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
                     IconButton(
-                     icon: const Icon(Icons.delete, color: Colors.red, size: 16),
-                     onPressed: () {
+                      icon: const Icon(
+                        Icons.delete,
+                        color: Colors.red,
+                        size: 16,
+                      ),
+                      onPressed: () {
                         setState(() {
                           _partitionConfigs.remove(p);
                         });
                         _updateConfig();
-                     },
-                   ),
-                 ],
-               )),
-               Align(
-                 alignment: Alignment.centerLeft,
-                 child: TextButton.icon(
-                   icon: const Icon(Icons.add, size: 16),
-                   label: const Text('Add Partitioned Table'),
-                   onPressed: () {
-                     setState(() {
-                       _partitionConfigs.add(PartitionConfig(
-                         tableName: 'table_${_partitionConfigs.length + 1}',
-                         partitionKey: 'id',
-                         partitions: ['p1', 'p2', 'p3'],
-                       ));
-                     });
-                     _updateConfig();
-                   },
-                 ),
-               ),
-
-               const SizedBox(height: 8),
-               _DropdownRow(
-                  label: 'Replication Type',
-                  value: _replicationType.name,
-                  options: const {
-                    'none': 'None',
-                    'synchronous': 'Synchronous',
-                    'asynchronous': 'Asynchronous',
-                    'streaming': 'Streaming',
-                  },
-                  onChanged: (val) {
-                    if(val != null) {
-                      setState(() {
-                        _replicationType = ReplicationType.values.firstWhere((e) => e.name == val);
-                      });
-                      _updateConfig();
-                    }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Add Partitioned Table'),
+                  onPressed: () {
+                    setState(() {
+                      _partitionConfigs.add(
+                        PartitionConfig(
+                          tableName: 'table_${_partitionConfigs.length + 1}',
+                          partitionKey: 'id',
+                          partitions: ['p1', 'p2', 'p3'],
+                        ),
+                      );
+                    });
+                    _updateConfig();
                   },
                 ),
+              ),
+
+              const SizedBox(height: 8),
+              _DropdownRow(
+                label: 'Replication Type',
+                value: _replicationType.name,
+                options: const {
+                  'none': 'None',
+                  'synchronous': 'Synchronous',
+                  'asynchronous': 'Asynchronous',
+                  'streaming': 'Streaming',
+                },
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() {
+                      _replicationType = ReplicationType.values.firstWhere(
+                        (e) => e.name == val,
+                      );
+                    });
+                    _updateConfig();
+                  }
+                },
+              ),
             ],
 
             const SizedBox(height: 12),
@@ -2183,50 +2562,88 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
             _ConfigRow(
               label: 'Replicas / Instances',
               value: '$_instances',
-              onMinus: () { setState(() => _instances = (_instances - 1).clamp(1, 100)); _updateConfig(); },
-              onPlus: () { setState(() => _instances = (_instances + 1).clamp(1, 100)); _updateConfig(); },
+              onMinus: () {
+                setState(() => _instances = (_instances - 1).clamp(1, 100));
+                _updateConfig();
+              },
+              onPlus: () {
+                setState(() => _instances = (_instances + 1).clamp(1, 100));
+                _updateConfig();
+              },
             ),
             const SizedBox(height: 12),
             _ConfigRow(
               label: 'Node Capacity (RPS)',
               value: _formatCapacity(_capacity),
-              onMinus: () { setState(() => _capacity = (_capacity - 500).clamp(100, 1000000)); _updateConfig(); },
-              onPlus: () { setState(() => _capacity = (_capacity + 500).clamp(100, 1000000)); _updateConfig(); },
+              onMinus: () {
+                setState(
+                  () => _capacity = (_capacity - 500).clamp(100, 1000000),
+                );
+                _updateConfig();
+              },
+              onPlus: () {
+                setState(
+                  () => _capacity = (_capacity + 500).clamp(100, 1000000),
+                );
+                _updateConfig();
+              },
             ),
             const SizedBox(height: 12),
-  
+
             // Sharding & Partitioning
-            if (widget.component.type.category == ComponentCategory.storage || 
-                widget.component.type.category == ComponentCategory.messaging) ...[
+            if (widget.component.type.category == ComponentCategory.storage ||
+                widget.component.type.category ==
+                    ComponentCategory.messaging) ...[
               _SwitchRow(
                 label: 'Enable Sharding / Partitioning',
                 value: _sharding,
-                onChanged: (val) { setState(() => _sharding = val); _updateConfig(); },
+                onChanged: (val) {
+                  setState(() => _sharding = val);
+                  _updateConfig();
+                },
               ),
               if (_sharding) ...[
                 const SizedBox(height: 8),
                 _ConfigRow(
                   label: 'Partition / Shard Count',
                   value: '$_partitionCount',
-                  onMinus: () { setState(() => _partitionCount = (_partitionCount - 1).clamp(1, 64)); _updateConfig(); },
-                  onPlus: () { setState(() => _partitionCount = (_partitionCount + 1).clamp(1, 64)); _updateConfig(); },
+                  onMinus: () {
+                    setState(
+                      () =>
+                          _partitionCount = (_partitionCount - 1).clamp(1, 64),
+                    );
+                    _updateConfig();
+                  },
+                  onPlus: () {
+                    setState(
+                      () =>
+                          _partitionCount = (_partitionCount + 1).clamp(1, 64),
+                    );
+                    _updateConfig();
+                  },
                 ),
                 const SizedBox(height: 8),
                 _SwitchRow(
                   label: 'Consistent Hashing',
                   value: _consistentHashing,
-                  onChanged: (val) { setState(() => _consistentHashing = val); _updateConfig(); },
+                  onChanged: (val) {
+                    setState(() => _consistentHashing = val);
+                    _updateConfig();
+                  },
                 ),
               ],
               const SizedBox(height: 12),
             ],
-  
+
             // Replication & Consistency
             _buildSectionHeader('CONSISTENCY & HIGH AVAILABILITY'),
             _SwitchRow(
               label: 'Enable Replication',
               value: _replication,
-              onChanged: (val) { setState(() => _replication = val); _updateConfig(); },
+              onChanged: (val) {
+                setState(() => _replication = val);
+                _updateConfig();
+              },
             ),
             if (_replication) ...[
               const SizedBox(height: 8),
@@ -2238,18 +2655,37 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
                   'Multi-Leader': 'Multi-Leader / Multi-Master',
                   'Leaderless': 'Leaderless (Dynamo-style)',
                 },
-                onChanged: (val) { setState(() => _replicationStrategy = val); _updateConfig(); },
+                onChanged: (val) {
+                  setState(() => _replicationStrategy = val);
+                  _updateConfig();
+                },
               ),
               const SizedBox(height: 8),
               _ConfigRow(
                 label: 'Replication Factor',
                 value: '$_replicationFactor',
-                onMinus: () { setState(() => _replicationFactor = (_replicationFactor - 1).clamp(1, 7)); _updateConfig(); },
-                onPlus: () { setState(() => _replicationFactor = (_replicationFactor + 1).clamp(1, 7)); _updateConfig(); },
+                onMinus: () {
+                  setState(
+                    () => _replicationFactor = (_replicationFactor - 1).clamp(
+                      1,
+                      7,
+                    ),
+                  );
+                  _updateConfig();
+                },
+                onPlus: () {
+                  setState(
+                    () => _replicationFactor = (_replicationFactor + 1).clamp(
+                      1,
+                      7,
+                    ),
+                  );
+                  _updateConfig();
+                },
               ),
             ],
             const SizedBox(height: 12),
-  
+
             // Conditional Configs
             if (widget.component.type == ComponentType.loadBalancer) ...[
               _DropdownRow(
@@ -2261,92 +2697,171 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
                   'ip_hash': 'IP Hash',
                   'consistent_hashing': 'Consistent Hashing',
                 },
-                onChanged: (val) { setState(() => _algorithm = val); _updateConfig(); },
+                onChanged: (val) {
+                  setState(() => _algorithm = val);
+                  _updateConfig();
+                },
               ),
               const SizedBox(height: 12),
             ],
-  
+
             // Resilience & Reliability Section
             _buildSectionHeader('RESILIENCE & RELIABILITY'),
-            _SwitchRow(label: 'Circuit Breaker', value: _circuitBreaker, onChanged: (val) { setState(() => _circuitBreaker = val); _updateConfig(); }),
-            _SwitchRow(label: 'Automatic Retries (with Jitter)', value: _retries, onChanged: (val) { setState(() => _retries = val); _updateConfig(); }),
-            if (widget.component.type.category == ComponentCategory.messaging || widget.component.type == ComponentType.worker)
-              _SwitchRow(label: 'Dead Letter Queue (DLQ)', value: _dlq, onChanged: (val) { setState(() => _dlq = val); _updateConfig(); }),
+            _SwitchRow(
+              label: 'Circuit Breaker',
+              value: _circuitBreaker,
+              onChanged: (val) {
+                setState(() => _circuitBreaker = val);
+                _updateConfig();
+              },
+            ),
+            _SwitchRow(
+              label: 'Automatic Retries (with Jitter)',
+              value: _retries,
+              onChanged: (val) {
+                setState(() => _retries = val);
+                _updateConfig();
+              },
+            ),
+            if (widget.component.type.category == ComponentCategory.messaging ||
+                widget.component.type == ComponentType.worker)
+              _SwitchRow(
+                label: 'Dead Letter Queue (DLQ)',
+                value: _dlq,
+                onChanged: (val) {
+                  setState(() => _dlq = val);
+                  _updateConfig();
+                },
+              ),
             const SizedBox(height: 12),
-  
+
             // Traffic Control Section
             _buildSectionHeader('TRAFFIC CONTROL'),
-            _SwitchRow(label: 'Rate Limiting', value: _rateLimiting, onChanged: (val) { setState(() => _rateLimiting = val); _updateConfig(); }),
+            _SwitchRow(
+              label: 'Rate Limiting',
+              value: _rateLimiting,
+              onChanged: (val) {
+                setState(() => _rateLimiting = val);
+                _updateConfig();
+              },
+            ),
             if (_rateLimiting) ...[
               const SizedBox(height: 8),
               _ConfigRow(
                 label: 'Max RPS (Throttle)',
                 value: '${_rateLimitRps ?? 1000}',
-                onMinus: () { setState(() => _rateLimitRps = ((_rateLimitRps ?? 1000) - 100).clamp(10, 100000)); _updateConfig(); },
-                onPlus: () { setState(() => _rateLimitRps = ((_rateLimitRps ?? 1000) + 100).clamp(10, 100000)); _updateConfig(); },
+                onMinus: () {
+                  setState(
+                    () => _rateLimitRps = ((_rateLimitRps ?? 1000) - 100).clamp(
+                      10,
+                      100000,
+                    ),
+                  );
+                  _updateConfig();
+                },
+                onPlus: () {
+                  setState(
+                    () => _rateLimitRps = ((_rateLimitRps ?? 1000) + 100).clamp(
+                      10,
+                      100000,
+                    ),
+                  );
+                  _updateConfig();
+                },
               ),
             ],
             const SizedBox(height: 12),
-  
+
             if (widget.component.type == ComponentType.database) ...[
-               const SizedBox(height: 12),
-               // Schema Editor
-               _buildSectionHeader('DATABASE SCHEMA'),
-               Container(
-                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                 decoration: BoxDecoration(
-                   color: AppTheme.surfaceLight,
-                   borderRadius: BorderRadius.circular(8),
-                   border: Border.all(color: AppTheme.border),
-                 ),
-                 child: Column(
-                   crossAxisAlignment: CrossAxisAlignment.start,
-                   children: [
-                     _SwitchRow(label: 'Show on Canvas', value: _showSchema, onChanged: (val) { setState(() => _showSchema = val); _updateConfig(); }),
-                     const Divider(height: 1),
-                     TextField(
-                       controller: TextEditingController(text: _dbSchema),
-                       maxLines: 4,
-                       style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                       decoration: const InputDecoration(
-                         border: InputBorder.none,
-                         hintText: 'CREATE TABLE users (\n  id UUID PRIMARY KEY,\n  email VARCHAR(255)\n);',
-                         hintStyle: TextStyle(color: AppTheme.textMuted, fontSize: 12),
-                       ),
-                       onChanged: (val) { _dbSchema = val; _updateConfig(); },
-                     ),
-                   ],
-                 ),
-               ),
-               const SizedBox(height: 12),
-               DbModelingPanel(
-                 embedded: true,
-               ),
-               const SizedBox(height: 12),
+              const SizedBox(height: 12),
+              // Schema Editor
+              _buildSectionHeader('DATABASE SCHEMA'),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceLight,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _SwitchRow(
+                      label: 'Show on Canvas',
+                      value: _showSchema,
+                      onChanged: (val) {
+                        setState(() => _showSchema = val);
+                        _updateConfig();
+                      },
+                    ),
+                    const Divider(height: 1),
+                    TextField(
+                      controller: TextEditingController(text: _dbSchema),
+                      maxLines: 4,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
+                      ),
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        hintText:
+                            'CREATE TABLE users (\n  id UUID PRIMARY KEY,\n  email VARCHAR(255)\n);',
+                        hintStyle: TextStyle(
+                          color: AppTheme.textMuted,
+                          fontSize: 12,
+                        ),
+                      ),
+                      onChanged: (val) {
+                        _dbSchema = val;
+                        _updateConfig();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              DbModelingPanel(embedded: true),
+              const SizedBox(height: 12),
             ],
-  
-            if (widget.component.type == ComponentType.cache || widget.component.type == ComponentType.apiGateway) ...[
+
+            if (widget.component.type == ComponentType.cache ||
+                widget.component.type == ComponentType.apiGateway) ...[
               _buildSectionHeader('CACHING'),
               Row(
-                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                 children: [
-                   const Text('Cache TTL (s)', style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
-                   Row(
-                     children: [
-                       Text('$_cacheTtl', style: const TextStyle(fontWeight: FontWeight.bold)),
-                       Slider(
-                         value: _cacheTtl.toDouble(),
-                         min: 0,
-                         max: 3600,
-                         onChanged: (val) { setState(() => _cacheTtl = val.toInt()); _updateConfig(); },
-                       ),
-                     ],
-                   ),
-                 ],
-               ),
-               const SizedBox(height: 12),
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Cache TTL (s)',
+                    style: TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      Text(
+                        '$_cacheTtl',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      Slider(
+                        value: _cacheTtl.toDouble(),
+                        min: 0,
+                        max: 3600,
+                        onChanged: (val) {
+                          setState(() => _cacheTtl = val.toInt());
+                          _updateConfig();
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
             ],
-  
+
             const SizedBox(height: 40),
           ],
         ),
@@ -2370,36 +2885,38 @@ class _ComponentSheetState extends ConsumerState<_ComponentSheet> {
   }
 
   void _updateConfig() {
-    ref.read(canvasProvider.notifier).updateComponentConfig(
-      widget.component.id,
-      widget.component.config.copyWith(
-        instances: _instances,
-        capacity: _capacity,
-        algorithm: _algorithm,
-        replication: _replication,
-        replicationFactor: _replicationFactor,
-        replicationStrategy: _replicationStrategy,
-        sharding: _sharding,
-        shardingStrategy: _shardingStrategy,
-        partitionCount: _partitionCount,
-        consistentHashing: _consistentHashing,
-        cacheTtlSeconds: _cacheTtl,
-        dbSchema: _dbSchema,
-        showSchema: _showSchema,
-        rateLimiting: _rateLimiting,
-        rateLimitRps: _rateLimitRps,
-        circuitBreaker: _circuitBreaker,
-        retries: _retries,
-        dlq: _dlq,
-        quorumRead: _quorumRead,
-        quorumWrite: _quorumWrite,
-        regions: [_region],
-        displayMode: _displayMode,
-        shardConfigs: _shardConfigs,
-        partitionConfigs: _partitionConfigs,
-        replicationType: _replicationType,
-      ),
-    );
+    ref
+        .read(canvasProvider.notifier)
+        .updateComponentConfig(
+          widget.component.id,
+          widget.component.config.copyWith(
+            instances: _instances,
+            capacity: _capacity,
+            algorithm: _algorithm,
+            replication: _replication,
+            replicationFactor: _replicationFactor,
+            replicationStrategy: _replicationStrategy,
+            sharding: _sharding,
+            shardingStrategy: _shardingStrategy,
+            partitionCount: _partitionCount,
+            consistentHashing: _consistentHashing,
+            cacheTtlSeconds: _cacheTtl,
+            dbSchema: _dbSchema,
+            showSchema: _showSchema,
+            rateLimiting: _rateLimiting,
+            rateLimitRps: _rateLimitRps,
+            circuitBreaker: _circuitBreaker,
+            retries: _retries,
+            dlq: _dlq,
+            quorumRead: _quorumRead,
+            quorumWrite: _quorumWrite,
+            regions: [_region],
+            displayMode: _displayMode,
+            shardConfigs: _shardConfigs,
+            partitionConfigs: _partitionConfigs,
+            replicationType: _replicationType,
+          ),
+        );
   }
 
   String _formatCapacity(int cap) {
@@ -2414,7 +2931,11 @@ class _SwitchRow extends StatelessWidget {
   final bool value;
   final ValueChanged<bool> onChanged;
 
-  const _SwitchRow({required this.label, required this.value, required this.onChanged});
+  const _SwitchRow({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2425,9 +2946,9 @@ class _SwitchRow extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              label, 
+              label,
               style: TextStyle(
-                color: AppTheme.textSecondary.withValues(alpha: 0.8), 
+                color: AppTheme.textSecondary.withValues(alpha: 0.8),
                 fontSize: 15,
                 fontWeight: FontWeight.w400,
               ),
@@ -2470,7 +2991,10 @@ class _DropdownRow extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Expanded(
-          child: Text(label, style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+          child: Text(
+            label,
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+          ),
         ),
         const SizedBox(width: 8),
         DropdownButton<String>(
@@ -2485,8 +3009,11 @@ class _DropdownRow extends StatelessWidget {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 160),
                 child: Text(
-                  e.value, 
-                  style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary),
+                  e.value,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppTheme.textPrimary,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -2519,9 +3046,9 @@ class _ConfigRow extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              label, 
+              label,
               style: TextStyle(
-                color: AppTheme.textSecondary.withValues(alpha: 0.8), 
+                color: AppTheme.textSecondary.withValues(alpha: 0.8),
                 fontSize: 15,
               ),
             ),
