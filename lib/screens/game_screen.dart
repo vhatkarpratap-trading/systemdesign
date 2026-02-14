@@ -1225,9 +1225,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     SimulationState simState,
     bool hasComponents,
     Problem problem,
-    BoxConstraints constraints, {
-    required bool canStart,
-  }) {
+    BoxConstraints constraints,
+  ) {
     final bottomSafe = MediaQuery.viewPaddingOf(context).bottom;
     return Stack(
       children: [
@@ -1247,26 +1246,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         Positioned(
           right: 16,
           bottom: 16 + bottomSafe,
-          child: FloatingActionButton.extended(
-            heroTag: 'fab-sim',
-            backgroundColor: simState.isRunning
-                ? AppTheme.error
-                : (canStart
-                      ? AppTheme.primary
-                      : AppTheme.textMuted.withOpacity(0.3)),
-            foregroundColor: Colors.white,
-            onPressed: simState.isRunning
-                ? () => _stopSimulation(source: 'mobile_fab')
-                : (canStart
-                      ? () {
-                          _startSimulation(source: 'mobile_fab');
-                        }
-                      : null),
-            icon: Icon(simState.isRunning ? Icons.stop : Icons.play_arrow),
-            label: Text(
-              simState.isRunning ? 'Stop Simulation' : 'Start Simulation',
-            ),
-          ),
+          child: const ToolboxToggle(),
         ),
       ],
     );
@@ -1279,24 +1259,29 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     BoxConstraints constraints,
   ) {
     final isAdmin = ref.watch(isAdminProvider);
+    final isMobile = constraints.maxWidth < 900;
     return Stack(
       children: [
         const SystemCanvas(),
 
         // Drawing Toolbar
         Positioned(
-          top: 12,
-          left: 0,
-          right: 0,
-          child: Center(
+          top: isMobile ? 10 : 12,
+          left: isMobile ? 12 : 0,
+          right: isMobile ? 12 : 0,
+          child: Align(
+            alignment: isMobile ? Alignment.topLeft : Alignment.topCenter,
             child: RepaintBoundary(
-              child: SizedBox(key: _toolbarKey, child: const DrawingToolbar()),
+              child: SizedBox(
+                key: _toolbarKey,
+                child: DrawingToolbar(compact: isMobile),
+              ),
             ),
           ),
         ),
 
         // Hints & Validation Panel
-        if (_showHints && !simState.isRunning)
+        if (_showHints && !simState.isRunning && !isMobile)
           Positioned(
             top: 20,
             right: 20,
@@ -1304,7 +1289,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           ),
 
         // Hints Toggle (if hidden)
-        if (!_showHints && !simState.isRunning)
+        if (!_showHints && !simState.isRunning && !isMobile)
           Positioned(
             top: 20,
             right: 20,
@@ -1322,7 +1307,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           GuideOverlay(onDismiss: () => setState(() => _showGuide = false)),
 
         // Admin JSON import/export shortcuts
-        if (isAdmin)
+        if (isAdmin && !isMobile)
           Positioned(
             top: 16,
             left: 16,
@@ -1343,9 +1328,53 @@ class _GameScreenState extends ConsumerState<GameScreen> {
               ],
             ),
           ),
+        if (isAdmin && isMobile)
+          Positioned(
+            top: 10,
+            right: 12,
+            child: PopupMenuButton<String>(
+              tooltip: 'Admin actions',
+              onSelected: (value) {
+                if (value == 'export') {
+                  _exportCanvasJson();
+                } else if (value == 'import') {
+                  _importCanvasJson();
+                }
+              },
+              color: AppTheme.surface,
+              itemBuilder: (context) => const [
+                PopupMenuItem<String>(
+                  value: 'export',
+                  child: ListTile(
+                    dense: true,
+                    leading: Icon(Icons.download_rounded),
+                    title: Text('Export JSON'),
+                  ),
+                ),
+                PopupMenuItem<String>(
+                  value: 'import',
+                  child: ListTile(
+                    dense: true,
+                    leading: Icon(Icons.upload_rounded),
+                    title: Text('Import JSON'),
+                  ),
+                ),
+              ],
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.surface.withValues(alpha: 0.95),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppTheme.border),
+                ),
+                child: const Icon(Icons.tune_rounded, color: AppTheme.primary),
+              ),
+            ),
+          ),
 
         // Disaster Toolkit (Chaos Mode)
-        Positioned(bottom: 100, left: 20, child: const DisasterToolkit()),
+        if (!isMobile)
+          Positioned(bottom: 100, left: 20, child: const DisasterToolkit()),
       ],
     );
   }
@@ -1416,7 +1445,6 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           LayoutBuilder(
             builder: (context, constraints) {
               final useSidebar = constraints.maxWidth >= 900;
-              final isMobile = !useSidebar;
               return Column(
                 children: [
                   _ProblemHeader(
@@ -1448,7 +1476,6 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                             hasComponents,
                             problem,
                             constraints,
-                            canStart: validation.isValid,
                           ),
                   ),
                   _BottomControls(
@@ -1526,12 +1553,6 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             _ReadOnlyBadge(
               onCopy: _copyToMyDesigns,
               ownerEmail: _designOwnerEmail,
-              topOffset: 110,
-            ),
-          if (readOnly)
-            _ReadOnlyBadge(
-              onCopy: _copyToMyDesigns,
-              ownerEmail: _designOwnerEmail,
             ),
         ],
       ),
@@ -1588,6 +1609,17 @@ class _AdminActionChip extends StatelessWidget {
   }
 }
 
+enum _MobileHeaderAction {
+  autoLayout,
+  library,
+  myDesigns,
+  share,
+  save,
+  publish,
+  account,
+  admin,
+}
+
 class _ProblemHeader extends StatelessWidget {
   final VoidCallback onPublishTap;
   final VoidCallback onSaveTap;
@@ -1615,33 +1647,198 @@ class _ProblemHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isCompact = MediaQuery.of(context).size.width < 900;
-    final spacing = SizedBox(width: isCompact ? 6 : 12);
+    final isCompact = MediaQuery.sizeOf(context).width < 900;
+    final spacing = const SizedBox(width: 12);
     final actionStyle = TextButton.styleFrom(foregroundColor: AppTheme.primary);
     final adminStyle = TextButton.styleFrom(foregroundColor: AppTheme.warning);
 
-    Widget btn({
-      required IconData icon,
-      required String label,
-      required VoidCallback onTap,
-      bool admin = false,
-    }) {
-      if (isCompact) {
-        return IconButton(
-          tooltip: label,
-          icon: Icon(
-            icon,
-            size: 20,
-            color: admin ? AppTheme.warning : AppTheme.primary,
+    Widget notificationButton({double iconSize = 22}) {
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          IconButton(
+            icon: Icon(
+              Icons.notifications_outlined,
+              color: AppTheme.textSecondary,
+              size: iconSize,
+            ),
+            tooltip: 'Notifications',
+            onPressed: () {
+              AnalyticsService.event('notifications_clicked');
+              onNotificationsTap();
+            },
           ),
-          onPressed: onTap,
-        );
-      }
-      return TextButton.icon(
-        icon: Icon(icon, size: 18),
-        label: Text(label),
-        onPressed: onTap,
-        style: admin ? adminStyle : actionStyle,
+          if (notificationCount > 0)
+            Positioned(
+              right: 4,
+              top: 4,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppTheme.error,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  notificationCount > 9 ? '9+' : '$notificationCount',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      );
+    }
+
+    if (isCompact) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppTheme.surface,
+          border: Border(
+            bottom: BorderSide(color: AppTheme.border.withValues(alpha: 0.5)),
+          ),
+        ),
+        child: Row(
+          children: [
+            Text(
+              'System Architect',
+              style: GoogleFonts.outfit(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textPrimary,
+                letterSpacing: -0.3,
+              ),
+            ),
+            const Spacer(),
+            notificationButton(iconSize: 20),
+            Consumer(
+              builder: (context, ref, _) {
+                return PopupMenuButton<_MobileHeaderAction>(
+                  tooltip: 'Actions',
+                  color: AppTheme.surface,
+                  icon: const Icon(
+                    Icons.more_horiz_rounded,
+                    color: AppTheme.textSecondary,
+                  ),
+                  onSelected: (action) {
+                    switch (action) {
+                      case _MobileHeaderAction.autoLayout:
+                        AnalyticsService.event('auto_layout_clicked');
+                        ref
+                            .read(canvasProvider.notifier)
+                            .autoLayout(MediaQuery.of(context).size);
+                        break;
+                      case _MobileHeaderAction.library:
+                        AnalyticsService.event('library_opened');
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const CommunityScreen(),
+                          ),
+                        );
+                        break;
+                      case _MobileHeaderAction.myDesigns:
+                        AnalyticsService.event('my_designs_clicked');
+                        onLoadMyDesignsTap();
+                        break;
+                      case _MobileHeaderAction.share:
+                        AnalyticsService.event('share_clicked');
+                        onShareTap();
+                        break;
+                      case _MobileHeaderAction.save:
+                        AnalyticsService.event('save_clicked');
+                        onSaveTap();
+                        break;
+                      case _MobileHeaderAction.publish:
+                        AnalyticsService.event('publish_clicked');
+                        onPublishTap();
+                        break;
+                      case _MobileHeaderAction.account:
+                        AnalyticsService.event('account_clicked');
+                        onProfileTap();
+                        break;
+                      case _MobileHeaderAction.admin:
+                        onAdminTap?.call();
+                        break;
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: _MobileHeaderAction.autoLayout,
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(Icons.auto_awesome_mosaic_outlined),
+                        title: Text('Auto layout'),
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: _MobileHeaderAction.library,
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(Icons.local_library_rounded),
+                        title: Text('Library'),
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: _MobileHeaderAction.myDesigns,
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(Icons.folder_shared_outlined),
+                        title: Text('My designs'),
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: _MobileHeaderAction.share,
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(Icons.link_rounded),
+                        title: Text('Share'),
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: _MobileHeaderAction.save,
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(Icons.save_outlined),
+                        title: Text('Save'),
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: _MobileHeaderAction.publish,
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(Icons.rocket_launch_rounded),
+                        title: Text('Publish'),
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: _MobileHeaderAction.account,
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(Icons.person_outline_rounded),
+                        title: Text('Account'),
+                      ),
+                    ),
+                    if (isAdmin && onAdminTap != null)
+                      const PopupMenuItem(
+                        value: _MobileHeaderAction.admin,
+                        child: ListTile(
+                          dense: true,
+                          leading: Icon(
+                            Icons.admin_panel_settings,
+                            color: AppTheme.warning,
+                          ),
+                          title: Text('Admin'),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
       );
     }
 
@@ -1667,22 +1864,34 @@ class _ProblemHeader extends StatelessWidget {
                   style: const TextStyle(fontSize: 10, color: Colors.white),
                 ),
               ),
-              if (!isCompact) ...[
-                const SizedBox(width: 8),
-                Text(
-                  name,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: AppTheme.textPrimary,
-                  ),
+              const SizedBox(width: 8),
+              Text(
+                name,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: AppTheme.textPrimary,
                 ),
-              ],
+              ),
             ],
           ),
         );
       },
       orElse: () => const SizedBox.shrink(),
     );
+
+    Widget btn({
+      required IconData icon,
+      required String label,
+      required VoidCallback onTap,
+      bool admin = false,
+    }) {
+      return TextButton.icon(
+        icon: Icon(icon, size: 18),
+        label: Text(label),
+        onPressed: onTap,
+        style: admin ? adminStyle : actionStyle,
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
@@ -1771,31 +1980,28 @@ class _ProblemHeader extends StatelessWidget {
                 },
               ),
               spacing,
-              if (!isCompact) profileChip,
+              profileChip,
               spacing,
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primary,
                   foregroundColor: Colors.white,
                   elevation: 0,
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isCompact ? 14 : 20,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
                     vertical: 12,
                   ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                icon: Icon(
-                  Icons.rocket_launch_rounded,
-                  size: isCompact ? 16 : 18,
-                ),
+                icon: const Icon(Icons.rocket_launch_rounded, size: 18),
                 label: Text(
                   'PUBLISH',
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     letterSpacing: 0.5,
-                    fontSize: isCompact ? 12 : 14,
+                    fontSize: 14,
                   ),
                 ),
                 onPressed: () {
@@ -1804,45 +2010,7 @@ class _ProblemHeader extends StatelessWidget {
                 },
               ),
               spacing,
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  IconButton(
-                    icon: const Icon(
-                      Icons.notifications_outlined,
-                      color: AppTheme.textSecondary,
-                    ),
-                    tooltip: 'Notifications',
-                    onPressed: () {
-                      AnalyticsService.event('notifications_clicked');
-                      onNotificationsTap();
-                    },
-                  ),
-                  if (notificationCount > 0)
-                    Positioned(
-                      right: 4,
-                      top: 4,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppTheme.error,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          notificationCount > 9 ? '9+' : '$notificationCount',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+              notificationButton(),
               spacing,
               IconButton(
                 icon: const Icon(
@@ -1892,11 +2060,25 @@ class _BottomControls extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final scale = ref.watch(canvasProvider.select((s) => s.scale ?? 1.0)) * 100;
+    final scale = ref.watch(canvasProvider.select((s) => s.scale)) * 100;
+    final isCompact = MediaQuery.sizeOf(context).width < 900;
     final missingEntry = validation.issues.any(
       (i) => i.title == 'No entry point',
     );
 
+    if (isCompact) {
+      return _buildCompactControls(context, ref, scale, missingEntry);
+    }
+
+    return _buildDesktopControls(context, ref, scale, missingEntry);
+  }
+
+  Widget _buildDesktopControls(
+    BuildContext context,
+    WidgetRef ref,
+    double scale,
+    bool missingEntry,
+  ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       color: AppTheme.surface,
@@ -1993,6 +2175,125 @@ class _BottomControls extends ConsumerWidget {
             icon: const Icon(Icons.refresh),
             label: const Text('RESET'),
             onPressed: onReset,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompactControls(
+    BuildContext context,
+    WidgetRef ref,
+    double scale,
+    bool missingEntry,
+  ) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      color: AppTheme.surface,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (!isSimulating && !isCompleted && missingEntry)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Add an entry point (Load Balancer, API Gateway, or CDN) to run simulation.',
+                style: TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isSimulating
+                  ? AppTheme.error
+                  : (canStart
+                        ? AppTheme.primary
+                        : AppTheme.textMuted.withValues(alpha: 0.3)),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              elevation: canStart ? 3 : 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onPressed: isSimulating ? onStop : (canStart ? onStart : null),
+            icon: Icon(
+              isSimulating ? Icons.stop_rounded : Icons.play_arrow_rounded,
+              size: 20,
+            ),
+            label: Text(
+              isSimulating ? 'Stop Simulation' : 'Start Simulation',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+          ),
+          if (isCompleted && !isSimulating) ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.analytics_outlined),
+              label: const Text('View Results'),
+              onPressed: onViewResults,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.success,
+                side: const BorderSide(color: AppTheme.success),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ).animate().fadeIn().scale(),
+          ],
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              if (isSimulating)
+                IconButton(
+                  icon: Icon(
+                    isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                    size: 24,
+                  ),
+                  color: AppTheme.textPrimary,
+                  onPressed: isPaused ? onResume : onPause,
+                ),
+              TextButton.icon(
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Reset'),
+                onPressed: onReset,
+                style: TextButton.styleFrom(
+                  foregroundColor: AppTheme.textSecondary,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  color: AppTheme.background,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.remove),
+                      onPressed: () =>
+                          ref.read(canvasProvider.notifier).zoomOut(),
+                      iconSize: 18,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    Text(
+                      '${scale.round()}%',
+                      style: Theme.of(context).textTheme.labelMedium,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.add),
+                      onPressed: () =>
+                          ref.read(canvasProvider.notifier).zoomIn(),
+                      iconSize: 18,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),

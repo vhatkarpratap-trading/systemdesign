@@ -7,17 +7,18 @@ import '../../theme/app_theme.dart';
 class DrawingToolbar extends ConsumerWidget {
   final CanvasTool? activeTool;
   final Function(CanvasTool)? onToolChanged;
+  final bool compact;
 
   const DrawingToolbar({
     super.key,
     this.activeTool,
     this.onToolChanged,
+    this.compact = false,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final currentTool = activeTool ?? ref.watch(canvasToolProvider);
-    final isManaged = activeTool == null;
 
     void selectTool(CanvasTool tool) {
       if (onToolChanged != null) {
@@ -29,6 +30,77 @@ class DrawingToolbar extends ConsumerWidget {
           ref.read(canvasProvider.notifier).cancelConnecting();
         }
       }
+    }
+
+    if (compact) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppTheme.surface.withValues(alpha: 0.95),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.border),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _ToolButton(
+              icon: Icons.near_me_outlined,
+              tool: CanvasTool.select,
+              isActive: currentTool == CanvasTool.select,
+              shortcut: '1',
+              showShortcut: false,
+              onTap: () => selectTool(CanvasTool.select),
+            ),
+            _ToolButton(
+              icon: Icons.pan_tool_outlined,
+              tool: CanvasTool.hand,
+              isActive: currentTool == CanvasTool.hand,
+              shortcut: 'H',
+              showShortcut: false,
+              onTap: () => selectTool(CanvasTool.hand),
+            ),
+            _ToolButton(
+              icon: Icons.arrow_forward_outlined,
+              tool: CanvasTool.arrow,
+              isActive: currentTool == CanvasTool.arrow,
+              shortcut: '5',
+              showShortcut: false,
+              onTap: () => selectTool(CanvasTool.arrow),
+            ),
+            _ToolButton(
+              icon: Icons.edit_outlined,
+              tool: CanvasTool.pen,
+              isActive: currentTool == CanvasTool.pen,
+              shortcut: '7',
+              showShortcut: false,
+              onTap: () => selectTool(CanvasTool.pen),
+            ),
+            _ToolButton(
+              icon: Icons.text_fields_outlined,
+              tool: CanvasTool.text,
+              isActive: currentTool == CanvasTool.text,
+              shortcut: 'T',
+              showShortcut: false,
+              onTap: () => selectTool(CanvasTool.text),
+            ),
+            _ToolButton(
+              icon: Icons.auto_fix_high_outlined,
+              tool: CanvasTool.eraser,
+              isActive: currentTool == CanvasTool.eraser,
+              shortcut: '0',
+              showShortcut: false,
+              onTap: () => selectTool(CanvasTool.eraser),
+            ),
+          ],
+        ),
+      );
     }
 
     return Container(
@@ -144,6 +216,7 @@ class _ToolButton extends StatelessWidget {
   final CanvasTool tool;
   final bool isActive;
   final String shortcut;
+  final bool showShortcut;
   final VoidCallback onTap;
 
   const _ToolButton({
@@ -151,6 +224,7 @@ class _ToolButton extends StatelessWidget {
     required this.tool,
     required this.isActive,
     required this.shortcut,
+    this.showShortcut = true,
     required this.onTap,
   });
 
@@ -159,7 +233,9 @@ class _ToolButton extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: Tooltip(
-        message: '${tool.name.toUpperCase()} ($shortcut)',
+        message: showShortcut
+            ? '${tool.name.toUpperCase()} ($shortcut)'
+            : tool.name.toUpperCase(),
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(8),
@@ -167,7 +243,9 @@ class _ToolButton extends StatelessWidget {
             duration: const Duration(milliseconds: 150),
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: isActive ? AppTheme.primary.withValues(alpha: 0.15) : Colors.transparent,
+              color: isActive
+                  ? AppTheme.primary.withValues(alpha: 0.15)
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Column(
@@ -178,15 +256,19 @@ class _ToolButton extends StatelessWidget {
                   color: isActive ? AppTheme.primary : AppTheme.textSecondary,
                   size: 20,
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  shortcut,
-                  style: TextStyle(
-                    fontSize: 8,
-                    fontWeight: FontWeight.bold,
-                    color: isActive ? AppTheme.primary.withValues(alpha: 0.7) : AppTheme.textMuted,
+                if (showShortcut) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    shortcut,
+                    style: TextStyle(
+                      fontSize: 8,
+                      fontWeight: FontWeight.bold,
+                      color: isActive
+                          ? AppTheme.primary.withValues(alpha: 0.7)
+                          : AppTheme.textMuted,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),

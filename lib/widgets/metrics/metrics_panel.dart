@@ -44,7 +44,9 @@ class MetricsPanel extends ConsumerWidget {
               children: [
                 Icon(
                   Icons.analytics_outlined,
-                  color: simState.isRunning ? AppTheme.success : AppTheme.textMuted,
+                  color: simState.isRunning
+                      ? AppTheme.success
+                      : AppTheme.textMuted,
                   size: 16,
                 ),
                 const SizedBox(width: 6),
@@ -53,7 +55,9 @@ class MetricsPanel extends ConsumerWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: simState.isRunning ? AppTheme.textPrimary : AppTheme.textMuted,
+                    color: simState.isRunning
+                        ? AppTheme.textPrimary
+                        : AppTheme.textMuted,
                   ),
                 ),
                 if (simState.isRunning)
@@ -79,7 +83,10 @@ class MetricsPanel extends ConsumerWidget {
                   label: 'RPS',
                   value: _formatNumber(metrics.totalRps),
                   target: problem.constraints.qpsFormatted,
-                  status: _getRpsStatus(metrics.totalRps, problem.constraints.effectiveQps),
+                  status: _getRpsStatus(
+                    metrics.totalRps,
+                    problem.constraints.effectiveQps,
+                  ),
                 ),
                 _MetricTile(
                   label: 'Latency P95',
@@ -101,7 +108,8 @@ class MetricsPanel extends ConsumerWidget {
                 ),
                 _MetricTile(
                   label: 'Error Budget',
-                  value: '${(metrics.errorBudgetRemaining * 100).clamp(0, 100).toStringAsFixed(0)}%',
+                  value:
+                      '${(metrics.errorBudgetRemaining * 100).clamp(0, 100).toStringAsFixed(0)}%',
                   target: '>20% remaining',
                   status: _getErrorBudgetStatus(metrics.errorBudgetRemaining),
                 ),
@@ -111,6 +119,7 @@ class MetricsPanel extends ConsumerWidget {
                   target: '<1.0×',
                   status: _getBurnRateStatus(metrics.errorBudgetBurnRate),
                 ),
+
                 // The original instruction seems to be for a different context or widget,
                 // as 'widget.component' is not available here and '_MetricRow' is not defined.
                 // Assuming the intent was to add these as new _MetricTile entries if applicable
@@ -120,12 +129,14 @@ class MetricsPanel extends ConsumerWidget {
                 // then this panel would need to be refactored to accept a component or
                 // these metrics would need to be conditionally displayed based on global state.
                 // Given the instruction, I'm adding them as new tiles.
-
                 _MetricTile(
                   label: 'Eviction Rate',
                   value: '${metrics.evictionRate.toStringAsFixed(0)}/sec',
-                  target: '<500/sec', // Assuming a common target for eviction rate
-                  status: metrics.evictionRate > 500 ? MetricStatus.critical : MetricStatus.good,
+                  target:
+                      '<500/sec', // Assuming a common target for eviction rate
+                  status: metrics.evictionRate > 500
+                      ? MetricStatus.critical
+                      : MetricStatus.good,
                 ),
                 _MetricTile(
                   label: 'Error Rate',
@@ -165,10 +176,7 @@ class MetricsPanel extends ConsumerWidget {
                 '(λ ${queueingTarget.lambda.toStringAsFixed(0)} rps, '
                 'μ ${queueingTarget.mu.toStringAsFixed(0)} rps, '
                 'c ${queueingTarget.servers})',
-                style: const TextStyle(
-                  fontSize: 10,
-                  color: AppTheme.textMuted,
-                ),
+                style: const TextStyle(fontSize: 10, color: AppTheme.textMuted),
               ),
             ],
           ],
@@ -412,10 +420,7 @@ class _MetricTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppTheme.surfaceLight,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: color.withValues(alpha: 0.3),
-          width: 1,
-        ),
+        border: Border.all(color: color.withValues(alpha: 0.3), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -423,10 +428,7 @@ class _MetricTile extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(
-              fontSize: 10,
-              color: AppTheme.textMuted,
-            ),
+            style: const TextStyle(fontSize: 10, color: AppTheme.textMuted),
           ),
           const SizedBox(height: 2),
           Text(
@@ -439,10 +441,7 @@ class _MetricTile extends StatelessWidget {
           ),
           Text(
             'Target: $target',
-            style: const TextStyle(
-              fontSize: 9,
-              color: AppTheme.textMuted,
-            ),
+            style: const TextStyle(fontSize: 9, color: AppTheme.textMuted),
           ),
         ],
       ),
@@ -458,43 +457,58 @@ class MetricsBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final simState = ref.watch(simulationProvider);
     final metrics = simState.globalMetrics;
+    final isCompact = MediaQuery.sizeOf(context).width < 900;
+    final metricItems = [
+      _CompactMetric(
+        icon: Icons.speed,
+        value: '${_formatNumber(metrics.totalRps)} RPS',
+        color: AppTheme.primary,
+        compact: isCompact,
+      ),
+      _CompactMetric(
+        icon: Icons.timer,
+        value: '${metrics.p95LatencyMs.toInt()}ms',
+        color: metrics.p95LatencyMs > 200 ? AppTheme.warning : AppTheme.success,
+        compact: isCompact,
+      ),
+      _CompactMetric(
+        icon: Icons.check_circle,
+        value: metrics.availabilityString,
+        color: metrics.availability >= 0.99
+            ? AppTheme.success
+            : AppTheme.warning,
+        compact: isCompact,
+      ),
+      _CompactMetric(
+        icon: Icons.attach_money,
+        value: metrics.costString,
+        color: AppTheme.textSecondary,
+        compact: isCompact,
+      ),
+    ];
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: EdgeInsets.symmetric(
+        horizontal: isCompact ? 10 : 16,
+        vertical: isCompact ? 6 : 8,
+      ),
       decoration: BoxDecoration(
         color: AppTheme.surface.withValues(alpha: 0.9),
         border: Border(
-          bottom: BorderSide(
-            color: Colors.white.withValues(alpha: 0.1),
-          ),
+          bottom: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
         ),
       ),
       child: RepaintBoundary(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _CompactMetric(
-              icon: Icons.speed,
-              value: '${_formatNumber(metrics.totalRps)} RPS',
-              color: AppTheme.primary,
-            ),
-            _CompactMetric(
-              icon: Icons.timer,
-              value: '${metrics.p95LatencyMs.toInt()}ms',
-              color: metrics.p95LatencyMs > 200 ? AppTheme.warning : AppTheme.success,
-            ),
-            _CompactMetric(
-              icon: Icons.check_circle,
-              value: metrics.availabilityString,
-              color: metrics.availability >= 0.99 ? AppTheme.success : AppTheme.warning,
-            ),
-            _CompactMetric(
-              icon: Icons.attach_money,
-              value: metrics.costString,
-              color: AppTheme.textSecondary,
-            ),
-          ],
-        ),
+        child: isCompact
+            ? SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: metricItems),
+              )
+            : Row(
+                children: metricItems
+                    .map((item) => Expanded(child: Center(child: item)))
+                    .toList(),
+              ),
       ),
     );
   }
@@ -510,15 +524,44 @@ class _CompactMetric extends StatelessWidget {
   final IconData icon;
   final String value;
   final Color color;
+  final bool compact;
 
   const _CompactMetric({
     required this.icon,
     required this.value,
     required this.color,
+    this.compact = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (compact) {
+      return Container(
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceLight.withValues(alpha: 0.65),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: AppTheme.border.withValues(alpha: 0.6)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: color),
+            const SizedBox(width: 5),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [

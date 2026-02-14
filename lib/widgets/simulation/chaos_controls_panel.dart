@@ -17,7 +17,7 @@ class ChaosControlsPanel extends ConsumerStatefulWidget {
 }
 
 class _ChaosControlsPanelState extends ConsumerState<ChaosControlsPanel> {
-  bool _isExpanded = true;
+  bool _isExpanded = false;
   final _uuid = const Uuid();
   final _random = Random();
 
@@ -29,8 +29,9 @@ class _ChaosControlsPanelState extends ConsumerState<ChaosControlsPanel> {
   void _triggerChaos(ChaosType type) {
     final canvasState = ref.read(canvasProvider);
     final selectedId = canvasState.selectedComponentId;
-    final selectedComponent =
-        selectedId != null ? canvasState.getComponent(selectedId) : null;
+    final selectedComponent = selectedId != null
+        ? canvasState.getComponent(selectedId)
+        : null;
     final event = ChaosEvent(
       id: _uuid.v4(),
       type: type,
@@ -124,34 +125,45 @@ class _ChaosControlsPanelState extends ConsumerState<ChaosControlsPanel> {
       case ChaosType.databaseSlowdown:
         return {
           'multiplier': 8.0,
-          if (selectedComponent?.type == ComponentType.database && targetId != null)
+          if (selectedComponent?.type == ComponentType.database &&
+              targetId != null)
             'componentId': targetId,
           'severity': 1.0,
         };
       case ChaosType.cacheMissStorm:
         return {
           'hitRateDrop': 0.9,
-          if (selectedComponent?.type == ComponentType.cache && targetId != null)
+          if (selectedComponent?.type == ComponentType.cache &&
+              targetId != null)
             'componentId': targetId,
           'severity': 1.0,
         };
       case ChaosType.componentCrash:
-        return {
-          if (targetId != null) 'componentId': targetId,
-          'severity': 1.0,
-        };
+        return {if (targetId != null) 'componentId': targetId, 'severity': 1.0};
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final simState = ref.watch(simulationProvider);
-    final activeEvents = simState.activeChaosEvents.where((e) => e.isActive).toList();
+    final activeEvents = simState.activeChaosEvents
+        .where((e) => e.isActive)
+        .toList();
     final isRunning = simState.isRunning;
+    final isCompact = MediaQuery.sizeOf(context).width < 900;
 
-    // Always show panel, but disable interactions if not running
-    // if (!isRunning) return const SizedBox.shrink();
+    if (isCompact) {
+      return _buildMobilePanel(context, simState, activeEvents, isRunning);
+    }
+    return _buildDesktopPanel(context, simState, activeEvents, isRunning);
+  }
 
+  Widget _buildDesktopPanel(
+    BuildContext context,
+    SimulationState simState,
+    List<ChaosEvent> activeEvents,
+    bool isRunning,
+  ) {
     return Positioned(
       bottom: 24,
       left: 0,
@@ -167,9 +179,9 @@ class _ChaosControlsPanelState extends ConsumerState<ChaosControlsPanel> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: isRunning 
-                    ? AppTheme.warning.withValues(alpha: 0.3) 
-                    : Colors.grey.withValues(alpha: 0.2)
+                color: isRunning
+                    ? AppTheme.warning.withValues(alpha: 0.3)
+                    : Colors.grey.withValues(alpha: 0.2),
               ),
             ),
             child: Column(
@@ -183,7 +195,9 @@ class _ChaosControlsPanelState extends ConsumerState<ChaosControlsPanel> {
                       spacing: 8,
                       runSpacing: 8,
                       alignment: WrapAlignment.center,
-                      children: activeEvents.map((event) => _ActiveEventChip(event: event)).toList(),
+                      children: activeEvents
+                          .map((event) => _ActiveEventChip(event: event))
+                          .toList(),
                     ),
                   ),
 
@@ -216,19 +230,30 @@ class _ChaosControlsPanelState extends ConsumerState<ChaosControlsPanel> {
                               child: SliderTheme(
                                 data: SliderTheme.of(context).copyWith(
                                   activeTrackColor: AppTheme.primary,
-                                  inactiveTrackColor: AppTheme.primary.withOpacity(0.2),
+                                  inactiveTrackColor: AppTheme.primary
+                                      .withOpacity(0.2),
                                   thumbColor: AppTheme.primary,
-                                  overlayColor: AppTheme.primary.withOpacity(0.1),
+                                  overlayColor: AppTheme.primary.withOpacity(
+                                    0.1,
+                                  ),
                                   trackHeight: 2,
-                                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                                  thumbShape: const RoundSliderThumbShape(
+                                    enabledThumbRadius: 6,
+                                  ),
+                                  overlayShape: const RoundSliderOverlayShape(
+                                    overlayRadius: 12,
+                                  ),
                                 ),
                                 child: Slider(
-                                  value: (simState.simulationSpeed * 20).clamp(0, 100),
+                                  value: (simState.simulationSpeed * 20).clamp(
+                                    0,
+                                    100,
+                                  ),
                                   min: 0,
                                   max: 100,
                                   divisions: 100,
-                                  label: '${simState.simulationSpeed.toStringAsFixed(1)}x',
+                                  label:
+                                      '${simState.simulationSpeed.toStringAsFixed(1)}x',
                                   onChanged: (value) {
                                     final newSpeed = value / 20.0;
                                     _setSpeed(newSpeed);
@@ -239,9 +264,9 @@ class _ChaosControlsPanelState extends ConsumerState<ChaosControlsPanel> {
                           ],
                         ),
                       ),
-                      
+
                       const SizedBox(width: 16),
-                      
+
                       // Show/Hide Errors Toggle
                       Consumer(
                         builder: (context, ref, _) {
@@ -251,9 +276,13 @@ class _ChaosControlsPanelState extends ConsumerState<ChaosControlsPanel> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
-                                showErrors ? Icons.error_outline : Icons.visibility_off,
+                                showErrors
+                                    ? Icons.error_outline
+                                    : Icons.visibility_off,
                                 size: 16,
-                                color: showErrors ? AppTheme.error : AppTheme.textMuted,
+                                color: showErrors
+                                    ? AppTheme.error
+                                    : AppTheme.textMuted,
                               ),
                               const SizedBox(width: 4),
                               Text(
@@ -273,7 +302,9 @@ class _ChaosControlsPanelState extends ConsumerState<ChaosControlsPanel> {
                                     value: showErrors,
                                     activeColor: AppTheme.error,
                                     onChanged: (value) {
-                                      ref.read(canvasProvider.notifier).setShowErrors(value);
+                                      ref
+                                          .read(canvasProvider.notifier)
+                                          .setShowErrors(value);
                                     },
                                   ),
                                 ),
@@ -282,14 +313,17 @@ class _ChaosControlsPanelState extends ConsumerState<ChaosControlsPanel> {
                           );
                         },
                       ),
-                      
+
                       // Traffic Control Slider (0-500)
                       SizedBox(
                         width: 180,
                         child: Consumer(
                           builder: (context, ref, _) {
                             final canvasState = ref.watch(canvasProvider);
-                            final trafficUnits = (canvasState.trafficLevel * 100).clamp(0, 500).toInt();
+                            final trafficUnits =
+                                (canvasState.trafficLevel * 100)
+                                    .clamp(0, 500)
+                                    .toInt();
                             return Column(
                               mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -310,12 +344,19 @@ class _ChaosControlsPanelState extends ConsumerState<ChaosControlsPanel> {
                                   child: SliderTheme(
                                     data: SliderTheme.of(context).copyWith(
                                       activeTrackColor: AppTheme.success,
-                                      inactiveTrackColor: AppTheme.success.withOpacity(0.2),
+                                      inactiveTrackColor: AppTheme.success
+                                          .withOpacity(0.2),
                                       thumbColor: AppTheme.success,
-                                      overlayColor: AppTheme.success.withOpacity(0.1),
+                                      overlayColor: AppTheme.success
+                                          .withOpacity(0.1),
                                       trackHeight: 2,
-                                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                                      thumbShape: const RoundSliderThumbShape(
+                                        enabledThumbRadius: 6,
+                                      ),
+                                      overlayShape:
+                                          const RoundSliderOverlayShape(
+                                            overlayRadius: 12,
+                                          ),
                                     ),
                                     child: Slider(
                                       value: trafficUnits.toDouble(),
@@ -324,7 +365,9 @@ class _ChaosControlsPanelState extends ConsumerState<ChaosControlsPanel> {
                                       divisions: 500,
                                       label: "$trafficUnits",
                                       onChanged: (value) {
-                                        ref.read(canvasProvider.notifier).setTrafficLevel(value / 100.0);
+                                        ref
+                                            .read(canvasProvider.notifier)
+                                            .setTrafficLevel(value / 100.0);
                                       },
                                     ),
                                   ),
@@ -334,59 +377,256 @@ class _ChaosControlsPanelState extends ConsumerState<ChaosControlsPanel> {
                           },
                         ),
                       ),
-                      
-                      
+
                       const SizedBox(width: 12),
-                      Container(
-                        height: 24,
-                        width: 1,
-                        color: AppTheme.border,
-                      ),
+                      Container(height: 24, width: 1, color: AppTheme.border),
                       const SizedBox(width: 8),
 
                       IconButton(
-                        onPressed: () => ref.read(simulationEngineProvider).stop(),
+                        onPressed: () =>
+                            ref.read(simulationEngineProvider).stop(),
                         icon: const Icon(Icons.stop_circle_outlined),
                         color: AppTheme.error,
                         tooltip: 'Stop Simulation',
                       ),
                       const SizedBox(width: 8),
-                      Container(
-                        height: 24,
-                        width: 1,
-                        color: AppTheme.border,
-                      ),
+                      Container(height: 24, width: 1, color: AppTheme.border),
                       const SizedBox(width: 12),
                     ],
 
-                     Text(
-                        'CHAOS:',
-                        style: TextStyle(
-                          fontSize: 12, 
-                          fontWeight: FontWeight.bold, 
-                          color: isRunning ? AppTheme.textMuted : AppTheme.textMuted.withOpacity(0.5)
-                        ),
+                    Text(
+                      'CHAOS:',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: isRunning
+                            ? AppTheme.textMuted
+                            : AppTheme.textMuted.withOpacity(0.5),
                       ),
-                      const SizedBox(width: 12),
-                      ...ChaosType.values.map((type) {
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: IgnorePointer(
-                            ignoring: !isRunning,
-                            child: Opacity(
-                              opacity: isRunning ? 1.0 : 0.4,
-                              child: _ChaosIconButton(
-                                type: type,
-                                onPressed: () => _triggerChaos(type),
-                              ),
+                    ),
+                    const SizedBox(width: 12),
+                    ...ChaosType.values.map((type) {
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: IgnorePointer(
+                          ignoring: !isRunning,
+                          child: Opacity(
+                            opacity: isRunning ? 1.0 : 0.4,
+                            child: _ChaosIconButton(
+                              type: type,
+                              onPressed: () => _triggerChaos(type),
                             ),
                           ),
-                        );
-                      }),
+                        ),
+                      );
+                    }),
                   ],
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMobilePanel(
+    BuildContext context,
+    SimulationState simState,
+    List<ChaosEvent> activeEvents,
+    bool isRunning,
+  ) {
+    final bottomOffset = MediaQuery.viewPaddingOf(context).bottom + 92;
+    if (!_isExpanded) {
+      return Positioned(
+        right: 12,
+        bottom: bottomOffset,
+        child: FloatingActionButton.small(
+          heroTag: 'chaos-mobile-toggle',
+          tooltip: 'Chaos controls',
+          backgroundColor: AppTheme.surface.withValues(alpha: 0.95),
+          foregroundColor: isRunning ? AppTheme.warning : AppTheme.textMuted,
+          onPressed: () => setState(() => _isExpanded = true),
+          child: const Icon(Icons.bolt_outlined),
+        ),
+      );
+    }
+
+    final canvasState = ref.watch(canvasProvider);
+    final showErrors = canvasState.showErrors;
+    final trafficUnits = (canvasState.trafficLevel * 100)
+        .clamp(0, 500)
+        .toDouble();
+
+    return Positioned(
+      left: 12,
+      right: 12,
+      bottom: bottomOffset,
+      child: Material(
+        elevation: 10,
+        borderRadius: BorderRadius.circular(18),
+        color: AppTheme.surface.withValues(alpha: 0.97),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: isRunning
+                  ? AppTheme.warning.withValues(alpha: 0.35)
+                  : AppTheme.border,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.auto_awesome_rounded,
+                    size: 16,
+                    color: AppTheme.warning,
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Chaos Controls',
+                    style: TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                    onPressed: () => setState(() => _isExpanded = false),
+                    visualDensity: VisualDensity.compact,
+                    splashRadius: 18,
+                  ),
+                ],
+              ),
+              if (activeEvents.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: activeEvents
+                          .map(
+                            (event) => Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: _ActiveEventChip(event: event),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  ),
+                ),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: ChaosType.values.map((type) {
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: IgnorePointer(
+                        ignoring: !isRunning,
+                        child: Opacity(
+                          opacity: isRunning ? 1.0 : 0.4,
+                          child: _ChaosIconButton(
+                            type: type,
+                            onPressed: () => _triggerChaos(type),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (!isRunning)
+                const Text(
+                  'Start simulation to activate chaos events.',
+                  style: TextStyle(
+                    color: AppTheme.textMuted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                )
+              else ...[
+                Row(
+                  children: [
+                    Text(
+                      'Speed ${simState.simulationSpeed.toStringAsFixed(1)}x',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Expanded(
+                      child: Slider(
+                        value: (simState.simulationSpeed * 20).clamp(0, 100),
+                        min: 0,
+                        max: 100,
+                        divisions: 100,
+                        onChanged: (value) => _setSpeed(value / 20.0),
+                      ),
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    Text(
+                      'Traffic ${trafficUnits.round()}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.textSecondary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Expanded(
+                      child: Slider(
+                        value: trafficUnits,
+                        min: 0,
+                        max: 500,
+                        divisions: 500,
+                        onChanged: (value) {
+                          ref
+                              .read(canvasProvider.notifier)
+                              .setTrafficLevel(value / 100.0);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                Row(
+                  children: [
+                    Icon(
+                      showErrors ? Icons.error_outline : Icons.visibility_off,
+                      size: 16,
+                      color: showErrors ? AppTheme.error : AppTheme.textMuted,
+                    ),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'Show errors',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const Spacer(),
+                    Switch(
+                      value: showErrors,
+                      activeColor: AppTheme.error,
+                      onChanged: (value) {
+                        ref.read(canvasProvider.notifier).setShowErrors(value);
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ],
           ),
         ),
       ),
@@ -441,10 +681,7 @@ class _ChaosIconButton extends StatelessWidget {
   final ChaosType type;
   final VoidCallback onPressed;
 
-  const _ChaosIconButton({
-    required this.type,
-    required this.onPressed,
-  });
+  const _ChaosIconButton({required this.type, required this.onPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -464,10 +701,7 @@ class _ChaosIconButton extends StatelessWidget {
               border: Border.all(color: AppTheme.border),
             ),
             child: Center(
-              child: Text(
-                type.emoji,
-                style: const TextStyle(fontSize: 22),
-              ),
+              child: Text(type.emoji, style: const TextStyle(fontSize: 22)),
             ),
           ),
         ),
@@ -538,10 +772,7 @@ class _ChaosButton extends StatefulWidget {
   final ChaosType type;
   final VoidCallback onPressed;
 
-  const _ChaosButton({
-    required this.type,
-    required this.onPressed,
-  });
+  const _ChaosButton({required this.type, required this.onPressed});
 
   @override
   State<_ChaosButton> createState() => _ChaosButtonState();
@@ -621,7 +852,9 @@ class _SpeedControlButton extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
-            color: isSelected ? AppTheme.primary.withValues(alpha: 0.1) : Colors.transparent,
+            color: isSelected
+                ? AppTheme.primary.withValues(alpha: 0.1)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: isSelected ? AppTheme.primary : Colors.transparent,

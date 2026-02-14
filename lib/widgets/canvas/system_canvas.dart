@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui';
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
@@ -163,6 +164,7 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
     final simState = ref.watch(simulationProvider);
     final problem = ref.watch(currentProblemProvider);
     final isSimulating = simState.isRunning;
+    final isMobileWeb = kIsWeb && MediaQuery.sizeOf(context).width < 900;
     final isConnecting = connectingFromId != null;
 
     final isSelectionMode = activeTool == CanvasTool.select;
@@ -959,94 +961,19 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
           ),
 
           // 3. Cyberpunk & Cost Controls (Top Right Overlay)
-          Positioned(
-            top: 16,
-            right: 16,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                // Cost Ticker
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: canvasState.isCyberpunkMode
-                        ? AppTheme.cyberpunkSurface.withValues(alpha: 0.9)
-                        : AppTheme.surface.withValues(alpha: 0.9),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: canvasState.isCyberpunkMode
-                          ? AppTheme.neonMagenta
-                          : AppTheme.border,
-                      width: canvasState.isCyberpunkMode ? 1.5 : 1,
+          if (!isMobileWeb)
+            Positioned(
+              top: 16,
+              right: 16,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  // Cost Ticker
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
                     ),
-                    boxShadow: canvasState.isCyberpunkMode
-                        ? [
-                            BoxShadow(
-                              color: AppTheme.neonMagenta.withValues(
-                                alpha: 0.4,
-                              ),
-                              blurRadius: 8,
-                            ),
-                          ]
-                        : [],
-                  ),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(8),
-                    onTap: () => _showBudgetDialog(problem),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.attach_money,
-                          size: 16,
-                          color: canvasState.isCyberpunkMode
-                              ? AppTheme.neonMagenta
-                              : AppTheme.success,
-                        ),
-                        const SizedBox(width: 6),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '\$${(simState.globalMetrics.totalCostPerHour > 0 ? simState.globalMetrics.totalCostPerHour : canvasState.totalCostPerHour).toStringAsFixed(2)}/hr',
-                              style: GoogleFonts.firaCode(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.textPrimary,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Spent ${simState.globalMetrics.costSpentString} · Budget \$${_formatBudget(problem.constraints.budgetPerMonth)}/mo',
-                              style: GoogleFonts.firaCode(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w500,
-                                color: AppTheme.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(width: 6),
-                        Icon(
-                          Icons.edit,
-                          size: 14,
-                          color: AppTheme.textSecondary,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // Cyberpunk Toggle
-                GestureDetector(
-                  onTap: () {
-                    ref.read(canvasProvider.notifier).toggleCyberpunkMode();
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
                       color: canvasState.isCyberpunkMode
                           ? AppTheme.cyberpunkSurface.withValues(alpha: 0.9)
@@ -1054,30 +981,108 @@ class _SystemCanvasState extends ConsumerState<SystemCanvas> {
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
                         color: canvasState.isCyberpunkMode
-                            ? AppTheme.neonCyan
+                            ? AppTheme.neonMagenta
                             : AppTheme.border,
+                        width: canvasState.isCyberpunkMode ? 1.5 : 1,
                       ),
                       boxShadow: canvasState.isCyberpunkMode
                           ? [
                               BoxShadow(
-                                color: AppTheme.neonCyan.withValues(alpha: 0.4),
+                                color: AppTheme.neonMagenta.withValues(
+                                  alpha: 0.4,
+                                ),
                                 blurRadius: 8,
                               ),
                             ]
                           : [],
                     ),
-                    child: Icon(
-                      Icons.nightlight_round,
-                      size: 20,
-                      color: canvasState.isCyberpunkMode
-                          ? AppTheme.neonCyan
-                          : AppTheme.textSecondary,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () => _showBudgetDialog(problem),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.attach_money,
+                            size: 16,
+                            color: canvasState.isCyberpunkMode
+                                ? AppTheme.neonMagenta
+                                : AppTheme.success,
+                          ),
+                          const SizedBox(width: 6),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '\$${(simState.globalMetrics.totalCostPerHour > 0 ? simState.globalMetrics.totalCostPerHour : canvasState.totalCostPerHour).toStringAsFixed(2)}/hr',
+                                style: GoogleFonts.firaCode(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Spent ${simState.globalMetrics.costSpentString} · Budget \$${_formatBudget(problem.constraints.budgetPerMonth)}/mo',
+                                style: GoogleFonts.firaCode(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w500,
+                                  color: AppTheme.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(
+                            Icons.edit,
+                            size: 14,
+                            color: AppTheme.textSecondary,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  // Cyberpunk Toggle
+                  GestureDetector(
+                    onTap: () {
+                      ref.read(canvasProvider.notifier).toggleCyberpunkMode();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: canvasState.isCyberpunkMode
+                            ? AppTheme.cyberpunkSurface.withValues(alpha: 0.9)
+                            : AppTheme.surface.withValues(alpha: 0.9),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: canvasState.isCyberpunkMode
+                              ? AppTheme.neonCyan
+                              : AppTheme.border,
+                        ),
+                        boxShadow: canvasState.isCyberpunkMode
+                            ? [
+                                BoxShadow(
+                                  color: AppTheme.neonCyan.withValues(
+                                    alpha: 0.4,
+                                  ),
+                                  blurRadius: 8,
+                                ),
+                              ]
+                            : [],
+                      ),
+                      child: Icon(
+                        Icons.nightlight_round,
+                        size: 20,
+                        color: canvasState.isCyberpunkMode
+                            ? AppTheme.neonCyan
+                            : AppTheme.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
 
           // 4. Empty state
           if (canvasState.components.isEmpty)
