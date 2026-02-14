@@ -25,6 +25,7 @@ import '../utils/blueprint_exporter.dart';
 import '../utils/blueprint_importer.dart';
 // import '../widgets/community/publish_dialog.dart';
 import '../widgets/canvas/drawing_toolbar.dart';
+import '../widgets/ads/ad_popup.dart';
 import 'community_screen.dart';
 import '../data/problems.dart';
 import '../services/supabase_service.dart';
@@ -63,7 +64,11 @@ class _ReadOnlyBadge extends StatelessWidget {
   final VoidCallback onCopy;
   final String? ownerEmail;
   final double topOffset;
-  const _ReadOnlyBadge({required this.onCopy, this.ownerEmail, this.topOffset = 76});
+  const _ReadOnlyBadge({
+    required this.onCopy,
+    this.ownerEmail,
+    this.topOffset = 76,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -91,7 +96,11 @@ class _ReadOnlyBadge extends StatelessWidget {
             const SizedBox(width: 8),
             Text(
               ownerEmail != null ? 'Read-only (by $ownerEmail)' : 'Read-only',
-              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13, fontWeight: FontWeight.w600),
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const SizedBox(width: 10),
             TextButton.icon(
@@ -100,7 +109,10 @@ class _ReadOnlyBadge extends StatelessWidget {
               label: const Text('Copy to My Designs'),
               style: TextButton.styleFrom(
                 foregroundColor: AppTheme.primary,
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 minimumSize: Size.zero,
               ),
             ),
@@ -134,6 +146,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   final Set<String> _notifiedRejections = {};
   final List<_RejectionNotice> _rejectionNotices = [];
   final Set<String> _dismissedRejectionIds = {};
+  bool _showAdPopup = true;
 
   @override
   void initState() {
@@ -150,27 +163,35 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         _stopStatusPolling();
       }
     });
-    
+
     if (widget.initialCommunityDesign != null) {
       // If payload is wrapped under 'canvas_data', unwrap it
       if (widget.initialCommunityDesign!.containsKey('canvas_data') &&
-          widget.initialCommunityDesign!['canvas_data'] is Map<String, dynamic>) {
-        _activeCommunityDesign = Map<String, dynamic>.from(widget.initialCommunityDesign!['canvas_data']);
+          widget.initialCommunityDesign!['canvas_data']
+              is Map<String, dynamic>) {
+        _activeCommunityDesign = Map<String, dynamic>.from(
+          widget.initialCommunityDesign!['canvas_data'],
+        );
       } else {
         _activeCommunityDesign = widget.initialCommunityDesign;
       }
-      _designOwnerId = widget.designOwnerId ?? widget.initialCommunityDesign!['__owner_id'] as String?;
-      _designOwnerEmail = widget.initialCommunityDesign!['__owner_email'] as String?;
+      _designOwnerId =
+          widget.designOwnerId ??
+          widget.initialCommunityDesign!['__owner_id'] as String?;
+      _designOwnerEmail =
+          widget.initialCommunityDesign!['__owner_email'] as String?;
     }
     _sharedDesignId = widget.sharedDesignId;
     if (_designOwnerId == null) {
       _designOwnerId = widget.designOwnerId;
     }
-    
+
     // Auto-load a complex design for testing simulation and click-to-fix
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_activeCommunityDesign != null) {
-        final imported = BlueprintImporter.importFromMap(_activeCommunityDesign!);
+        final imported = BlueprintImporter.importFromMap(
+          _activeCommunityDesign!,
+        );
         ref.read(canvasProvider.notifier).loadState(imported);
         _setReadOnlyFlag();
         _fitContentToViewport();
@@ -178,10 +199,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       } else if (_sharedDesignId != null) {
         _loadSharedDesign(_sharedDesignId!);
       } else {
-        ref.read(canvasProvider.notifier).initializeWithProblem(
-          ref.read(currentProblemProvider).id,
-          forceTestDesign: true,
-        );
+        ref
+            .read(canvasProvider.notifier)
+            .initializeWithProblem(
+              ref.read(currentProblemProvider).id,
+              forceTestDesign: true,
+            );
         ref.read(canvasReadOnlyProvider.notifier).state = false;
       }
       _maybeSetDefaultTraffic();
@@ -203,7 +226,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         final status = d['status'] as String?;
         if (id == null || status != 'rejected') continue;
         if (_notifiedRejections.contains(id)) continue;
-        final reason = d['rejection_reason'] as String? ?? 'Rejected by moderator.';
+        final reason =
+            d['rejection_reason'] as String? ?? 'Rejected by moderator.';
         final title = d['title'] as String? ?? 'Design';
         _notifiedRejections.add(id);
         _addRejectionNotice(id: id, title: title, reason: reason);
@@ -213,12 +237,18 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     }
   }
 
-  void _addRejectionNotice({required String id, required String title, required String reason}) {
+  void _addRejectionNotice({
+    required String id,
+    required String title,
+    required String reason,
+  }) {
     if (_dismissedRejectionIds.contains(id)) return;
     if (_rejectionNotices.any((n) => n.id == id)) return;
     if (!mounted) return;
     setState(() {
-      _rejectionNotices.add(_RejectionNotice(id: id, title: title, reason: reason));
+      _rejectionNotices.add(
+        _RejectionNotice(id: id, title: title, reason: reason),
+      );
     });
   }
 
@@ -252,18 +282,36 @@ class _GameScreenState extends ConsumerState<GameScreen> {
               children: [
                 const Text(
                   'Notifications',
-                  style: TextStyle(color: AppTheme.textPrimary, fontSize: 16, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 if (notices.isEmpty)
-                  const Text('No new rejections', style: TextStyle(color: AppTheme.textSecondary))
+                  const Text(
+                    'No new rejections',
+                    style: TextStyle(color: AppTheme.textSecondary),
+                  )
                 else
-                  ...notices.map((n) => ListTile(
-                        dense: true,
-                        leading: const Icon(Icons.block, color: AppTheme.error),
-                        title: Text(n.title, style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w700)),
-                        subtitle: Text(n.reason, style: const TextStyle(color: AppTheme.textSecondary)),
-                      )),
+                  ...notices.map(
+                    (n) => ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.block, color: AppTheme.error),
+                      title: Text(
+                        n.title,
+                        style: const TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      subtitle: Text(
+                        n.reason,
+                        style: const TextStyle(color: AppTheme.textSecondary),
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 8),
                 Align(
                   alignment: Alignment.centerRight,
@@ -354,7 +402,10 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
   Future<void> _persistDismissed() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('dismissed_rejections', _dismissedRejectionIds.toList());
+    await prefs.setStringList(
+      'dismissed_rejections',
+      _dismissedRejectionIds.toList(),
+    );
   }
 
   Future<void> _exportCanvasJson() async {
@@ -369,12 +420,18 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         builder: (context) {
           return AlertDialog(
             backgroundColor: AppTheme.surface,
-            title: const Text('Exported JSON', style: TextStyle(color: AppTheme.textPrimary)),
+            title: const Text(
+              'Exported JSON',
+              style: TextStyle(color: AppTheme.textPrimary),
+            ),
             content: SizedBox(
               width: 520,
               child: SelectableText(
                 jsonString,
-                style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.textSecondary,
+                ),
               ),
             ),
             actions: [
@@ -397,9 +454,9 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         },
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Export failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Export failed: $e')));
     }
   }
 
@@ -410,7 +467,10 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: AppTheme.surface,
-          title: const Text('Import JSON', style: TextStyle(color: AppTheme.textPrimary)),
+          title: const Text(
+            'Import JSON',
+            style: TextStyle(color: AppTheme.textPrimary),
+          ),
           content: SizedBox(
             width: 520,
             child: TextField(
@@ -429,7 +489,9 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, controller.text.trim()),
-              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+              ),
               child: const Text('LOAD'),
             ),
           ],
@@ -450,20 +512,22 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       ref.read(canvasReadOnlyProvider.notifier).state = false;
       _fitContentToViewport();
       _autoLayoutCurrent();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Canvas loaded from JSON')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Canvas loaded from JSON')));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Import failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Import failed: $e')));
     }
   }
 
   void _setReadOnlyFlag() {
     final user = SupabaseService().currentUser;
-    final isOwner = user != null && _designOwnerId != null && user.id == _designOwnerId;
-    ref.read(canvasReadOnlyProvider.notifier).state = widget.readOnly || !isOwner && _designOwnerId != null;
+    final isOwner =
+        user != null && _designOwnerId != null && user.id == _designOwnerId;
+    ref.read(canvasReadOnlyProvider.notifier).state =
+        widget.readOnly || !isOwner && _designOwnerId != null;
   }
 
   Future<void> _copyToMyDesigns() async {
@@ -493,9 +557,9 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         const SnackBar(content: Text('Copied. You can now edit this design.')),
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Copy failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Copy failed: $e')));
     }
   }
 
@@ -531,8 +595,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     _disposeStatusListener();
     _statusListeningUserId = user.id;
 
-    _statusChannel = SupabaseService()
-        .client
+    _statusChannel = SupabaseService().client
         .channel('design-status-${user.id}')
         .onPostgresChanges(
           event: PostgresChangeEvent.update,
@@ -594,31 +657,36 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   }
 
   Future<void> _handlePublishDesign() async {
-     final user = SupabaseService().currentUser;
-     final guestMode = ref.watch(guestModeProvider);
+    final user = SupabaseService().currentUser;
+    final guestMode = ref.watch(guestModeProvider);
 
-     if (user == null && !guestMode) {
-       final loggedIn = await showDialog<bool>(
-         context: context,
-         barrierDismissible: true,
-         builder: (context) => const Dialog(
-           backgroundColor: Colors.transparent,
-           insetPadding: EdgeInsets.zero,
-           child: LoginScreen(),
-         ),
-       );
-       if (loggedIn != true) return;
-     }
+    if (user == null && !guestMode) {
+      final loggedIn = await showDialog<bool>(
+        context: context,
+        barrierDismissible: true,
+        builder: (context) => const Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.zero,
+          child: LoginScreen(),
+        ),
+      );
+      if (loggedIn != true) return;
+    }
 
-     final canvasState = ref.read(canvasProvider);
-     final problem = ref.read(currentProblemProvider);
-     final jsonString = BlueprintExporter.exportToJson(canvasState, problem);
-     
-     if (!mounted) return;
-     Navigator.push(context, MaterialPageRoute(builder: (c) => PublishScreen(
-       initialTitle: problem.title,
-       canvasData: jsonDecode(jsonString),
-     )));
+    final canvasState = ref.read(canvasProvider);
+    final problem = ref.read(currentProblemProvider);
+    final jsonString = BlueprintExporter.exportToJson(canvasState, problem);
+
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (c) => PublishScreen(
+          initialTitle: problem.title,
+          canvasData: jsonDecode(jsonString),
+        ),
+      ),
+    );
   }
 
   Future<void> _handleSaveDesignRemote() async {
@@ -638,7 +706,9 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         if (loggedIn != true) return;
       }
 
-      final title = await _promptForTitle(initial: _privateDesignTitle ?? ref.read(currentProblemProvider).title);
+      final title = await _promptForTitle(
+        initial: _privateDesignTitle ?? ref.read(currentProblemProvider).title,
+      );
       if (title == null || title.trim().isEmpty) return;
 
       final canvasState = ref.read(canvasProvider);
@@ -666,10 +736,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           ? 'Save failed: permission denied. Please ensure you are logged in and have access to save designs.'
           : 'Save failed: $e';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: AppTheme.error,
-        ),
+        SnackBar(content: Text(message), backgroundColor: AppTheme.error),
       );
     }
   }
@@ -698,15 +765,17 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     final scaleY = size.height / contentHeight;
     final fitScale = math.max(0.2, math.min(1.2, math.min(scaleX, scaleY)));
 
-    final contentCenter = Offset(minX + (maxX - minX) / 2, minY + (maxY - minY) / 2);
+    final contentCenter = Offset(
+      minX + (maxX - minX) / 2,
+      minY + (maxY - minY) / 2,
+    );
     final viewportCenter = Offset(size.width / 2, size.height / 2);
 
     final newOffset = viewportCenter - (contentCenter * fitScale);
 
-    ref.read(canvasProvider.notifier).updateTransform(
-      panOffset: newOffset,
-      scale: fitScale,
-    );
+    ref
+        .read(canvasProvider.notifier)
+        .updateTransform(panOffset: newOffset, scale: fitScale);
   }
 
   void _autoLayoutCurrent() {
@@ -736,9 +805,9 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       final designs = await SupabaseService().fetchMyDesigns();
       if (!mounted) return;
       if (designs.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No saved designs found')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('No saved designs found')));
         return;
       }
 
@@ -763,7 +832,10 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                   ? 'Status: $status • $rejection'
                   : 'Status: $status';
               return ListTile(
-                title: Text(title, style: const TextStyle(color: AppTheme.textPrimary)),
+                title: Text(
+                  title,
+                  style: const TextStyle(color: AppTheme.textPrimary),
+                ),
                 subtitle: Text(
                   '$updated\n$statusLabel',
                   style: const TextStyle(color: AppTheme.textMuted),
@@ -774,10 +846,14 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                   final blueprintPath = item['blueprint_path'] as String?;
                   Map<String, dynamic>? designData = data;
                   if (designData == null && blueprintPath != null) {
-                    designData = await SupabaseService().downloadBlueprint(blueprintPath);
+                    designData = await SupabaseService().downloadBlueprint(
+                      blueprintPath,
+                    );
                   }
                   if (designData != null) {
-                    final imported = BlueprintImporter.importFromMap(designData);
+                    final imported = BlueprintImporter.importFromMap(
+                      designData,
+                    );
                     ref.read(canvasProvider.notifier).loadState(imported);
                     setState(() {
                       _privateDesignId = item['id'] as String?;
@@ -785,7 +861,9 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                     });
                   } else {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Failed to load design data')),
+                      const SnackBar(
+                        content: Text('Failed to load design data'),
+                      ),
                     );
                   }
                 },
@@ -796,9 +874,9 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load designs: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to load designs: $e')));
       }
     }
   }
@@ -833,10 +911,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
 
       final uri = Uri.base;
       final newUri = uri.replace(
-        queryParameters: {
-          ...uri.queryParameters,
-          'designId': designId,
-        },
+        queryParameters: {...uri.queryParameters, 'designId': designId},
       );
       await Clipboard.setData(ClipboardData(text: newUri.toString()));
       if (!mounted) return;
@@ -868,7 +943,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   void _handleSaveDesign() {
     _handleSaveDesignRemote();
   }
-  
+
   Future<void> _handleProfileTap() async {
     final user = SupabaseService().currentUser;
     if (user == null) {
@@ -883,7 +958,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     }
 
     if (!mounted) return;
-    
+
     // Show profile info and logout button
     showDialog(
       context: context,
@@ -894,31 +969,57 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           children: [
             const Icon(Icons.person_outline_rounded, color: AppTheme.primary),
             const SizedBox(width: 12),
-            const Text('Architect Profile', style: TextStyle(color: AppTheme.textPrimary)),
+            const Text(
+              'Architect Profile',
+              style: TextStyle(color: AppTheme.textPrimary),
+            ),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Email', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
-            Text(user.email ?? 'Unknown', style: const TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w500)),
+            Text(
+              'Email',
+              style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+            ),
+            Text(
+              user.email ?? 'Unknown',
+              style: const TextStyle(
+                color: AppTheme.textPrimary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
             const SizedBox(height: 16),
-            Text('Role', style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
-            const Text('Senior System Architect', style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w500)),
+            Text(
+              'Role',
+              style: TextStyle(color: AppTheme.textMuted, fontSize: 12),
+            ),
+            const Text(
+              'Senior System Architect',
+              style: TextStyle(
+                color: AppTheme.textPrimary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('CLOSE', style: TextStyle(color: AppTheme.textSecondary)),
+            child: const Text(
+              'CLOSE',
+              style: TextStyle(color: AppTheme.textSecondary),
+            ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.error.withOpacity(0.1),
               foregroundColor: AppTheme.error,
               elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
             onPressed: () async {
               await SupabaseService().signOut();
@@ -931,7 +1032,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     );
   }
 
-  Widget _buildWebLayout(SimulationState simState, bool hasComponents, Problem problem, BoxConstraints constraints) {
+  Widget _buildWebLayout(
+    SimulationState simState,
+    bool hasComponents,
+    Problem problem,
+    BoxConstraints constraints,
+  ) {
     return Row(
       children: [
         SizedBox(
@@ -939,7 +1045,12 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           child: const ComponentToolbox(mode: ToolboxMode.sidebar),
         ),
         Expanded(
-          child: _buildCanvasArea(simState, hasComponents, problem, constraints),
+          child: _buildCanvasArea(
+            simState,
+            hasComponents,
+            problem,
+            constraints,
+          ),
         ),
       ],
     );
@@ -949,16 +1060,21 @@ class _GameScreenState extends ConsumerState<GameScreen> {
     SimulationState simState,
     bool hasComponents,
     Problem problem,
-    BoxConstraints constraints,
-    {required bool canStart}
-  ) {
+    BoxConstraints constraints, {
+    required bool canStart,
+  }) {
     final bottomSafe = MediaQuery.viewPaddingOf(context).bottom;
     return Stack(
       children: [
         Column(
           children: [
             Expanded(
-              child: _buildCanvasArea(simState, hasComponents, problem, constraints),
+              child: _buildCanvasArea(
+                simState,
+                hasComponents,
+                problem,
+                constraints,
+              ),
             ),
             const ComponentToolbox(mode: ToolboxMode.horizontal),
           ],
@@ -970,28 +1086,39 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             heroTag: 'fab-sim',
             backgroundColor: simState.isRunning
                 ? AppTheme.error
-                : (canStart ? AppTheme.primary : AppTheme.textMuted.withOpacity(0.3)),
+                : (canStart
+                      ? AppTheme.primary
+                      : AppTheme.textMuted.withOpacity(0.3)),
             foregroundColor: Colors.white,
             onPressed: simState.isRunning
                 ? () => ref.read(simulationEngineProvider).stop()
-                : (canStart ? () {
-                    setState(() => _showResultsOverlay = false);
-                    ref.read(simulationEngineProvider).start();
-                  } : null),
+                : (canStart
+                      ? () {
+                          setState(() => _showResultsOverlay = false);
+                          ref.read(simulationEngineProvider).start();
+                        }
+                      : null),
             icon: Icon(simState.isRunning ? Icons.stop : Icons.play_arrow),
-            label: Text(simState.isRunning ? 'Stop Simulation' : 'Start Simulation'),
+            label: Text(
+              simState.isRunning ? 'Stop Simulation' : 'Start Simulation',
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildCanvasArea(SimulationState simState, bool hasComponents, Problem problem, BoxConstraints constraints) {
+  Widget _buildCanvasArea(
+    SimulationState simState,
+    bool hasComponents,
+    Problem problem,
+    BoxConstraints constraints,
+  ) {
     final isAdmin = ref.watch(isAdminProvider);
     return Stack(
       children: [
         const SystemCanvas(),
-        
+
         // Drawing Toolbar
         Positioned(
           top: 12,
@@ -999,10 +1126,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           right: 0,
           child: Center(
             child: RepaintBoundary(
-              child: SizedBox(
-                key: _toolbarKey,
-                child: const DrawingToolbar(),
-              ),
+              child: SizedBox(key: _toolbarKey, child: const DrawingToolbar()),
             ),
           ),
         ),
@@ -1012,10 +1136,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           Positioned(
             top: 20,
             right: 20,
-            child: SizedBox(
-               width: 300,
-               child: const HintsPanel(),
-            ),
+            child: SizedBox(width: 300, child: const HintsPanel()),
           ),
 
         // Hints Toggle (if hidden)
@@ -1026,12 +1147,15 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             child: FloatingActionButton.small(
               backgroundColor: AppTheme.surface,
               onPressed: () => setState(() => _showHints = true),
-              child: const Icon(Icons.lightbulb_outline, color: AppTheme.primary),
+              child: const Icon(
+                Icons.lightbulb_outline,
+                color: AppTheme.primary,
+              ),
             ),
           ),
 
         if (_showGuide)
-           GuideOverlay(onDismiss: () => setState(() => _showGuide = false)),
+          GuideOverlay(onDismiss: () => setState(() => _showGuide = false)),
 
         // Admin JSON import/export shortcuts
         if (isAdmin)
@@ -1057,11 +1181,7 @@ class _GameScreenState extends ConsumerState<GameScreen> {
           ),
 
         // Disaster Toolkit (Chaos Mode)
-        Positioned(
-          bottom: 100,
-          left: 20,
-          child: const DisasterToolkit(),
-        ),
+        Positioned(bottom: 100, left: 20, child: const DisasterToolkit()),
       ],
     );
   }
@@ -1073,8 +1193,13 @@ class _GameScreenState extends ConsumerState<GameScreen> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: AppTheme.surface,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          title: const Text('Name your design', style: TextStyle(color: AppTheme.textPrimary)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          title: const Text(
+            'Name your design',
+            style: TextStyle(color: AppTheme.textPrimary),
+          ),
           content: TextField(
             controller: controller,
             autofocus: true,
@@ -1090,7 +1215,9 @@ class _GameScreenState extends ConsumerState<GameScreen> {
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, controller.text.trim()),
-              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primary),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+              ),
               child: const Text('SAVE'),
             ),
           ],
@@ -1103,7 +1230,9 @@ class _GameScreenState extends ConsumerState<GameScreen> {
   Widget build(BuildContext context) {
     final simState = ref.watch(simulationProvider);
     // CRITICAL: Selection optimization to prevent infinite rebuild loop during panning
-    final hasComponents = ref.watch(canvasProvider.select((s) => s.components.isNotEmpty));
+    final hasComponents = ref.watch(
+      canvasProvider.select((s) => s.components.isNotEmpty),
+    );
     final problem = ref.watch(currentProblemProvider);
     final profile = ref.watch(profileProvider);
     final isAdmin = ref.watch(isAdminProvider);
@@ -1134,15 +1263,29 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                     onLoadMyDesignsTap: _handleLoadMyDesigns,
                     profile: profile,
                     isAdmin: isAdmin,
-                    onAdminTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminScreen())),
+                    onAdminTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AdminScreen()),
+                    ),
                     onNotificationsTap: _openNotifications,
                     notificationCount: _rejectionNotices.length,
                   ),
                   if (simState.isRunning) const MetricsBar(),
                   Expanded(
-                    child: useSidebar 
-                      ? _buildWebLayout(simState, hasComponents, problem, constraints)
-                      : _buildMobileLayout(simState, hasComponents, problem, constraints, canStart: validation.isValid),
+                    child: useSidebar
+                        ? _buildWebLayout(
+                            simState,
+                            hasComponents,
+                            problem,
+                            constraints,
+                          )
+                        : _buildMobileLayout(
+                            simState,
+                            hasComponents,
+                            problem,
+                            constraints,
+                            canStart: validation.isValid,
+                          ),
                   ),
                   _BottomControls(
                     canStart: validation.isValid,
@@ -1162,7 +1305,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                       ref.read(simulationEngineProvider).reset();
                       ref.read(canvasProvider.notifier).clearCanvas();
                     },
-                    onViewResults: () => setState(() => _showResultsOverlay = true),
+                    onViewResults: () =>
+                        setState(() => _showResultsOverlay = true),
                   ),
                 ],
               );
@@ -1182,42 +1326,107 @@ class _GameScreenState extends ConsumerState<GameScreen> {
                     borderRadius: BorderRadius.circular(12),
                     child: ListTile(
                       dense: true,
-                      leading: const Icon(Icons.desktop_mac, color: AppTheme.primary),
+                      leading: const Icon(
+                        Icons.desktop_mac,
+                        color: AppTheme.primary,
+                      ),
                       title: const Text(
                         'For the best experience, try on a laptop or desktop.',
-                        style: TextStyle(color: AppTheme.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                       trailing: IconButton(
-                        icon: const Icon(Icons.close, color: AppTheme.textMuted),
-                        onPressed: () => setState(() => _showDesktopHint = false),
+                        icon: const Icon(
+                          Icons.close,
+                          color: AppTheme.textMuted,
+                        ),
+                        onPressed: () =>
+                            setState(() => _showDesktopHint = false),
                       ),
                     ),
                   ),
                 );
               },
             ),
-          
+
           // Simulation Overlays
           if (simState.isFailed && !_showResultsOverlay)
             _FailureAlerts(failures: simState.failures),
-          
+
           // Chaos Engineering Controls
           const ChaosControlsPanel(),
-            
+
+          // Ad popup (web only)
+          if (kIsWeb && _showAdPopup)
+            Positioned(
+              right: 16,
+              bottom: 24 + MediaQuery.viewPaddingOf(context).bottom,
+              child: Dismissible(
+                key: const ValueKey('ad-popup'),
+                direction: DismissDirection.up,
+                onDismissed: (_) => setState(() => _showAdPopup = false),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const AdPopup(
+                      adClientId: 'ca-pub-XXXXXXXXXXXXXXX',
+                      adSlotId: '0000000000',
+                      width: 336,
+                      height: 280,
+                    ),
+                    Positioned(
+                      top: -8,
+                      right: -8,
+                      child: GestureDetector(
+                        onTap: () => setState(() => _showAdPopup = false),
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.75),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.3),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.close,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
           if (_showResultsOverlay)
-             ResultsScreen(
-               onClose: () {
-                 setState(() => _showResultsOverlay = false);
-                 ref.read(simulationEngineProvider).stop();
-               },
-             ),
+            ResultsScreen(
+              onClose: () {
+                setState(() => _showResultsOverlay = false);
+                ref.read(simulationEngineProvider).stop();
+              },
+            ),
           if (readOnly)
             _ReadOnlyBadge(
               onCopy: _copyToMyDesigns,
               ownerEmail: _designOwnerEmail,
               topOffset: 110,
             ),
-          if (readOnly) _ReadOnlyBadge(onCopy: _copyToMyDesigns, ownerEmail: _designOwnerEmail),
+          if (readOnly)
+            _ReadOnlyBadge(
+              onCopy: _copyToMyDesigns,
+              ownerEmail: _designOwnerEmail,
+            ),
         ],
       ),
     );
@@ -1236,7 +1445,11 @@ class _AdminActionChip extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  const _AdminActionChip({required this.icon, required this.label, required this.onTap});
+  const _AdminActionChip({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1253,7 +1466,14 @@ class _AdminActionChip extends StatelessWidget {
             children: [
               Icon(icon, size: 16, color: AppTheme.primary),
               const SizedBox(width: 6),
-              Text(label, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
         ),
@@ -1275,8 +1495,8 @@ class _ProblemHeader extends StatelessWidget {
   final VoidCallback? onAdminTap;
 
   const _ProblemHeader({
-    required this.onPublishTap, 
-    required this.onSaveTap, 
+    required this.onPublishTap,
+    required this.onSaveTap,
     required this.onProfileTap,
     required this.onShareTap,
     required this.onLoadMyDesignsTap,
@@ -1303,7 +1523,11 @@ class _ProblemHeader extends StatelessWidget {
       if (isCompact) {
         return IconButton(
           tooltip: label,
-          icon: Icon(icon, size: 20, color: admin ? AppTheme.warning : AppTheme.primary),
+          icon: Icon(
+            icon,
+            size: 20,
+            color: admin ? AppTheme.warning : AppTheme.primary,
+          ),
           onPressed: onTap,
         );
       }
@@ -1332,11 +1556,20 @@ class _ProblemHeader extends StatelessWidget {
               CircleAvatar(
                 radius: 10,
                 backgroundColor: AppTheme.primary,
-                child: Text(name[0].toUpperCase(), style: const TextStyle(fontSize: 10, color: Colors.white)),
+                child: Text(
+                  name[0].toUpperCase(),
+                  style: const TextStyle(fontSize: 10, color: Colors.white),
+                ),
               ),
               if (!isCompact) ...[
                 const SizedBox(width: 8),
-                Text(name, style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary)),
+                Text(
+                  name,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
               ],
             ],
           ),
@@ -1349,7 +1582,9 @@ class _ProblemHeader extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       decoration: BoxDecoration(
         color: AppTheme.surface,
-        border: Border(bottom: BorderSide(color: AppTheme.border.withOpacity(0.5))),
+        border: Border(
+          bottom: BorderSide(color: AppTheme.border.withOpacity(0.5)),
+        ),
       ),
       child: Row(
         children: [
@@ -1368,18 +1603,24 @@ class _ProblemHeader extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Consumer(builder: (context, ref, _) {
-                return btn(
-                  icon: Icons.auto_awesome_mosaic_outlined,
-                  label: 'AUTO LAYOUT',
-                  onTap: () => ref.read(canvasProvider.notifier).autoLayout(MediaQuery.of(context).size),
-                );
-              }),
+              Consumer(
+                builder: (context, ref, _) {
+                  return btn(
+                    icon: Icons.auto_awesome_mosaic_outlined,
+                    label: 'AUTO LAYOUT',
+                    onTap: () => ref
+                        .read(canvasProvider.notifier)
+                        .autoLayout(MediaQuery.of(context).size),
+                  );
+                },
+              ),
               spacing,
               btn(
                 icon: Icons.local_library_rounded,
                 label: 'LIBRARY',
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CommunityScreen())),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const CommunityScreen()),
+                ),
               ),
               if (isAdmin && onAdminTap != null) ...[
                 spacing,
@@ -1397,17 +1638,9 @@ class _ProblemHeader extends StatelessWidget {
                 onTap: onLoadMyDesignsTap,
               ),
               spacing,
-              btn(
-                icon: Icons.link_rounded,
-                label: 'SHARE',
-                onTap: onShareTap,
-              ),
+              btn(icon: Icons.link_rounded, label: 'SHARE', onTap: onShareTap),
               spacing,
-              btn(
-                icon: Icons.save_outlined,
-                label: 'SAVE',
-                onTap: onSaveTap,
-              ),
+              btn(icon: Icons.save_outlined, label: 'SAVE', onTap: onSaveTap),
               spacing,
               if (!isCompact) profileChip,
               spacing,
@@ -1416,46 +1649,74 @@ class _ProblemHeader extends StatelessWidget {
                   backgroundColor: AppTheme.primary,
                   foregroundColor: Colors.white,
                   elevation: 0,
-                  padding: EdgeInsets.symmetric(horizontal: isCompact ? 14 : 20, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isCompact ? 14 : 20,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
-                icon: Icon(Icons.rocket_launch_rounded, size: isCompact ? 16 : 18),
-              label: Text('PUBLISH', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 0.5, fontSize: isCompact ? 12 : 14)),
-              onPressed: onPublishTap,
-            ),
-            spacing,
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.notifications_outlined, color: AppTheme.textSecondary),
-                  tooltip: 'Notifications',
-                  onPressed: onNotificationsTap,
+                icon: Icon(
+                  Icons.rocket_launch_rounded,
+                  size: isCompact ? 16 : 18,
                 ),
-                if (notificationCount > 0)
-                  Positioned(
-                    right: 4,
-                    top: 4,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: AppTheme.error,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        notificationCount > 9 ? '9+' : '$notificationCount',
-                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                label: Text(
+                  'PUBLISH',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                    fontSize: isCompact ? 12 : 14,
+                  ),
+                ),
+                onPressed: onPublishTap,
+              ),
+              spacing,
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  IconButton(
+                    icon: const Icon(
+                      Icons.notifications_outlined,
+                      color: AppTheme.textSecondary,
+                    ),
+                    tooltip: 'Notifications',
+                    onPressed: onNotificationsTap,
+                  ),
+                  if (notificationCount > 0)
+                    Positioned(
+                      right: 4,
+                      top: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.error,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          notificationCount > 9 ? '9+' : '$notificationCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-              ],
-            ),
-            spacing,
-            IconButton(
-              icon: const Icon(Icons.person_outline_rounded, color: AppTheme.textSecondary),
-              tooltip: 'Account',
-              onPressed: onProfileTap,
-            ),
+                ],
+              ),
+              spacing,
+              IconButton(
+                icon: const Icon(
+                  Icons.person_outline_rounded,
+                  color: AppTheme.textSecondary,
+                ),
+                tooltip: 'Account',
+                onPressed: onProfileTap,
+              ),
             ],
           ),
         ],
@@ -1478,15 +1739,15 @@ class _BottomControls extends ConsumerWidget {
   final VoidCallback onViewResults;
 
   const _BottomControls({
-    required this.canStart, 
-    required this.isSimulating, 
-    required this.isPaused, 
+    required this.canStart,
+    required this.isSimulating,
+    required this.isPaused,
     required this.isCompleted,
     required this.validation,
-    required this.onStart, 
-    required this.onPause, 
+    required this.onStart,
+    required this.onPause,
     required this.onResume,
-    required this.onStop, 
+    required this.onStop,
     required this.onReset,
     required this.onViewResults,
   });
@@ -1494,7 +1755,9 @@ class _BottomControls extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scale = ref.watch(canvasProvider.select((s) => s.scale ?? 1.0)) * 100;
-    final missingEntry = validation.issues.any((i) => i.title == 'No entry point');
+    final missingEntry = validation.issues.any(
+      (i) => i.title == 'No entry point',
+    );
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -1503,12 +1766,16 @@ class _BottomControls extends ConsumerWidget {
         children: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: isSimulating ? AppTheme.error : (canStart ? AppTheme.primary : AppTheme.textMuted.withOpacity(0.3)),
+              backgroundColor: isSimulating
+                  ? AppTheme.error
+                  : (canStart
+                        ? AppTheme.primary
+                        : AppTheme.textMuted.withOpacity(0.3)),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
               elevation: canStart ? 4 : 0,
             ),
-            onPressed: isSimulating ? onStop : (canStart ? onStart : null), 
+            onPressed: isSimulating ? onStop : (canStart ? onStart : null),
             child: Text(isSimulating ? 'STOP SIMULATION' : 'START SIMULATION'),
           ),
           if (isCompleted && !isSimulating) ...[
@@ -1520,7 +1787,10 @@ class _BottomControls extends ConsumerWidget {
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.success,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 16,
+                ),
               ),
             ).animate().fadeIn().scale(),
           ],
@@ -1532,20 +1802,24 @@ class _BottomControls extends ConsumerWidget {
                 SizedBox(width: 6),
                 Text(
                   'Add an entry point: Load Balancer, API Gateway, or CDN.',
-                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 11, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
           ],
           const SizedBox(width: 16),
-          if (isSimulating) 
-             IconButton(
-               icon: Icon(isPaused ? Icons.play_arrow : Icons.pause, size: 32), 
-               onPressed: isPaused ? onResume : onPause
-             ),
-          
+          if (isSimulating)
+            IconButton(
+              icon: Icon(isPaused ? Icons.play_arrow : Icons.pause, size: 32),
+              onPressed: isPaused ? onResume : onPause,
+            ),
+
           const Spacer(),
-          
+
           // Zoom Controls
           Container(
             padding: const EdgeInsets.all(4),
@@ -1561,7 +1835,10 @@ class _BottomControls extends ConsumerWidget {
                   iconSize: 18,
                   visualDensity: VisualDensity.compact,
                 ),
-                Text('${scale.round()}%', style: Theme.of(context).textTheme.labelLarge),
+                Text(
+                  '${scale.round()}%',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
                 IconButton(
                   icon: const Icon(Icons.add),
                   onPressed: () => ref.read(canvasProvider.notifier).zoomIn(),
@@ -1571,9 +1848,9 @@ class _BottomControls extends ConsumerWidget {
               ],
             ),
           ),
-          
+
           const SizedBox(width: 16),
-          
+
           TextButton.icon(
             icon: const Icon(Icons.refresh),
             label: const Text('RESET'),
@@ -1610,10 +1887,7 @@ class _ClickableErrorCard extends StatefulWidget {
   final FailureEvent failure;
   final int index;
 
-  const _ClickableErrorCard({
-    required this.failure,
-    required this.index,
-  });
+  const _ClickableErrorCard({required this.failure, required this.index});
 
   @override
   State<_ClickableErrorCard> createState() => _ClickableErrorCardState();
@@ -1635,57 +1909,71 @@ class _ClickableErrorCardState extends State<_ClickableErrorCard> {
             builder: (context) => ErrorFixDialog(failure: widget.failure),
           );
         },
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: AppTheme.error.withOpacity(_isHovered ? 1.0 : 0.9),
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(_isHovered ? 0.4 : 0.3),
-                blurRadius: _isHovered ? 12 : 10,
-                offset: Offset(0, _isHovered ? 6 : 4),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
-              const SizedBox(width: 12),
-              Flexible(
-                child: Text(
-                  widget.failure.message,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 2,
-                ),
-              ),
-              if (widget.failure.fixType != null) ...[
-                const SizedBox(width: 12),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        child:
+            Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(4),
+                    color: AppTheme.error.withOpacity(_isHovered ? 1.0 : 0.9),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(_isHovered ? 0.4 : 0.3),
+                        blurRadius: _isHovered ? 12 : 10,
+                        offset: Offset(0, _isHovered ? 6 : 4),
+                      ),
+                    ],
                   ),
-                  child: const Text(
-                    'CLICK TO FIX',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.warning_amber_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 12),
+                      Flexible(
+                        child: Text(
+                          widget.failure.message,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 2,
+                        ),
+                      ),
+                      if (widget.failure.fixType != null) ...[
+                        const SizedBox(width: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'CLICK TO FIX',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                ),
-              ],
-            ],
-          ),
-        )
-        .animate()
-        .fadeIn(delay: Duration(milliseconds: 100 * widget.index))
-        .shake(hz: 2, offset: const Offset(2, 0)),
+                )
+                .animate()
+                .fadeIn(delay: Duration(milliseconds: 100 * widget.index))
+                .shake(hz: 2, offset: const Offset(2, 0)),
       ),
     );
   }
@@ -1695,5 +1983,9 @@ class _RejectionNotice {
   final String id;
   final String title;
   final String reason;
-  const _RejectionNotice({required this.id, required this.title, required this.reason});
+  const _RejectionNotice({
+    required this.id,
+    required this.title,
+    required this.reason,
+  });
 }
